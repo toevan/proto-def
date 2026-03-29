@@ -1,0 +1,203 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+import "korelink/v1/types.proto";
+
+// ============================================
+// PRGateService — PR Enforcement & Violations
+// ============================================
+
+service PRGateService {
+  rpc ListPullRequests(ListPullRequestsRequest) returns (ListPullRequestsResponse);
+  rpc GetPullRequest(GetPullRequestRequest) returns (GetPullRequestResponse);
+  rpc RecheckPullRequest(RecheckRequest) returns (RecheckResponse);
+  rpc StreamCheckProgress(StreamCheckProgressRequest) returns (stream PRCheckProgressUpdate);
+  rpc ListViolations(ListViolationsRequest) returns (ListViolationsResponse);
+  rpc GetViolation(GetViolationRequest) returns (GetViolationResponse);
+  rpc GetPRGateConfig(GetPRGateConfigRequest) returns (GetPRGateConfigResponse);
+  rpc UpdatePRGateConfig(UpdatePRGateConfigRequest) returns (UpdatePRGateConfigResponse);
+  rpc GetPRCheckSummary(GetPRCheckSummaryRequest) returns (GetPRCheckSummaryResponse);
+}
+
+// ── Core Types ──
+
+message PullRequest {
+  string id = 1;
+  string org_id = 2;
+  string repo_id = 3;
+  string repo_name = 4;
+  int32 pr_number = 5;
+  string title = 6;
+  string author = 7;
+  string author_avatar = 8;
+  string head_branch = 9;
+  string base_branch = 10;
+  string head_commit = 11;
+  PRStatus status = 12;
+  int32 violation_count = 13;
+  int32 critical_count = 14;
+  int32 error_count = 15;
+  int32 warning_count = 16;
+  int32 info_count = 17;
+  int32 files_changed = 18;
+  repeated string blueprints_checked = 19;  // blueprint names that were evaluated
+  google.protobuf.Timestamp checked_at = 20;
+  google.protobuf.Timestamp created_at = 21;
+  int32 check_duration_ms = 22;
+  bool from_cache = 23;                  // true if results came from cache
+  string github_check_run_id = 24;
+}
+
+enum PRStatus {
+  PR_STATUS_UNSPECIFIED = 0;
+  PR_STATUS_PENDING = 1;                 // check in progress
+  PR_STATUS_PASSED = 2;                  // all blueprints pass
+  PR_STATUS_WARNING = 3;                 // only WARNING-severity violations
+  PR_STATUS_BLOCKED = 4;                 // ERROR or CRITICAL violations
+  PR_STATUS_ERROR = 5;                   // check failed (infra error, not violation)
+}
+
+message EnrichedViolation {
+  string id = 1;
+  string pr_id = 2;
+  string repo_id = 3;
+
+  // Rule identification
+  string rule_id = 4;                    // constraint ID (e.g., "gdpr-no-pii-in-logs")
+  string rule_name = 5;                  // human-readable name
+  string blueprint_id = 6;
+  string blueprint_name = 7;
+
+  // Location
+  string file_path = 8;
+  int32 line = 9;
+  int32 end_line = 10;
+
+  // Severity & description
+  ViolationSeverity severity = 11;
+  string description = 12;              // human-readable explanation
+  string cite = 13;                      // regulatory reference (e.g., "GDPR Art.32")
+
+  // Code diff
+  string current_code = 14;             // the violating code ("del" line)
+  string suggested_fix = 15;            // the fixed code ("add" line)
+  string expanded_fix = 16;             // AI-enhanced fix with more context
+
+  // Metadata
+  int32 estimated_fix_minutes = 17;
+  string fix_pattern = 18;              // "pii-field-replacement", "tokenisation-wrap"
+  float confidence = 19;                 // 0.0–1.0 for data-flow-derived violations
+  bool is_new_in_pr = 20;              // true = introduced by this PR, false = pre-existing
+
+  // Exception status
+  string exception_id = 21;             // non-empty if an active exception covers this
+  ExceptionBrief exception = 22;
+
+  google.protobuf.Timestamp detected_at = 23;
+}
+
+enum ExceptionBriefStatus {
+  EXCEPTION_BRIEF_STATUS_UNSPECIFIED = 0;
+  EXCEPTION_BRIEF_STATUS_PENDING = 1;
+  EXCEPTION_BRIEF_STATUS_APPROVED = 2;
+  EXCEPTION_BRIEF_STATUS_REJECTED = 3;
+}
+
+message ExceptionBrief {
+  string id = 1;
+  ExceptionBriefStatus status = 2;
+  int32 days_remaining = 3;
+}
+
+message PRGateConfig {
+  string org_id = 1;
+  bool block_on_error = 2;              // default: true
+  bool block_on_warning = 3;            // default: false
+  bool auto_dismiss_on_fix = 4;         // default: true
+  bool post_pr_comment = 5;             // default: true
+  int32 max_violations_in_comment = 6;  // default: 25
+  bool skip_info_violations = 7;        // default: false
+}
+
+message PRCheckSummary {
+  string org_id = 1;
+  int32 prs_checked_today = 2;
+  int32 prs_passed = 3;
+  int32 prs_blocked = 4;
+  int32 prs_warning = 5;
+  float pass_rate_7d = 6;               // 7-day rolling pass rate
+  float pass_rate_30d = 7;              // 30-day rolling pass rate
+  int32 open_violations = 8;
+}
+
+// ── Requests/Responses ──
+
+message ListPullRequestsRequest {
+  string org_id = 1;
+  string repo_id = 2;                    // optional filter
+  PRStatus status_filter = 3;            // optional filter
+  int32 limit = 4;
+  int32 offset = 5;
+  string order_by = 6;                   // "checked_at", "violation_count"
+}
+message ListPullRequestsResponse {
+  repeated PullRequest pull_requests = 1;
+  int32 total = 2;
+}
+
+message GetPullRequestRequest { string pr_id = 1; }
+message GetPullRequestResponse { PullRequest pull_request = 1; }
+
+message RecheckRequest { string pr_id = 1; }
+message RecheckResponse {
+  bool accepted = 1;
+  string error = 2;
+  string check_job_id = 3;
+}
+
+message StreamCheckProgressRequest {
+  string check_job_id = 1;
+}
+
+message PRCheckProgressUpdate {
+  string check_job_id = 1;
+  int32 step = 2;        // 1..10
+  string status = 3;     // queued|in_progress|completed|failed
+  string message = 4;
+  string error = 5;
+  bool completed = 6;
+  string error_code = 7;
+}
+
+message ListViolationsRequest {
+  string org_id = 1;
+  string repo_id = 2;                    // optional
+  string pr_id = 3;                      // optional
+  string blueprint_id = 4;              // optional
+  ViolationSeverity min_severity = 5;   // optional — filter >= this severity
+  int32 limit = 6;
+  int32 offset = 7;
+}
+message ListViolationsResponse {
+  repeated EnrichedViolation violations = 1;
+  int32 total = 2;
+}
+
+message GetViolationRequest { string violation_id = 1; }
+message GetViolationResponse { EnrichedViolation violation = 1; }
+
+message GetPRGateConfigRequest { string org_id = 1; }
+message GetPRGateConfigResponse { PRGateConfig config = 1; }
+
+message UpdatePRGateConfigRequest {
+  string org_id = 1;
+  PRGateConfig config = 2;
+}
+message UpdatePRGateConfigResponse { PRGateConfig config = 1; }
+
+message GetPRCheckSummaryRequest { string org_id = 1; }
+message GetPRCheckSummaryResponse { PRCheckSummary summary = 1; }

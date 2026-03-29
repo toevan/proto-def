@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// ============================================
+// Shared Domain Types
+// ============================================
+// Types used across multiple services live here to avoid circular imports.
+
+// ── Symbol ──
+
+message Symbol {
+  string id = 1;
+  string name = 2;
+  string qualified_name = 3;             // "handlers.PaymentHandler", "domain.UserEntity"
+  string kind = 4;                       // "struct", "class", "function", "method", "interface", "type", "enum", "mixin"
+  string language = 5;
+  string file_path = 6;
+  int32 start_line = 7;
+  int32 end_line = 8;
+  string layer = 9;                      // architectural layer: "presentation", "domain", "data", "api"
+  string package_name = 10;
+  repeated string imports = 11;
+  repeated string annotations = 12;
+  map<string, string> metadata = 13;
+  string visibility = 14;               // "public", "private", "internal", "protected"
+  SymbolSource source = 15;
+
+  // LSP-enriched fields
+  string signature = 16;                // full type signature from LSP hover
+  string doc = 17;                      // documentation/docstring from LSP hover
+  string return_type = 18;              // resolved return type for functions/methods
+  repeated SymbolParam params = 19;     // function/method parameters with types
+  repeated string modifiers = 20;       // "static", "async", "abstract", "override", "readonly"
+  string parent_symbol_id = 21;         // containment: method → class, nested type → outer type
+  repeated string type_params = 22;     // generic type parameters: ["T", "K extends Comparable"]
+  repeated string supertypes = 23;      // direct supertypes/interfaces (qualified names)
+  bool deprecated = 24;
+  string resolved_type = 25;            // fully resolved type from LSP (e.g., "List<UserEntity>")
+}
+
+enum SymbolSource {
+  SYMBOL_SOURCE_UNSPECIFIED = 0;
+  SYMBOL_SOURCE_TREESITTER = 1;
+  SYMBOL_SOURCE_LSP = 2;
+  SYMBOL_SOURCE_BOTH = 3;               // tree-sitter structural + LSP enriched
+}
+
+message SymbolParam {
+  string name = 1;
+  string type = 2;
+  bool is_optional = 3;
+  string default_value = 4;
+}
+
+// ── Dependency ──
+
+message Dependency {
+  string id = 1;
+  string source_symbol_id = 2;
+  string target_symbol_id = 3;
+  DependencyKind kind = 4;
+  bool is_allowed = 5;                   // whether this dependency is allowed by the blueprint
+  string violation_reason = 6;
+  DependencySource source = 7;
+  float confidence = 8;                  // 0.0–1.0 for computed/inferred edges
+
+  // Location context for precise edge tracking
+  string source_file = 9;
+  int32 source_line = 10;
+  string target_file = 11;
+  int32 target_line = 12;
+}
+
+enum DependencyKind {
+  DEPENDENCY_KIND_UNSPECIFIED = 0;
+  DEPENDENCY_KIND_IMPORTS = 1;
+  DEPENDENCY_KIND_EXTENDS = 2;
+  DEPENDENCY_KIND_IMPLEMENTS = 3;
+  DEPENDENCY_KIND_CALLS = 4;
+  DEPENDENCY_KIND_CREATES = 5;
+  DEPENDENCY_KIND_REFERENCES = 6;        // LSP: textDocument/references
+  DEPENDENCY_KIND_OVERRIDES = 7;         // LSP: method overriding supertype
+  DEPENDENCY_KIND_TYPE_OF = 8;           // LSP: field/param type resolution
+  DEPENDENCY_KIND_DATA_FLOWS_TO = 9;     // computed: data flow analysis
+  DEPENDENCY_KIND_RETURNS = 10;          // LSP: function return type dependency
+}
+
+enum DependencySource {
+  DEPENDENCY_SOURCE_UNSPECIFIED = 0;
+  DEPENDENCY_SOURCE_TREESITTER = 1;      // structural parse (imports, extends)
+  DEPENDENCY_SOURCE_LSP = 2;             // cross-file resolution (references, implementations, call sites)
+  DEPENDENCY_SOURCE_COMPUTED = 3;        // derived analysis (data flow, transitive dependencies)
+}
+
+// ── Violation ──
+
+message Violation {
+  string id = 1;
+  string rule_id = 2;
+  string rule_name = 3;
+  string blueprint_id = 4;
+  string blueprint_name = 5;
+
+  string symbol_id = 6;
+  string file_path = 7;
+  int32 line = 8;
+  int32 end_line = 9;
+
+  string description = 10;
+  ViolationSeverity severity = 11;
+  string cite = 12;                      // regulatory citation: "GDPR Art.32", "PCI DSS Req 3.5.1"
+
+  // Code diff
+  string current_code = 13;             // the violating code line (UI "del" — shown in red)
+  string replacement_code = 14;         // simple one-line replacement (UI "add" — shown in green)
+  string suggested_fix = 15;            // AI-enhanced multi-line fix with context
+
+  int32 estimated_fix_minutes = 16;
+  string fix_pattern = 17;              // "pii-field-replacement", "tokenisation-wrap"
+  float confidence = 18;                 // 0.0–1.0 (UI displays as 0–100%)
+  bool is_new_in_pr = 19;              // true = introduced by this PR, false = pre-existing
+
+  // Exception status
+  string exception_id = 20;             // non-empty if an active exception covers this
+}
+
+enum ViolationSeverity {
+  VIOLATION_SEVERITY_UNSPECIFIED = 0;
+  VIOLATION_SEVERITY_INFO = 1;
+  VIOLATION_SEVERITY_WARNING = 2;
+  VIOLATION_SEVERITY_ERROR = 3;
+  VIOLATION_SEVERITY_CRITICAL = 4;
+}

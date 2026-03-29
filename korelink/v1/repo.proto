@@ -1,0 +1,259 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+import "korelink/v1/blueprint.proto";
+
+// ============================================
+// RepoService — GitHub Repos, Onboarding, Indexing
+// ============================================
+
+service RepoService {
+  // GitHub integration
+  rpc ListGitHubRepos(ListGitHubReposRequest) returns (ListGitHubReposResponse);
+
+  // Repo CRUD
+  rpc OnboardRepo(OnboardRepoRequest) returns (OnboardRepoResponse);
+  rpc GetRepo(GetRepoRequest) returns (GetRepoResponse);
+  rpc ListRepos(ListReposRequest) returns (ListReposResponse);
+  rpc DisconnectRepo(DisconnectRepoRequest) returns (DisconnectRepoResponse);
+
+  // Indexing
+  rpc ReindexRepo(ReindexRepoRequest) returns (ReindexRepoResponse);
+  rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
+  rpc StreamIndexProgress(StreamIndexProgressRequest) returns (stream IndexProgressUpdate);
+  rpc GetRepoProgressMetrics(GetRepoProgressMetricsRequest) returns (GetRepoProgressMetricsResponse);
+
+  // Blueprint assignment (repo-scoped)
+  rpc AssignBlueprint(AssignBlueprintRequest) returns (AssignBlueprintResponse);
+  rpc RemoveBlueprint(RemoveBlueprintRequest) returns (RemoveBlueprintResponse);
+  rpc ListRepoBlueprints(ListRepoBlueprintsRequest) returns (ListRepoBlueprintsResponse);
+}
+
+// ── Core Types ──
+
+message Repo {
+  string id = 1;
+  string org_id = 2;
+  RepoProjectRef project = 3;                // nullable — may not be assigned to a project yet
+  string github_id = 4;
+  string name = 5;                       // "payment-service"
+  string full_name = 6;                  // "acme-corp/payment-service"
+  string default_branch = 7;            // "main"
+  string primary_language = 8;          // "go"
+  repeated string languages = 9;        // all detected languages
+  RepoStatus status = 10;
+  google.protobuf.Timestamp last_indexed_at = 11;
+  string last_indexed_commit = 12;
+
+  // Repo-scoped blueprints
+  repeated BlueprintRef blueprints = 13;
+
+  // Aggregated metrics
+  int32 symbol_count = 14;
+  int32 edge_count = 15;
+  int32 file_count = 16;
+  int32 violation_count = 17;
+
+  // Timestamps
+  google.protobuf.Timestamp created_at = 18;
+  google.protobuf.Timestamp updated_at = 19;
+}
+
+enum RepoStatus {
+  REPO_STATUS_UNSPECIFIED = 0;
+  REPO_STATUS_PENDING = 1;              // connected but not yet indexed
+  REPO_STATUS_INDEXING = 2;             // tree-sitter phase in progress
+  REPO_STATUS_ENRICHING = 3;            // LSP phase in progress
+  REPO_STATUS_INDEXED = 4;              // fully indexed (tree-sitter + LSP)
+  REPO_STATUS_PARTIAL = 5;             // tree-sitter done, LSP failed
+  REPO_STATUS_ERROR = 6;               // indexing failed
+  REPO_STATUS_DISCONNECTED = 7;        // GitHub access revoked
+}
+
+message RepoProjectRef {
+  string project_id = 1;
+  string project_name = 2;
+  bool onboarded = 3;
+  string repo_id = 4;
+}
+
+message GitHubRepo {
+  string github_id = 1;
+  string name = 2;
+  string full_name = 3;
+  string default_branch = 4;
+  string language = 5;
+  int32 size_kb = 6;
+  bool private = 7;
+
+  // Project information if assigned to a project
+  RepoProjectRef project = 8;
+}
+
+// ── Index Status ──
+
+message IndexStatus {
+  string repo_id = 1;
+  string job_id = 2;
+  IndexPhase phase = 3;
+  float progress = 4;                   // 0.0 to 1.0
+  int32 files_processed = 5;
+  int32 files_total = 6;
+  int32 symbols_found = 7;
+  int32 edges_found = 8;
+  string current_file = 9;              // file being processed now
+  string error = 10;
+  google.protobuf.Timestamp started_at = 11;
+  int32 duration_ms = 12;
+  repeated LanguageLspStatus lsp_status = 13;
+}
+
+enum IndexPhase {
+  INDEX_PHASE_UNSPECIFIED = 0;
+  INDEX_PHASE_QUEUED = 1;
+  INDEX_PHASE_CLONING = 2;
+  INDEX_PHASE_TREESITTER = 3;
+  INDEX_PHASE_LSP_INIT = 4;
+  INDEX_PHASE_LSP_ENRICHING = 5;
+  INDEX_PHASE_COMPUTING_FLOWS = 6;
+  INDEX_PHASE_WRITING_GRAPH = 7;
+  INDEX_PHASE_COMPLETED = 8;
+  INDEX_PHASE_FAILED = 9;
+  // Incremental reindexing phases (KA-51).
+  INDEX_PHASE_DIFFING = 10;
+  INDEX_PHASE_RIPPLE_ANALYSIS = 11;
+  INDEX_PHASE_INCREMENTAL_INDEXING = 12;
+}
+
+message LanguageLspStatus {
+  string language = 1;                   // "go", "typescript"
+  string server = 2;                     // "gopls", "typescript-language-server"
+  LspState state = 3;
+  int32 queries_completed = 4;
+  int32 queries_total = 5;
+  string error = 6;
+}
+
+enum LspState {
+  LSP_STATE_UNSPECIFIED = 0;
+  LSP_STATE_PENDING = 1;
+  LSP_STATE_INITIALIZING = 2;
+  LSP_STATE_RUNNING = 3;
+  LSP_STATE_COMPLETED = 4;
+  LSP_STATE_FAILED = 5;
+  LSP_STATE_SKIPPED = 6;               // language not supported or toolchain missing
+}
+
+message IndexProgressUpdate {
+  string repo_id = 1;
+  string job_id = 2;
+  IndexPhase phase = 3;
+  float progress = 4;
+  string message = 5;                    // human-readable status line
+  int32 files_processed = 6;
+  int32 symbols_found = 7;
+  string current_file = 8;
+}
+
+// ── Requests/Responses ──
+
+message ListGitHubReposRequest {
+  string org_id = 1;
+}
+message ListGitHubReposResponse {
+  repeated GitHubRepo repos = 1;
+}
+
+message OnboardRepoRequest {
+  string org_id = 1;
+  string github_id = 2;
+  string project_id = 3;                // optional — assign to project during onboarding
+  repeated string blueprint_ids = 4;    // optional — auto-assign blueprints
+}
+message OnboardRepoResponse {
+  Repo repo = 1;
+  string index_job_id = 2;              // track progress with GetIndexStatus or StreamIndexProgress
+}
+
+message GetRepoRequest { string repo_id = 1; }
+message GetRepoResponse { Repo repo = 1; }
+
+message ListReposRequest {
+  string org_id = 1;
+  string project_id = 2;                // optional filter
+  RepoStatus status_filter = 3;         // optional filter
+  int32 limit = 4;
+  int32 offset = 5;
+}
+message ListReposResponse {
+  repeated Repo repos = 1;
+  int32 total = 2;
+}
+
+message DisconnectRepoRequest { string repo_id = 1; }
+message DisconnectRepoResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ReindexRepoRequest {
+  string repo_id = 1;
+  bool full = 2;                         // true = full reindex, false = incremental
+}
+message ReindexRepoResponse {
+  string job_id = 1;
+  bool accepted = 2;
+  string error = 3;
+}
+
+message GetIndexStatusRequest { string job_id = 1; }
+message GetIndexStatusResponse { IndexStatus status = 1; }
+
+message StreamIndexProgressRequest { string job_id = 1; }
+
+message GetRepoProgressMetricsRequest {}
+message GetRepoProgressMetricsResponse {
+  int64 checkpoints_total = 1;
+  int64 persist_failures = 2;
+  int64 publish_failures = 3;
+  // Incremental reindexing counters (KA-51).
+  int64 full_index_total = 4;
+  int64 incremental_index_total = 5;
+}
+
+message AssignBlueprintRequest {
+  string repo_id = 1;
+  string blueprint_id = 2;
+  string blueprint_version = 3;
+}
+message AssignBlueprintResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message RemoveBlueprintRequest {
+  string repo_id = 1;
+  string blueprint_id = 2;
+}
+message RemoveBlueprintResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ListRepoBlueprintsRequest { string repo_id = 1; }
+message ListRepoBlueprintsResponse {
+  repeated BlueprintAssignment assignments = 1;
+}
+
+message BlueprintAssignment {
+  string blueprint_id = 1;
+  string blueprint_name = 2;
+  string blueprint_version = 3;
+  BlueprintScope scope = 4;
+  bool is_active = 5;
+  google.protobuf.Timestamp assigned_at = 6;
+}

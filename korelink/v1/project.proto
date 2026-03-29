@@ -1,0 +1,257 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+import "korelink/v1/org.proto";
+import "korelink/v1/blueprint.proto";
+
+// ============================================
+// ProjectService — Project CRUD, Members, Blueprints, Repos
+// ============================================
+
+service ProjectService {
+  // Project CRUD
+  rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
+  rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+  rpc ArchiveProject(ArchiveProjectRequest) returns (ArchiveProjectResponse);
+  rpc RestoreProject(RestoreProjectRequest) returns (RestoreProjectResponse);
+  rpc DeleteProject(DeleteProjectRequest) returns (DeleteProjectResponse);
+
+  // Project member management — separate from org membership
+  // OrgRole (org.proto) governs feature access (what pages/capabilities).
+  // ProjectPermission governs data access (what you can do within THIS project).
+  rpc AddProjectMember(AddProjectMemberRequest) returns (AddProjectMemberResponse);
+  rpc RemoveProjectMember(RemoveProjectMemberRequest) returns (RemoveProjectMemberResponse);
+  rpc UpdateProjectMemberPermission(UpdateProjectMemberPermissionRequest) returns (UpdateProjectMemberPermissionResponse);
+  rpc ListProjectMembers(ListProjectMembersRequest) returns (ListProjectMembersResponse);
+
+  // NEW: Blueprint assignment (project-scoped)
+  rpc AssignBlueprintToProject(AssignBlueprintToProjectRequest) returns (AssignBlueprintToProjectResponse);
+  rpc RemoveBlueprintFromProject(RemoveBlueprintFromProjectRequest) returns (RemoveBlueprintFromProjectResponse);
+
+  // NEW: Link repos
+  rpc AddRepoToProject(AddRepoToProjectRequest) returns (AddRepoToProjectResponse);
+  rpc RemoveRepoFromProject(RemoveRepoFromProjectRequest) returns (RemoveRepoFromProjectResponse);
+}
+
+// ── Project ──
+
+enum ProjectContext {
+  PROJECT_CONTEXT_UNSPECIFIED = 0;
+  PROJECT_CONTEXT_ORG = 1;                    // project is owned by an org
+  PROJECT_CONTEXT_USER = 2;                // project is owned by a user
+}
+
+message Project {
+  string id = 1;
+  string name = 2;
+  string description = 3;                         // [NEW] UI renders project descriptions
+
+  // [NEW] project context
+  ProjectContext context = 4;
+  string context_id = 5;                               // [NEW] which org or user owns this project
+
+  // status
+  ProjectStatus status = 6;
+
+  // timestamps
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+
+  // Linked repos — embedded objects, 
+  repeated ProjectRepo repositories = 9;
+
+  // Project-scoped blueprints [NEW]
+  repeated BlueprintRef blueprints = 10;   // both ID and name for UI rendering
+
+  // Team [audit fix #5: split role from permission]
+  repeated ProjectMember members = 11;
+
+  // Aggregated metrics
+  int32 violation_count = 12;
+  float compliance_rate = 13;            // 0.0–1.0 (UI multiplies by 100)
+  int32 pull_request_count = 14;        // [NEW — audit fix: UI shows PR count per project]
+  google.protobuf.Timestamp last_activity_at = 15;            // timestamp should be used to show human-readable: "2h ago"
+
+  // Agents [NEW — UI displays agents per project]
+  repeated string agents = 16;
+}
+
+enum ProjectStatus {
+  PROJECT_STATUS_UNSPECIFIED = 0;
+  PROJECT_STATUS_ACTIVE = 1;                       // [NEW] most common UI state
+  PROJECT_STATUS_CREATED = 2;                      // just created, no repos onboarded yet
+  PROJECT_STATUS_INDEXING = 3;
+  PROJECT_STATUS_INDEXED = 4;
+  PROJECT_STATUS_ERROR = 5;
+  PROJECT_STATUS_ARCHIVED = 6;
+}
+
+// Embedded repo summary in project [NEW — replaces bare repo_ids]
+message ProjectRepo {
+  string repo_id = 1;
+  string name = 2;                       // "payment-service"
+  string language = 3;                   // "Go"
+  repeated BlueprintRef blueprints = 4;   // repo-scoped blueprints
+}
+
+// ── Project-level access control ──
+// Distinct from OrgRole (org.proto) which governs feature access.
+// ProjectPermission governs what a member can do WITHIN a specific project.
+
+enum ProjectPermission {
+  PROJECT_PERMISSION_UNSPECIFIED = 0;
+  PROJECT_PERMISSION_ADMIN = 1;                    // manage project settings, blueprints, members
+  PROJECT_PERMISSION_WRITE = 2;                    // create PRs, fix violations, request exceptions
+  PROJECT_PERMISSION_READ = 3;                     // view only
+}
+
+// A member's access within a specific project.
+// Maps to UI member sub-object: {n, r, p, bg, ii}
+//   n → name, r → org role (from OrgMember), p → permission (this field),
+//   bg → color (from OrgMember), ii → initials (from OrgMember)
+message ProjectMember {
+  string user_id = 1;
+  string project_id = 2;
+  string name = 3;
+  string email = 4;
+  string avatar_url = 5;
+  OrgRole org_role = 6;                            // organizational role: ADMIN, DEVELOPER, TEAM_LEAD, COMPLIANCE, CISO, VIEWER, PLATFORM
+  ProjectPermission permission = 7;                // what they can do in THIS project
+  google.protobuf.Timestamp created_at = 8;
+}
+
+// ── Request/Response ──
+
+message CreateProjectRequest {
+  string account_id = 1;
+  string name = 2;
+  string description = 3;
+}
+message CreateProjectResponse { Project project = 1; }
+
+message GetProjectRequest { string project_id = 1; }
+message GetProjectResponse { Project project = 1; }
+
+message ListProjectsRequest {
+  string account_id = 1;                               // [NEW] scope to account
+  int32 limit = 2;
+  int32 offset = 3;
+}
+message ListProjectsResponse { repeated Project projects = 1; int32 total = 2; }
+
+message ArchiveProjectRequest {
+  string project_id = 1;
+  string reason = 2;                 // optional reason for archiving
+}
+message ArchiveProjectResponse {
+  bool   success = 1;
+  string error = 2;
+}
+
+message RestoreProjectRequest {
+  string project_id = 1;
+}
+message RestoreProjectResponse {
+  bool   success = 1;
+  string error = 2;
+}
+
+message DeleteProjectRequest {
+  string project_id = 1;
+}
+message DeleteProjectResponse {
+  bool   success = 1;
+  string error = 2;
+}
+
+// ── Project Member Management ──
+// These are SEPARATE from org invitations. A user must be an org member first,
+// then they can be added to specific projects with a ProjectPermission.
+
+message AddProjectMemberRequest {
+  string project_id = 1;
+  string user_id = 2;
+  ProjectPermission permission = 3;
+}
+message AddProjectMemberResponse {
+  bool success = 1;
+  string error = 2;
+  ProjectMember member = 3;
+}
+
+message RemoveProjectMemberRequest {
+  string project_id = 1;
+  string user_id = 2;
+}
+message RemoveProjectMemberResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message UpdateProjectMemberPermissionRequest {
+  string project_id = 1;
+  string user_id = 2;
+  ProjectPermission permission = 3;
+}
+message UpdateProjectMemberPermissionResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ListProjectMembersRequest {
+  string project_id = 1;
+  ProjectPermission permission_filter = 2;         // optional filter
+  int32 limit = 3;
+  int32 offset = 4;
+}
+message ListProjectMembersResponse {
+  repeated ProjectMember members = 1;
+  int32 total = 2;
+}
+
+// ── Blueprint Assignment ──
+
+message AssignBlueprintToProjectRequest {
+  string project_id = 1;
+  string blueprint_id = 2;
+}
+message AssignBlueprintToProjectResponse {
+  bool success = 1;
+  string error = 2;
+  BlueprintRef blueprint = 3;
+}
+
+message RemoveBlueprintFromProjectRequest { 
+  string project_id = 1; 
+  string blueprint_id = 2; 
+}
+message RemoveBlueprintFromProjectResponse { 
+  bool success = 1; 
+  string error = 2; 
+}
+
+// ── Link Repos ──
+
+message AddRepoToProjectRequest {
+  string project_id = 1;
+  string repo_id = 2;
+}
+message AddRepoToProjectResponse {
+  bool success = 1;
+  string error = 2;
+  ProjectRepo repo = 3;
+}
+
+message RemoveRepoFromProjectRequest {
+  string project_id = 1;
+  string repo_id = 2;
+}
+message RemoveRepoFromProjectResponse {
+  bool success = 1;
+  string error = 2;
+}

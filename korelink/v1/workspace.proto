@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// WorkspaceService — Chat, Files, Export
+// ============================================
+
+service WorkspaceService {
+  rpc Chat(ChatRequest) returns (ChatReply);
+  rpc GetChatHistory(ChatHistoryRequest) returns (ChatHistoryReply);
+  rpc ListProjectFiles(ListFilesRequest) returns (ListFilesReply);
+  rpc ReadProjectFile(ReadFileRequest) returns (ReadFileReply);
+  rpc WriteProjectFile(WriteFileRequest) returns (WriteFileReply);
+  rpc ExportProject(ExportProjectRequest) returns (ExportProjectReply);
+  rpc GetFileHistory(FileHistoryRequest) returns (FileHistoryReply);
+  rpc RevertFile(RevertFileRequest) returns (RevertFileReply);
+}
+
+// ── Chat ──
+
+message ChatRequest {
+  string project_id = 1;
+  string message = 2;
+  string blueprint_id = 3;
+  repeated string context_files = 4;  // file paths the AI should reference
+}
+
+message ChatReply {
+  string message_id = 1;
+  string response = 2;                  // full AI response text
+  repeated ChatFileChange files_changed = 3;
+  string error = 4;
+}
+
+message ChatFileChange {
+  string path = 1;
+  string action = 2;       // "created", "updated", "deleted"
+  string language = 3;
+  bool   validated = 4;    // passed Tree-sitter + blueprint check
+}
+
+message ChatHistoryRequest {
+  string project_id = 1;
+}
+
+message ChatHistoryReply {
+  repeated ChatHistoryEntry entries = 1;
+}
+
+message ChatHistoryEntry {
+  string id = 1;
+  string role = 2;        // "user" or "assistant"
+  string content = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  repeated ChatFileChange files_changed = 5;
+}
+
+// ── File Management ──
+
+message ListFilesRequest {
+  string project_id = 1;
+}
+
+message ListFilesReply {
+  repeated FileEntry files = 1;
+  int32 total_files = 2;
+  int64 total_size = 3;
+}
+
+message FileEntry {
+  string path = 1;
+  string content = 2;       // empty in list responses, populated in read
+  string language = 3;
+  string hash = 4;
+  int64  size = 5;
+  string created_by = 6;    // "ai" or "user"
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message ReadFileRequest {
+  string project_id = 1;
+  string file_path = 2;
+}
+
+message ReadFileReply {
+  FileEntry file = 1;
+  string error = 2;
+}
+
+message WriteFileRequest {
+  string project_id = 1;
+  string file_path = 2;
+  string content = 3;
+  string language = 4;
+}
+
+message WriteFileReply {
+  string path = 1;
+  string action = 2;      // "created", "modified", "unchanged"
+  int32 version = 3;
+  string error = 4;
+}
+
+message ExportProjectRequest {
+  string project_id = 1;
+}
+
+message ExportProjectReply {
+  string project_id = 1;
+  string download_url = 2;    // URL to download the zip
+  string filename = 3;
+  string error = 4;
+}
+
+// ── History / Revert ──
+
+message FileHistoryRequest {
+  string project_id = 1;
+  string file_path = 2;
+  int32 limit = 3;
+}
+
+message FileHistoryReply {
+  repeated FileHistoryEntry entries = 1;
+}
+
+message FileHistoryEntry {
+  string path = 1;
+  string content = 2;
+  int32 version = 3;
+  string changed_by = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message RevertFileRequest {
+  string project_id = 1;
+  string file_path = 2;
+  int32 target_version = 3;
+}
+
+message RevertFileReply {
+  string path = 1;
+  int32 new_version = 2;
+  string error = 3;
+}

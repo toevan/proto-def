@@ -1,0 +1,158 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// EvidenceService — Compliance Audit Trail
+// ============================================
+
+service EvidenceService {
+  rpc ListEvidence(ListEvidenceRequest) returns (ListEvidenceResponse);
+  rpc GetEvidenceRecord(GetEvidenceRecordRequest) returns (GetEvidenceRecordResponse);
+  rpc ExportEvidence(ExportEvidenceRequest) returns (ExportEvidenceResponse);
+  rpc GetEvidenceExportJob(GetEvidenceExportJobRequest) returns (GetEvidenceExportJobResponse);
+  rpc GetEvidenceSummary(GetEvidenceSummaryRequest) returns (GetEvidenceSummaryResponse);
+}
+
+// ── Core Types ──
+
+message EvidenceRecord {
+  string id = 1;
+  string org_id = 2;
+  google.protobuf.Timestamp timestamp = 3;
+
+  // What was checked
+  string blueprint_id = 4;
+  string blueprint_name = 5;
+  string blueprint_version = 6;
+  string rule_id = 7;
+  string rule_name = 8;
+
+  // Result
+  EvidenceResult result = 9;
+
+  // Context
+  string repo_id = 10;
+  string repo_name = 11;
+  string file_path = 12;
+  int32 line = 13;
+  string pr_number = 14;
+  string author = 15;
+  string commit_sha = 16;
+
+  // Exception reference (if result = EVIDENCE_RESULT_EXCEPTION)
+  string exception_id = 17;
+}
+
+enum EvidenceResult {
+  EVIDENCE_RESULT_UNSPECIFIED = 0;
+  EVIDENCE_RESULT_PASSED = 1;
+  EVIDENCE_RESULT_VIOLATION = 2;
+  EVIDENCE_RESULT_WARNING = 3;
+  EVIDENCE_RESULT_EXCEPTION = 4;        // violation waived by approved exception
+}
+
+message EvidenceSummary {
+  string org_id = 1;
+  int32 total_checks = 2;
+  int32 passed = 3;
+  int32 violations = 4;
+  int32 warnings = 5;
+  int32 exceptions = 6;
+  float compliance_rate = 7;             // passed / total
+  google.protobuf.Timestamp period_start = 8;
+  google.protobuf.Timestamp period_end = 9;
+
+  // Per-blueprint breakdown
+  repeated BlueprintComplianceRate per_blueprint = 10;
+}
+
+message BlueprintComplianceRate {
+  string blueprint_id = 1;
+  string blueprint_name = 2;
+  int32 checks = 3;
+  int32 passed = 4;
+  float rate = 5;
+}
+
+// ── Requests/Responses ──
+
+message ListEvidenceRequest {
+  string org_id = 1;
+  string repo_id = 2;                    // optional
+  string blueprint_id = 3;              // optional
+  string author = 4;                     // optional
+  EvidenceResult result_filter = 5;     // optional
+  google.protobuf.Timestamp from = 6;   // optional date range
+  google.protobuf.Timestamp to = 7;
+  int32 limit = 8;
+  int32 offset = 9;
+}
+message ListEvidenceResponse {
+  repeated EvidenceRecord records = 1;
+  int32 total = 2;
+}
+
+message GetEvidenceRecordRequest { string record_id = 1; }
+message GetEvidenceRecordResponse { EvidenceRecord record = 1; }
+
+message ExportEvidenceRequest {
+  string org_id = 1;
+  string format = 2;                     // "csv" or "pdf"
+  // Same filters as ListEvidenceRequest
+  string repo_id = 3;
+  string blueprint_id = 4;
+  string author = 5;
+  EvidenceResult result_filter = 6;
+  google.protobuf.Timestamp from = 7;
+  google.protobuf.Timestamp to = 8;
+}
+message ExportEvidenceResponse {
+  string download_url = 1;              // pre-signed URL to download the export
+  string filename = 2;
+  int32 record_count = 3;
+  string job_id = 4;                    // set for async exports
+  EvidenceExportJobStatus status = 5;   // completed for sync path
+}
+
+enum EvidenceExportJobStatus {
+  EVIDENCE_EXPORT_JOB_STATUS_UNSPECIFIED = 0;
+  EVIDENCE_EXPORT_JOB_STATUS_PENDING = 1;
+  EVIDENCE_EXPORT_JOB_STATUS_RUNNING = 2;
+  EVIDENCE_EXPORT_JOB_STATUS_COMPLETED = 3;
+  EVIDENCE_EXPORT_JOB_STATUS_FAILED = 4;
+}
+
+message EvidenceExportJob {
+  string id = 1;
+  string org_id = 2;
+  string format = 3;
+  EvidenceExportJobStatus status = 4;
+  string filename = 5;
+  string download_url = 6;
+  int32 record_count = 7;
+  string error_message = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  google.protobuf.Timestamp completed_at = 11;
+}
+
+message GetEvidenceExportJobRequest {
+  string org_id = 1;
+  string job_id = 2;
+}
+
+message GetEvidenceExportJobResponse {
+  EvidenceExportJob job = 1;
+}
+
+message GetEvidenceSummaryRequest {
+  string org_id = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+}
+message GetEvidenceSummaryResponse { EvidenceSummary summary = 1; }

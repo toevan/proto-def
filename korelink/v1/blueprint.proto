@@ -1,0 +1,414 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// BlueprintService — CRUD, Marketplace, Reviews, Purchases
+// ============================================
+
+service BlueprintService {
+  // CRUD
+  rpc CreateBlueprint(CreateBlueprintRequest) returns (CreateBlueprintResponse);
+  rpc GetBlueprint(GetBlueprintRequest) returns (Blueprint);
+  rpc UpdateBlueprint(UpdateBlueprintRequest) returns (UpdateBlueprintResponse);
+  rpc SearchBlueprints(SearchBlueprintsRequest) returns (SearchBlueprintsResponse);
+
+  // Marketplace
+  rpc PublishBlueprint(PublishBlueprintRequest) returns (PublishBlueprintResponse);
+  rpc ListMarketplaceBlueprints(ListMarketplaceRequest) returns (ListMarketplaceResponse);
+  rpc ArchiveBlueprint(ArchiveBlueprintRequest) returns (ArchiveBlueprintResponse);
+
+  // Review & Approval Workflow
+  rpc ValidateBlueprint(ValidateBlueprintRequest) returns (ValidateBlueprintResponse);
+  rpc SubmitBlueprintForReview(SubmitForReviewRequest) returns (SubmitForReviewResponse);
+  rpc ApproveBlueprintSubmission(ApproveBlueprintRequest) returns (ApproveBlueprintResponse);
+  rpc RejectBlueprintSubmission(RejectBlueprintRequest) returns (RejectBlueprintResponse);
+  rpc ListPendingBlueprintReviews(ListPendingReviewsRequest) returns (ListPendingReviewsResponse);
+  rpc GetBlueprintReviewHistory(GetReviewHistoryRequest) returns (GetReviewHistoryResponse);
+
+  // Versioning
+  rpc CreateBlueprintVersion(CreateVersionRequest) returns (CreateVersionResponse);
+  rpc GetBlueprintVersionHistory(GetVersionHistoryRequest) returns (GetVersionHistoryResponse);
+
+  // User Reviews
+  rpc ReviewBlueprint(ReviewBlueprintRequest) returns (ReviewBlueprintResponse);
+  rpc GetBlueprintReviews(GetReviewsRequest) returns (GetReviewsResponse);
+
+  // Adoption & Updates
+  rpc AdoptBlueprint(AdoptBlueprintRequest) returns (AdoptBlueprintResponse);
+  rpc AssignBlueprint(BlueprintAssignRequest) returns (BlueprintAssignResponse);
+  rpc RemoveBlueprint(BlueprintRemoveRequest) returns (BlueprintRemoveResponse);
+  rpc ListProjectBlueprints(ListProjectBlueprintsRequest) returns (ListProjectBlueprintsResponse);
+  rpc ListRepoBlueprints(BlueprintListRepoAssignmentsRequest) returns (BlueprintListRepoAssignmentsResponse);
+  rpc CheckBlueprintUpdates(CheckUpdatesRequest) returns (CheckUpdatesResponse);
+  rpc GetBlueprintAnalytics(GetAnalyticsRequest) returns (BlueprintAnalytics);
+
+  // Purchases (premium blueprints)
+  rpc RecordBlueprintPurchase(RecordPurchaseRequest) returns (RecordPurchaseResponse);
+  rpc GetUserPurchases(GetUserPurchasesRequest) returns (GetUserPurchasesResponse);
+}
+
+// ── Core Blueprint Types ──
+
+message BlueprintRule {
+  string id = 1;
+  string name = 2;
+  string source_layer = 3;   // layer that depends
+  string target_layer = 4;   // layer being depended on
+  bool   allowed = 5;
+  string description = 6;
+}
+
+// Blueprint scope: project or repo
+enum BlueprintScope {
+  BLUEPRINT_SCOPE_UNSPECIFIED = 0;
+  BLUEPRINT_SCOPE_PROJECT = 1;
+  BLUEPRINT_SCOPE_REPO = 2;
+}
+
+// Blueprint reference with both ID and display name for UI rendering
+message BlueprintRef {
+  string blueprint_id = 1;
+  string blueprint_name = 2;            // "PCI-DSS Compliance"
+  string blueprint_version = 3;
+  BlueprintScope scope = 4;                      // "project" or "repo"
+}
+
+message Blueprint {
+  string id = 1;
+  string slug = 2;               // URL-safe identifier: "clean-architecture-flutter"
+  string name = 3;
+  string description = 4;
+  repeated BlueprintRule rules = 5;
+  repeated string languages = 6;
+  repeated string frameworks = 7;  // ["flutter"], ["gin", "echo"]
+  string project_type = 8;        // "mobile", "backend", "fullstack"
+  map<string, string> layer_patterns = 9; // regex patterns for layer detection
+  repeated string tags = 10;
+  google.protobuf.Timestamp created_at = 11;
+  string author_id = 12;
+  string author_name = 13;
+  string status = 14;            // "draft", "pending_review", "approved", "rejected", "published", "archived", "deleted"
+  string version = 15;           // semver: "1.0.0", "2.1.0"
+  string parent_id = 16;         // root blueprint ID for version chain
+  string changelog = 17;
+  int32  downloads = 18;
+  float  rating = 19;
+  int32  rating_count = 20;
+  google.protobuf.Timestamp published_at = 21;
+  google.protobuf.Timestamp updated_at = 22;
+  string license = 23;           // "free" or "premium"
+  float  price = 24;             // 0.00 for free, e.g. 4.99 for premium
+  string full_spec_json = 25;
+  string reviewer_id = 26;
+  string reviewer_notes = 27;
+  string rejection_reason = 28;
+  google.protobuf.Timestamp submitted_at = 29;
+  google.protobuf.Timestamp reviewed_at = 30;
+  repeated string validation_errors = 31;
+  string blueprint_type = 32;      // "compliance", "structural", "design", "security"
+}
+
+message BlueprintVersionEntry {
+  string id = 1;
+  string version = 2;
+  string changelog = 3;
+  string status = 4;
+  int32  downloads = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message BlueprintReview {
+  string id = 1;
+  string blueprint_id = 2;
+  string user_id = 3;
+  int32  rating = 4;             // 1-5
+  string comment = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message BlueprintAdoption {
+  string blueprint_id = 1;
+  string blueprint_version = 2;
+  string project_id = 3;
+  google.protobuf.Timestamp adopted_at = 4;
+  bool   is_active = 5;
+}
+
+message ScopedBlueprintAssignment {
+  string assignment_id = 1;
+  string blueprint_id = 2;
+  string blueprint_name = 3;
+  string blueprint_version = 4;
+  BlueprintScope scope = 5;
+  bool is_active = 6;
+  bool inherited = 7;
+  string project_id = 8;
+  string repo_id = 9;
+  google.protobuf.Timestamp assigned_at = 10;
+}
+
+message BlueprintAnalytics {
+  string blueprint_id = 1;
+  string blueprint_name = 2;
+  int32  total_adoptions = 3;
+  int32  active_adoptions = 4;
+  int32  total_builds = 5;
+  int32  successful_builds = 6;
+  float  build_success_rate = 7;
+  float  average_rating = 8;
+  int32  total_downloads = 9;
+  int32  version_count = 10;
+}
+
+message ValidationIssue {
+  string severity = 1;               // "error" (blocking) or "warning" (advisory)
+  string message = 2;
+}
+
+// ── CRUD Request/Response ──
+
+message CreateBlueprintRequest { Blueprint blueprint = 1; }
+message CreateBlueprintResponse {
+  Blueprint blueprint = 1;
+  repeated ValidationIssue validation_issues = 2;
+}
+
+message GetBlueprintRequest { string blueprint_id = 1; }
+
+message UpdateBlueprintRequest {
+  string blueprint_id = 1;
+  Blueprint blueprint = 2;
+}
+message UpdateBlueprintResponse {
+  Blueprint blueprint = 1;
+  repeated ValidationIssue validation_issues = 2;
+}
+
+message SearchBlueprintsRequest {
+  string query = 1;
+  repeated string tags = 2;
+  int32 limit = 3;
+}
+message SearchBlueprintsResponse {
+  repeated Blueprint blueprints = 1;
+  repeated float scores = 2;
+}
+
+// ── Marketplace ──
+
+message PublishBlueprintRequest { string blueprint_id = 1; }
+message PublishBlueprintResponse {
+  bool   success = 1;
+  string error = 2;
+}
+
+message ListMarketplaceRequest {
+  repeated string tags = 1;
+  string language = 2;
+  string sort_by = 3;
+  int32  limit = 4;
+  int32  offset = 5;
+  string license = 6;
+  string project_type = 7;
+  string framework = 8;
+}
+message ListMarketplaceResponse {
+  repeated Blueprint blueprints = 1;
+  int32 total = 2;
+}
+
+message ArchiveBlueprintRequest { string blueprint_id = 1; }
+message ArchiveBlueprintResponse {
+  bool   success = 1;
+  string error = 2;
+}
+
+// ── Validation ──
+
+message ValidateBlueprintRequest { string blueprint_id = 1; }
+message ValidateBlueprintResponse {
+  bool                    valid = 1;
+  int32                   error_count = 2;
+  int32                   warning_count = 3;
+  repeated ValidationIssue issues = 4;
+}
+
+// ── Review & Approval ──
+
+message SubmitForReviewRequest { string blueprint_id = 1; }
+message SubmitForReviewResponse {
+  bool      success = 1;
+  string    error = 2;
+  Blueprint blueprint = 3;
+  string    outcome = 4;
+  int32     error_count = 5;
+  int32     warning_count = 6;
+}
+
+message ApproveBlueprintRequest {
+  string blueprint_id = 1;
+  string reviewer_id = 2;
+  string notes = 3;
+  bool   auto_publish = 4;
+}
+message ApproveBlueprintResponse {
+  bool   success = 1;
+  string error = 2;
+}
+
+message RejectBlueprintRequest {
+  string blueprint_id = 1;
+  string reviewer_id = 2;
+  string reason = 3;
+  string notes = 4;
+}
+message RejectBlueprintResponse {
+  bool   success = 1;
+  string error = 2;
+}
+
+message ListPendingReviewsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+message ListPendingReviewsResponse {
+  repeated Blueprint blueprints = 1;
+  int32 total = 2;
+}
+
+message GetReviewHistoryRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+message GetReviewHistoryResponse {
+  repeated Blueprint blueprints = 1;
+}
+
+// ── Versioning ──
+
+message CreateVersionRequest {
+  string parent_id = 1;
+  string new_version = 2;
+  string changelog = 3;
+}
+message CreateVersionResponse {
+  Blueprint blueprint = 1;
+}
+
+message GetVersionHistoryRequest { string parent_id = 1; }
+message GetVersionHistoryResponse {
+  repeated BlueprintVersionEntry versions = 1;
+}
+
+// ── User Reviews ──
+
+message ReviewBlueprintRequest {
+  string blueprint_id = 1;
+  string user_id = 2;
+  int32  rating = 3;
+  string comment = 4;
+}
+message ReviewBlueprintResponse {
+  bool   success = 1;
+  string error = 2;
+}
+
+message GetReviewsRequest {
+  string blueprint_id = 1;
+  int32  limit = 2;
+}
+message GetReviewsResponse {
+  repeated BlueprintReview reviews = 1;
+}
+
+// ── Adoption & Updates ──
+
+message AdoptBlueprintRequest {
+  string blueprint_id = 1;
+  string blueprint_version = 2;
+  string project_id = 3;
+  string user_id = 4;
+}
+message AdoptBlueprintResponse {
+  bool   success = 1;
+  string error = 2;
+  string license = 3;
+  float  price = 4;
+}
+
+message BlueprintAssignRequest {
+  string blueprint_id = 1;
+  string blueprint_version = 2; // optional; defaults to latest published version
+  oneof target {
+    string project_id = 3;
+    string repo_id = 4;
+  }
+}
+message BlueprintAssignResponse {
+  ScopedBlueprintAssignment assignment = 1;
+}
+
+message BlueprintRemoveRequest {
+  string assignment_id = 1;
+  string context_repo_id = 2; // optional; used to reject inherited removal from repo context
+}
+message BlueprintRemoveResponse {}
+
+message ListProjectBlueprintsRequest {
+  string project_id = 1;
+}
+message ListProjectBlueprintsResponse {
+  repeated ScopedBlueprintAssignment assignments = 1;
+}
+
+message BlueprintListRepoAssignmentsRequest {
+  string repo_id = 1;
+  bool include_inherited = 2;
+}
+message BlueprintListRepoAssignmentsResponse {
+  repeated ScopedBlueprintAssignment assignments = 1;
+}
+
+message CheckUpdatesRequest { string project_id = 1; }
+message CheckUpdatesResponse {
+  bool      update_available = 1;
+  string    current_version = 2;
+  string    latest_version = 3;
+  Blueprint latest_blueprint = 4;
+}
+
+message GetAnalyticsRequest { string blueprint_id = 1; }
+
+// ── Purchases ──
+
+message RecordPurchaseRequest {
+  string blueprint_id = 1;
+  string user_id = 2;
+  string payment_ref = 3;
+  double price_paid = 4;
+  string currency = 5;
+}
+message RecordPurchaseResponse {
+  bool   success = 1;
+  string error = 2;
+  string purchase_id = 3;
+}
+
+message GetUserPurchasesRequest { string user_id = 1; }
+message BlueprintPurchase {
+  string id = 1;
+  string blueprint_id = 2;
+  string user_id = 3;
+  double price_paid = 4;
+  string currency = 5;
+  string payment_ref = 6;
+  google.protobuf.Timestamp purchased_at = 7;
+}
+message GetUserPurchasesResponse {
+  repeated BlueprintPurchase purchases = 1;
+}

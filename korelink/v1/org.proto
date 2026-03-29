@@ -1,0 +1,283 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// OrgService — Organization Management & Invitations
+// ============================================
+
+service OrgService {
+  rpc CreateOrg(CreateOrgRequest) returns (CreateOrgResponse);
+  rpc GetOrg(GetOrgRequest) returns (GetOrgResponse);
+  rpc UpdateOrg(UpdateOrgRequest) returns (UpdateOrgResponse);
+
+  // List orgs
+  rpc ListMyOrgs(ListMyOrgsRequest) returns (ListMyOrgsResponse);                // caller's own orgs (from JWT)
+  rpc ListUserOrgs(ListUserOrgsRequest) returns (ListUserOrgsResponse);           // admin: orgs for a specific user
+  rpc ListAllOrgs(ListAllOrgsRequest) returns (ListAllOrgsResponse);              // admin: every org on the platform
+  rpc ListGitHubOrgs(ListGitHubOrgsRequest) returns (ListGitHubOrgsResponse);
+
+  // Member management (adding members goes through InviteMember → AcceptInvitation flow)
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+  rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (UpdateMemberRoleResponse);
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+
+  // OrgInvitation workflow
+  rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
+  rpc ListInvitations(ListInvitationsRequest) returns (ListInvitationsResponse);
+  rpc AcceptInvitation(AcceptInvitationRequest) returns (AcceptInvitationResponse);
+  rpc DeclineInvitation(DeclineInvitationRequest) returns (DeclineInvitationResponse);
+  rpc RevokeInvitation(RevokeInvitationRequest) returns (RevokeInvitationResponse);
+  rpc ResendInvitation(ResendInvitationRequest) returns (ResendInvitationResponse);
+}
+
+// ── Core Types ──
+
+message OrgPlanConfig {
+  OrgPlan plan = 1;
+  int32 seat_limit = 2;
+  int32 seat_used = 3;
+  int32 repo_limit = 4;
+  int32 repo_used = 5;
+}
+
+message Org {
+  string id = 1;
+  string name = 2;                       // "Acme Corporation"
+  string handle = 3;                     // "acme-corp"
+  string avatar_url = 4;
+  string initials = 5;                   // [NEW] "AC" — for avatar fallback when no image
+  string color = 6;                      // [NEW] "#295581" — avatar background color
+  OrgPlanConfig plan_config = 7;
+  string github_org = 8;               // linked GitHub organization
+  string github_installation_id = 9;   // GitHub App installation ID
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+// Organization-level plan — governs org-wide limits (seats, repos, features).
+// Distinct from UserPlan (defined in auth.proto) which governs individual user access.
+enum OrgPlan {
+  ORG_PLAN_UNSPECIFIED = 0;
+  ORG_PLAN_FREE = 1;                     // 2 repos, 3 seats
+  ORG_PLAN_TEAM = 2;                     // 10 repos, 15 seats
+  ORG_PLAN_ENTERPRISE = 3;              // unlimited repos, unlimited seats, SSO, audit
+  ORG_PLAN_PLATFORM = 4;                // KoreLink HQ internal — not user-facing
+}
+
+message OrgMember {
+  string user_id = 1;
+  string org_id = 2;
+  string name = 3;
+  string email = 4;
+  string avatar_url = 5;
+  string initials = 6;                   // [NEW] avatar initials fallback
+  string color = 7;                      // [NEW] avatar color
+  OrgRole role = 8;
+  google.protobuf.Timestamp joined_at = 9;
+  google.protobuf.Timestamp last_active_at = 10;
+}
+
+enum OrgRole {
+  ORG_ROLE_UNSPECIFIED = 0;
+  ORG_ROLE_ADMIN = 1;                    // full org access
+  ORG_ROLE_DEVELOPER = 2;               // repos, PRs, fix violations
+  ORG_ROLE_TEAM_LEAD = 3;               // approve exceptions, manage team
+  ORG_ROLE_COMPLIANCE = 4;              // exception approval, evidence trail, risk
+  ORG_ROLE_CISO = 5;                    // escalated exception approval
+  ORG_ROLE_VIEWER = 6;                  // read-only
+  ORG_ROLE_PLATFORM = 8;               // [NEW] KoreLink HQ superadmin
+  // NOTE: No "author" role — blueprint publishing is a capability, not a role.
+  // Any user can create/publish blueprints.
+}
+
+// ── Invitation types [NEW] ──
+
+// Invitation is org-level only. It assigns an OrgRole to the invitee.
+// Project assignment (which projects + what permission) is a SEPARATE operation
+// handled by ProjectService.AddProjectMember after the user joins the org.
+message Invitation {
+  string id = 1;
+  string org_id = 2;
+  string email = 3;
+  OrgRole role = 4;
+  InvitationStatus status = 5;
+  google.protobuf.Timestamp sent_at = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  string invited_by_id = 8;
+  string invited_by_name = 9;
+}
+
+enum InvitationStatus {
+  INVITATION_STATUS_UNSPECIFIED = 0;
+  INVITATION_STATUS_PENDING = 1;
+  INVITATION_STATUS_ACCEPTED = 2;
+  INVITATION_STATUS_EXPIRED = 3;
+  INVITATION_STATUS_REVOKED = 4;
+}
+
+// ── GitHub Org Discovery [NEW] ──
+
+message GitHubOrg {
+  string handle = 1;                      // "acme-corp"
+  string name = 2;                       // "Acme Corporation"
+  string avatar_url = 3;
+  bool already_connected = 4;            // true if already linked to a KoreLink org
+  string existing_org_id = 5;            // KoreLink org ID if already connected
+}
+
+// ── Requests/Responses ──
+
+message CreateOrgRequest {
+  string name = 1;
+  string handle = 2;
+  string initials = 3;                   // [NEW]
+  string color = 4;                      // [NEW]
+  OrgPlan plan = 5;
+  string github_org = 6;
+}
+message CreateOrgResponse { Org org = 1; }
+
+message GetOrgRequest { string org_id = 1; }
+message GetOrgResponse { Org org = 1; }
+
+message UpdateOrgRequest {
+  string org_id = 1;
+  string name = 2;
+}
+message UpdateOrgResponse { Org org = 1; }
+
+// Authenticated user's own orgs — no input needed, identity from JWT
+message ListMyOrgsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+message ListMyOrgsResponse {
+  repeated OrgWithRole orgs = 1;
+  int32 total = 2;
+}
+
+// Admin: list orgs for a specific user
+message ListUserOrgsRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+message ListUserOrgsResponse {
+  repeated OrgWithRole orgs = 1;
+  int32 total = 2;
+}
+
+// Admin: list every org on the platform
+message ListAllOrgsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  OrgPlan plan_filter = 3;              // optional: filter by plan tier
+  string search = 4;                    // optional: search by name/handle
+}
+message ListAllOrgsResponse {
+  repeated Org orgs = 1;
+  int32 total = 2;
+}
+
+message OrgWithRole {
+  Org org = 1;
+  OrgRole my_role = 2;                   // the caller's role in this org
+}
+
+message ListGitHubOrgsRequest {}          // uses auth token to discover GitHub orgs
+message ListGitHubOrgsResponse {
+  repeated GitHubOrg orgs = 1;
+}
+
+message RemoveMemberRequest {
+  string org_id = 1;
+  string user_id = 2;
+}
+message RemoveMemberResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message UpdateMemberRoleRequest {
+  string org_id = 1;
+  string user_id = 2;
+  OrgRole role = 3;
+}
+message UpdateMemberRoleResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ListMembersRequest {
+  string org_id = 1;
+  OrgRole role_filter = 2;              // optional filter
+  int32 limit = 3;
+  int32 offset = 4;
+}
+message ListMembersResponse {
+  repeated OrgMember members = 1;
+  int32 total = 2;
+}
+
+// ── Invitation Requests [NEW] ──
+
+// Invites a user to the org with an org-level role.
+// To also add them to a project, call ProjectService.AddProjectMember separately.
+message InviteMemberRequest {
+  string org_id = 1;
+  string email = 2;
+  OrgRole role = 3;
+}
+message InviteMemberResponse {
+  bool success = 1;
+  string error = 2;
+  Invitation invitation = 3;
+}
+
+message ListInvitationsRequest {
+  string org_id = 1;
+  InvitationStatus status_filter = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+message ListInvitationsResponse {
+  repeated Invitation invitations = 1;
+  int32 total = 2;
+}
+
+// Invitee accepts — server creates OrgMember, sets invitation status to ACCEPTED
+message AcceptInvitationRequest {
+  string invitation_id = 1;
+}
+message AcceptInvitationResponse {
+  bool success = 1;
+  string error = 2;
+  Org org = 3;                                     // the org the user just joined
+  OrgRole role = 4;                                // the role they were assigned
+}
+
+// Invitee declines — server sets invitation status to REVOKED
+message DeclineInvitationRequest {
+  string invitation_id = 1;
+}
+message DeclineInvitationResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message RevokeInvitationRequest { string invitation_id = 1; }
+message RevokeInvitationResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ResendInvitationRequest { string invitation_id = 1; }
+message ResendInvitationResponse {
+  bool success = 1;
+  string error = 2;
+}

@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// ExceptionService — Exception Requests & Approval Chain
+// ============================================
+
+service ExceptionService {
+  rpc CreateException(CreateExceptionRequest) returns (CreateExceptionResponse);
+  rpc GetException(GetExceptionRequest) returns (GetExceptionResponse);
+  rpc ListExceptions(ListExceptionsRequest) returns (ListExceptionsResponse);
+  rpc ApproveException(ApproveExceptionRequest) returns (ApproveExceptionResponse);
+  rpc RejectException(RejectExceptionRequest) returns (RejectExceptionResponse);
+  rpc EscalateException(EscalateExceptionRequest) returns (EscalateExceptionResponse); // [NEW — audit fix]
+  rpc RevokeException(RevokeExceptionRequest) returns (RevokeExceptionResponse);
+}
+
+// ── Core Types ──
+
+message ExceptionRequest {
+  string id = 1;
+  string org_id = 2;
+  string repo_id = 3;
+  string repo_name = 4;
+  string pr_id = 5;
+  int32 pr_number = 6;
+
+  // What rule is being waived
+  string rule_id = 7;
+  string rule_name = 8;
+  string blueprint_id = 9;
+  string blueprint_name = 10;
+
+  // Who and why
+  string requested_by_id = 11;
+  string requested_by_name = 12;
+  string justification = 13;            // business reason (min 20 chars)
+
+  // Status
+  ExceptionStatus status = 14;
+  RiskLevel risk_level = 15;
+
+  // Duration
+  int32 duration_days = 16;             // total duration requested (30, 60, 90)
+  int32 days_remaining = 17;            // computed: days until expiry
+  google.protobuf.Timestamp expires_at = 18;
+
+  // Approval chain
+  repeated ApprovalStep approval_chain = 19;
+
+  // Audit
+  google.protobuf.Timestamp created_at = 20;
+  google.protobuf.Timestamp resolved_at = 21;  // when fully approved or rejected
+}
+
+enum ExceptionStatus {
+  EXCEPTION_STATUS_UNSPECIFIED = 0;
+  EXCEPTION_STATUS_PENDING = 1;
+  EXCEPTION_STATUS_APPROVED = 2;
+  EXCEPTION_STATUS_REJECTED = 3;
+  EXCEPTION_STATUS_EXPIRED = 4;
+  EXCEPTION_STATUS_REVOKED = 5;         // manually revoked before expiry
+}
+
+enum RiskLevel {
+  RISK_LEVEL_UNSPECIFIED = 0;
+  RISK_LEVEL_LOW = 1;
+  RISK_LEVEL_MEDIUM = 2;
+  RISK_LEVEL_HIGH = 3;
+}
+
+message ApprovalStep {
+  string role = 1;                       // "Team Lead", "Compliance Officer", "CISO"
+  string reviewer_id = 2;
+  string reviewer_name = 3;
+  ApprovalStepStatus status = 4;
+  string comment = 5;                    // reviewer's comment (optional)
+  google.protobuf.Timestamp reviewed_at = 6;
+}
+
+enum ApprovalStepStatus {
+  APPROVAL_STEP_UNSPECIFIED = 0;
+  APPROVAL_STEP_WAITING = 1;            // previous step not yet approved
+  APPROVAL_STEP_PENDING = 2;            // ready for this reviewer
+  APPROVAL_STEP_APPROVED = 3;
+  APPROVAL_STEP_REJECTED = 4;
+}
+
+// ── Requests/Responses ──
+
+message CreateExceptionRequest {
+  string org_id = 1;
+  string violation_id = 2;              // which violation to create exception for
+  string justification = 3;
+  int32 duration_days = 4;              // 30, 60, or 90
+}
+message CreateExceptionResponse { ExceptionRequest exception = 1; }
+
+message GetExceptionRequest { string exception_id = 1; }
+message GetExceptionResponse { ExceptionRequest exception = 1; }
+
+message ListExceptionsRequest {
+  string org_id = 1;
+  string repo_id = 2;                    // optional
+  ExceptionStatus status_filter = 3;     // optional
+  string reviewer_id = 4;               // optional — show only exceptions awaiting this reviewer
+  int32 limit = 5;
+  int32 offset = 6;
+}
+message ListExceptionsResponse {
+  repeated ExceptionRequest exceptions = 1;
+  int32 total = 2;
+}
+
+message ApproveExceptionRequest {
+  string exception_id = 1;
+  string reviewer_id = 2;
+  string comment = 3;                    // optional
+}
+message ApproveExceptionResponse {
+  bool success = 1;
+  string error = 2;
+  ExceptionRequest exception = 3;       // updated state
+}
+
+message RejectExceptionRequest {
+  string exception_id = 1;
+  string reviewer_id = 2;
+  string reason = 3;                     // required
+}
+message RejectExceptionResponse {
+  bool success = 1;
+  string error = 2;
+  ExceptionRequest exception = 3;
+}
+
+message RevokeExceptionRequest {
+  string exception_id = 1;
+  string revoked_by_id = 2;
+  string reason = 3;
+}
+message RevokeExceptionResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// [NEW — audit fix: UI has escalateException() with no backing RPC]
+enum EscalationRole {
+  ESCALATION_ROLE_UNSPECIFIED = 0;
+  ESCALATION_ROLE_COMPLIANCE_OFFICER = 1;
+  ESCALATION_ROLE_CISO = 2;
+}
+
+message EscalateExceptionRequest {
+  string exception_id = 1;
+  string escalated_by_id = 2;
+  string reason = 3;                     // why escalation is needed
+  EscalationRole escalate_to_role = 4;
+}
+message EscalateExceptionResponse {
+  bool success = 1;
+  string error = 2;
+  ExceptionRequest exception = 3;       // updated with new approval step
+}

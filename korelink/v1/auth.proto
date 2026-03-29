@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// AuthService — OAuth2 + JWT Authentication
+// ============================================
+
+service AuthService {
+  rpc OAuthLogin(OAuthLoginRequest) returns (OAuthLoginResponse);
+  rpc OAuthCallback(OAuthCallbackRequest) returns (OAuthCallbackResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse);
+  rpc RevokeAllSessions(RevokeAllSessionsRequest) returns (RevokeAllSessionsResponse);
+}
+
+// User-level plan — governs individual user access and personal feature limits.
+// Distinct from OrgPlan (defined in org.proto) which governs organization-wide limits.
+// A user on Pro can be a member of an org on Free — they are independent axes.
+enum UserPlan {
+  USER_PLAN_UNSPECIFIED = 0;
+  USER_PLAN_FREE = 1;                               // basic access, 1 personal repo
+  USER_PLAN_PRO = 2;                                // advanced features, 5 personal repos, priority indexing
+  USER_PLAN_MAX = 3;                                // power user, 15 personal repos, AI suggestions, priority support
+}
+
+enum PlatformRole {
+  PLATFORM_ROLE_UNSPECIFIED = 0;
+  PLATFORM_ROLE_USER = 1;
+  PLATFORM_ROLE_ADMIN = 2;
+  PLATFORM_ROLE_SUPERADMIN = 3;
+}
+
+// AuthUser is the user profile returned in auth responses.
+message AuthUser {
+  string id = 1;                                    // internal KoreLink user ID
+  string email = 2;
+  string name = 3;
+  string avatar_url = 4;
+  string provider = 5;                              // "github" or "google"
+                                                    // NOTE: Distinct from OrgRole (per-organization).
+                                                    // Blueprint publishing is a capability, not a role —
+                                                    // any user can create/publish blueprints.
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp last_login_at = 7;
+
+  // subscription
+  UserPlan plan = 8;                                // individual user plan (Free, Pro, Max)
+
+  // platform role and permissions
+  PlatformRole platform_role = 9;                   // [RENAMED from "role"] "user", "admin", "super-admin"
+                                                    // NOTE: This is the PLATFORM-LEVEL role (KoreLink account).
+                                                    // Distinct from OrgRole which is per-organization.
+                                                    // "user" = regular user
+                                                    // "admin" = KoreLink staff
+                                                    // "super-admin" = KoreLink platform owner
+                                                    // No "author" role — blueprint publishing is a capability,
+                                                    // not a role. Any user can create/publish blueprints.
+  repeated string permissions = 10;                 // permissions assigned to the user (e.g. "project.create", "project.read", "project.update", "project.delete")
+}
+
+message OAuthLoginRequest {
+  string provider = 1;                              // "github" or "google"
+  string redirect_uri = 2;                          // where to redirect after consent (client's callback URL)
+}
+message OAuthLoginResponse {
+  string auth_url = 1;                              // full OAuth consent URL — client opens this in a browser/webview
+  string state = 2;                                 // CSRF state token — client must verify this on callback
+}
+
+message OAuthCallbackRequest {
+  string provider = 1;                              // "github" or "google"
+  string code = 2;                                  // authorization code from OAuth provider
+  string state = 3;                                 // CSRF state — must match the state from OAuthLoginResponse
+  string device_name = 4;                           // optional: client-provided device identifier (e.g. "Chrome on macOS")
+}
+message OAuthCallbackResponse {
+  AuthUser user = 1;                                // authenticated user profile
+  string access_token = 2;                          // JWT access token (short-lived, e.g. 1 hour)
+  string refresh_token = 3;                         // JWT refresh token (long-lived, e.g. 30 days)
+  google.protobuf.Timestamp expires_at = 4;
+  bool   is_new_user = 5;                          // true if this was the user's first login
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;                         // the refresh token to exchange
+}
+message RefreshTokenResponse {
+  string access_token = 1;                          // new JWT access token
+  string refresh_token = 2;                         // new refresh token (rotated)
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message GetCurrentUserRequest {}                    // user is extracted from the JWT in the interceptor
+message GetCurrentUserResponse {
+  AuthUser user = 1;
+}
+
+// ---- Session management ----
+
+message SessionInfo {
+  string id = 1;
+  string device_name = 2;
+  string ip_address = 3;
+  google.protobuf.Timestamp last_active_at = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message ListSessionsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+message ListSessionsResponse {
+  repeated SessionInfo sessions = 1;
+  int32 total = 2;
+}
+
+message RevokeSessionRequest {
+  string session_id = 1;
+}
+message RevokeSessionResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message RevokeAllSessionsRequest {}
+message RevokeAllSessionsResponse {
+  bool success = 1;
+  string error = 2;
+}

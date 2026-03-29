@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// DashboardService — Aggregated Metrics for UI
+// ============================================
+
+service DashboardService {
+  rpc GetDashboard(GetDashboardRequest) returns (GetDashboardResponse);
+  rpc GetAttentionItems(GetAttentionItemsRequest) returns (AttentionItemsResponse);
+}
+
+// ── Response Types ──
+
+message GetDashboardResponse {
+  string org_id = 1;
+
+  // Metric cards
+  int32 repos_governed = 2;
+  int32 prs_checked_today = 3;
+  int32 prs_passed_today = 4;
+  int32 prs_blocked_today = 5;
+  float compliance_rate = 6;             // 0.0–1.0
+  float compliance_rate_delta = 7;       // change vs last week (+0.04 = +4pp)
+  int32 open_violations = 8;
+  int32 open_violations_delta = 9;       // change vs yesterday
+
+  // Recent PRs (last 5)
+  repeated RecentPR recent_prs = 10;
+
+  // Onboarding progress
+  OnboardingProgress onboarding = 11;
+}
+
+message RecentPR {
+  string pr_id = 1;
+  string repo_name = 2;
+  int32 pr_number = 3;
+  string title = 4;
+  RecentPRStatus status = 5;
+  int32 violation_count = 6;
+  google.protobuf.Timestamp checked_at = 7;
+}
+
+enum RecentPRStatus {
+  RECENT_PR_STATUS_UNSPECIFIED = 0;
+  RECENT_PR_STATUS_PASSED = 1;
+  RECENT_PR_STATUS_BLOCKED = 2;
+  RECENT_PR_STATUS_WARNING = 3;
+  RECENT_PR_STATUS_ERROR = 4;
+}
+
+message OnboardingProgress {
+  bool github_connected = 1;
+  bool project_created = 2;
+  bool repo_added = 3;
+  bool blueprint_configured = 4;
+  bool first_scan_completed = 5;
+  bool dismissed = 6;
+}
+
+message AttentionItemsResponse {
+  repeated AttentionItem items = 1;
+}
+
+message AttentionItem {
+  AttentionItemType type = 1;
+  string title = 2;
+  string description = 3;
+  AttentionSeverity severity = 4;
+  string action_url = 5;                 // deep link in the UI
+  string entity_id = 6;                  // ID of the related entity
+  google.protobuf.Timestamp created_at = 7;
+}
+
+enum AttentionItemType {
+  ATTENTION_ITEM_TYPE_UNSPECIFIED = 0;
+  ATTENTION_ITEM_TYPE_VIOLATION = 1;
+  ATTENTION_ITEM_TYPE_EXCEPTION_PENDING = 2;
+  ATTENTION_ITEM_TYPE_INDEX_FAILED = 3;
+  ATTENTION_ITEM_TYPE_BLUEPRINT_UPDATE = 4;
+  ATTENTION_ITEM_TYPE_COVERAGE_DROP = 5;
+}
+
+enum AttentionSeverity {
+  ATTENTION_SEVERITY_UNSPECIFIED = 0;
+  ATTENTION_SEVERITY_CRITICAL = 1;
+  ATTENTION_SEVERITY_HIGH = 2;
+  ATTENTION_SEVERITY_MEDIUM = 3;
+  ATTENTION_SEVERITY_LOW = 4;
+}
+
+// ── Requests ──
+
+message GetDashboardRequest { string org_id = 1; }
+message GetAttentionItemsRequest {
+  string org_id = 1;
+  int32 limit = 2;
+}

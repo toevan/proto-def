@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// ============================================
+// NavigationService — Canvas ↔ Preview Sync
+// ============================================
+
+service NavigationService {
+  rpc SyncNavigation(SyncNavigationRequest) returns (SyncNavigationResponse);
+  rpc GetNodePreview(GetNodePreviewRequest) returns (GetNodePreviewResponse);
+  rpc GetNavigationManifest(GetNavigationManifestRequest) returns (GetNavigationManifestResponse);
+}
+
+// ── Messages ──
+
+message NavigableEntry {
+  string node_id = 1;
+  string step_id = 2;
+  string name = 3;
+  string identifier = 4;
+  string path = 5;
+  string file_path = 6;
+  string import_path = 7;
+  string kind = 8;                // "page", "endpoint", "handler", "middleware", "service"
+  bool   is_initial = 9;
+  string http_method = 10;        // for endpoints: GET, POST, etc.
+}
+
+message NavigableEdge {
+  string source_path = 1;
+  string target_path = 2;
+  string source_node_id = 3;
+  string target_node_id = 4;
+  string trigger_type = 5;        // "button_press", "function_call", "middleware"
+  string trigger_label = 6;
+}
+
+message SyncNavigationRequest {
+  string project_id = 1;
+  string plan_id = 2;
+  string event_type = 3;          // "route_changed", "navigate_to", "inspect_node"
+  string path = 4;                // current/target path
+  string from_path = 5;           // previous path (for edge highlighting)
+  string node_id = 6;             // canvas node ID
+}
+
+message SyncNavigationResponse {
+  string event_type = 1;
+  string path = 2;
+  string from_path = 3;
+  string node_id = 4;
+  string from_node_id = 5;
+  string error = 6;
+}
+
+message GetNodePreviewRequest {
+  string project_id = 1;
+  string node_id = 2;
+  string plan_id = 3;
+}
+
+message GetNodePreviewResponse {
+  string mode = 1;                // "isolated" or "interactive"
+  string preview_kind = 2;        // "iframe", "code_panel", "api_tester", "split"
+  string preview_url = 3;
+  string initial_path = 4;
+  string node_id = 5;
+  string file_path = 6;           // for code_panel: source file to show
+  string identifier = 7;          // for code_panel: symbol to highlight
+  string error = 8;
+}
+
+message GetNavigationManifestRequest {
+  string project_id = 1;
+  string plan_id = 2;
+}
+
+message GetNavigationManifestResponse {
+  string project_id = 1;
+  string plan_id = 2;
+  string project_type = 3;        // "web", "mobile", "backend", "fullstack"
+  string framework = 4;           // "flutter", "react", "go", etc.
+  string initial_path = 5;
+  string preview_url = 6;
+  string preview_kind = 7;        // "iframe", "code_panel", "api_tester", "split"
+  repeated NavigableEntry entries = 8;
+  repeated NavigableEdge edges = 9;
+  string error = 10;
+}
