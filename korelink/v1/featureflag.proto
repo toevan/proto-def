@@ -1,0 +1,214 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// ============================================
+// FeatureFlagService — Real-time Feature Flags
+// ============================================
+
+service FeatureFlagService {
+  // CRUD
+  rpc CreateFlag(CreateFlagRequest) returns (CreateFlagResponse);
+  rpc GetFlag(GetFlagRequest) returns (GetFlagResponse);
+  rpc ListFlags(ListFlagsRequest) returns (ListFlagsResponse);
+  rpc UpdateFlag(UpdateFlagRequest) returns (UpdateFlagResponse);
+  rpc DeleteFlag(DeleteFlagRequest) returns (DeleteFlagResponse);
+  rpc ToggleFlag(ToggleFlagRequest) returns (ToggleFlagResponse);
+
+  // Evaluation
+  rpc EvalFlag(EvalFlagRequest) returns (EvalFlagResponse);
+  rpc EvalFlags(EvalFlagsRequest) returns (EvalFlagsResponse);
+
+  // Real-time streaming — server pushes flag changes to connected clients
+  rpc StreamFlags(StreamFlagsRequest) returns (stream FlagUpdate);
+
+  // Audit
+  rpc GetFlagAuditLog(GetFlagAuditLogRequest) returns (GetFlagAuditLogResponse);
+}
+
+// ── Enums ──
+
+enum FlagType {
+  FLAG_TYPE_UNSPECIFIED = 0;
+  FLAG_TYPE_BOOLEAN = 1;
+  FLAG_TYPE_STRING = 2;
+  FLAG_TYPE_NUMBER = 3;
+  FLAG_TYPE_JSON = 4;
+}
+
+enum FlagAuditAction {
+  FLAG_AUDIT_ACTION_UNSPECIFIED = 0;
+  FLAG_AUDIT_ACTION_CREATED = 1;
+  FLAG_AUDIT_ACTION_UPDATED = 2;
+  FLAG_AUDIT_ACTION_TOGGLED = 3;
+  FLAG_AUDIT_ACTION_DELETED = 4;
+}
+
+// ── Core Messages ──
+
+message FeatureFlag {
+  string id = 1;
+  string org_id = 2;                               // empty = global flag
+  string key = 3;                                   // unique identifier (e.g. "enable_dark_mode")
+  string name = 4;                                  // display name
+  string description = 5;
+  FlagType flag_type = 6;
+  google.protobuf.Value default_value = 7;          // typed default value
+  bool enabled = 8;                                 // master kill switch
+  string targeting_rules = 9;                       // JSON string of targeting rules
+  int32 rollout_percentage = 10;                    // 0-100 for gradual rollout
+  string created_by = 11;
+  string updated_by = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+}
+
+message FlagUpdate {
+  string key = 1;
+  google.protobuf.Value value = 2;
+  bool enabled = 3;
+  bool deleted = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message FlagAuditEntry {
+  string id = 1;
+  string flag_id = 2;
+  FlagAuditAction action = 3;
+  string old_value = 4;                             // JSON string
+  string new_value = 5;                             // JSON string
+  string changed_by = 6;
+  google.protobuf.Timestamp changed_at = 7;
+}
+
+message FlagEvalResult {
+  string key = 1;
+  google.protobuf.Value value = 2;
+  bool enabled = 3;
+}
+
+// ── CreateFlag ──
+
+message CreateFlagRequest {
+  string org_id = 1;                                // empty = global flag
+  string key = 2;
+  string name = 3;
+  string description = 4;
+  FlagType flag_type = 5;
+  google.protobuf.Value default_value = 6;
+  bool enabled = 7;
+  string targeting_rules = 8;                       // JSON string
+  int32 rollout_percentage = 9;
+}
+
+message CreateFlagResponse {
+  FeatureFlag flag = 1;
+}
+
+// ── GetFlag ──
+
+message GetFlagRequest {
+  string flag_id = 1;
+}
+
+message GetFlagResponse {
+  FeatureFlag flag = 1;
+}
+
+// ── ListFlags ──
+
+message ListFlagsRequest {
+  string org_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  bool include_global = 4;                          // include global flags in results
+}
+
+message ListFlagsResponse {
+  repeated FeatureFlag flags = 1;
+  int32 total = 2;
+}
+
+// ── UpdateFlag ──
+
+message UpdateFlagRequest {
+  string flag_id = 1;
+  string name = 2;
+  string description = 3;
+  google.protobuf.Value default_value = 4;
+  string targeting_rules = 5;                       // JSON string
+  int32 rollout_percentage = 6;
+}
+
+message UpdateFlagResponse {
+  FeatureFlag flag = 1;
+}
+
+// ── DeleteFlag ──
+
+message DeleteFlagRequest {
+  string flag_id = 1;
+}
+
+message DeleteFlagResponse {
+  bool success = 1;
+}
+
+// ── ToggleFlag ──
+
+message ToggleFlagRequest {
+  string flag_id = 1;
+  bool enabled = 2;
+}
+
+message ToggleFlagResponse {
+  FeatureFlag flag = 1;
+}
+
+// ── EvalFlag (single) ──
+
+message EvalFlagRequest {
+  string org_id = 1;
+  string key = 2;
+}
+
+message EvalFlagResponse {
+  FlagEvalResult result = 1;
+}
+
+// ── EvalFlags (batch) ──
+
+message EvalFlagsRequest {
+  string org_id = 1;
+  repeated string keys = 2;                         // empty = all enabled flags
+}
+
+message EvalFlagsResponse {
+  repeated FlagEvalResult results = 1;
+}
+
+// ── StreamFlags ──
+
+message StreamFlagsRequest {
+  string org_id = 1;
+}
+
+// Response is stream FlagUpdate (defined above)
+
+// ── GetFlagAuditLog ──
+
+message GetFlagAuditLogRequest {
+  string flag_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetFlagAuditLogResponse {
+  repeated FlagAuditEntry entries = 1;
+  int32 total = 2;
+}
