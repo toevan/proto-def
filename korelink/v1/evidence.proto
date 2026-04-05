@@ -16,6 +16,7 @@ service EvidenceService {
   rpc ExportEvidence(ExportEvidenceRequest) returns (ExportEvidenceResponse);
   rpc GetEvidenceExportJob(GetEvidenceExportJobRequest) returns (GetEvidenceExportJobResponse);
   rpc GetEvidenceSummary(GetEvidenceSummaryRequest) returns (GetEvidenceSummaryResponse);
+  rpc GenerateSBOM(GenerateSBOMRequest) returns (GenerateSBOMResponse);
 }
 
 // ── Core Types ──
@@ -156,3 +157,22 @@ message GetEvidenceSummaryRequest {
   google.protobuf.Timestamp to = 3;
 }
 message GetEvidenceSummaryResponse { EvidenceSummary summary = 1; }
+
+// ── SBOM Generation ──
+
+message GenerateSBOMRequest {
+  string org_id = 1;
+  string repo_id = 2;                   // repository to generate SBOM for
+  string format = 3;                    // "cyclonedx" or "spdx"
+  string commit_sha = 4;               // optional: specific commit (defaults to HEAD)
+  int64 github_installation_id = 5;    // GitHub app installation for file fetch
+  string github_owner = 6;             // GitHub repo owner
+  string github_repo = 7;              // GitHub repo name
+}
+
+message GenerateSBOMResponse {
+  string download_url = 1;             // pre-signed URL to download SBOM
+  string filename = 2;
+  string format = 3;                    // "cyclonedx" or "spdx"
+  EvidenceExportJobStatus status = 4;  // always COMPLETED for sync
+}
