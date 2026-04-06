@@ -17,6 +17,10 @@ service EvidenceService {
   rpc GetEvidenceExportJob(GetEvidenceExportJobRequest) returns (GetEvidenceExportJobResponse);
   rpc GetEvidenceSummary(GetEvidenceSummaryRequest) returns (GetEvidenceSummaryResponse);
   rpc GenerateSBOM(GenerateSBOMRequest) returns (GenerateSBOMResponse);
+
+  // Compliance reports
+  rpc GenerateDPIA(GenerateDPIARequest) returns (GenerateDPIAResponse);
+  rpc GenerateControlMapping(GenerateControlMappingRequest) returns (GenerateControlMappingResponse);
 }
 
 // ── Core Types ──
@@ -175,4 +179,31 @@ message GenerateSBOMResponse {
   string filename = 2;
   string format = 3;                    // "cyclonedx" or "spdx"
   EvidenceExportJobStatus status = 4;  // always COMPLETED for sync
+}
+
+// ── DPIA Generation (GDPR Art 35) ──
+
+message GenerateDPIARequest {
+  string org_id = 1;
+  string repo_id = 2;                   // Neo4j project ID for data flow query
+  string format = 3;                    // "dpia" or "processing_inventory"
+  string commit_sha = 4;               // optional
+}
+
+message GenerateDPIAResponse {
+  string json_content = 1;              // full DPIA or processing inventory JSON
+  string format = 2;
+}
+
+// ── Control Mapping Report ──
+
+message GenerateControlMappingRequest {
+  string org_id = 1;
+  string framework = 2;                 // optional — all frameworks if empty
+  repeated string active_constraints = 3; // constraint types currently active
+}
+
+message GenerateControlMappingResponse {
+  string json_content = 1;              // JSON report (single or array of reports)
+  string framework = 2;                 // framework name (empty if all)
 }

@@ -13,6 +13,13 @@ import "google/protobuf/timestamp.proto";
 service DashboardService {
   rpc GetDashboard(GetDashboardRequest) returns (GetDashboardResponse);
   rpc GetAttentionItems(GetAttentionItemsRequest) returns (AttentionItemsResponse);
+  rpc GetCompliancePosture(GetCompliancePostureRequest) returns (GetCompliancePostureResponse);
+
+  // Compliance checklist CRUD (HIPAA §164.308 administrative safeguards)
+  rpc UpsertChecklistItem(UpsertChecklistItemRequest) returns (ChecklistItem);
+  rpc CompleteChecklistItem(CompleteChecklistItemRequest) returns (ChecklistItem);
+  rpc ListChecklist(ListChecklistRequest) returns (ListChecklistResponse);
+  rpc ListChecklistByFramework(ListChecklistByFrameworkRequest) returns (ListChecklistResponse);
 }
 
 // ── Response Types ──
@@ -85,6 +92,8 @@ enum AttentionItemType {
   ATTENTION_ITEM_TYPE_INDEX_FAILED = 3;
   ATTENTION_ITEM_TYPE_BLUEPRINT_UPDATE = 4;
   ATTENTION_ITEM_TYPE_COVERAGE_DROP = 5;
+  ATTENTION_ITEM_TYPE_VULNERABILITY = 6;
+  ATTENTION_ITEM_TYPE_IAC_VIOLATION = 7;
 }
 
 enum AttentionSeverity {
@@ -95,10 +104,69 @@ enum AttentionSeverity {
   ATTENTION_SEVERITY_LOW = 4;
 }
 
+// ── Compliance Posture ──
+
+message CompliancePosture {
+  string framework = 1;
+  int32 total = 2;
+  int32 completed = 3;
+  int32 pending = 4;
+  int32 overdue = 5;
+  double coverage_percent = 6;
+}
+
+message GetCompliancePostureResponse {
+  repeated CompliancePosture postures = 1;
+}
+
+// ── Compliance Checklist ──
+
+message ChecklistItem {
+  string id = 1;
+  string org_id = 2;
+  string framework = 3;
+  string control_id = 4;
+  string title = 5;
+  string description = 6;
+  string status = 7;                     // pending, completed
+  google.protobuf.Timestamp completed_at = 8;
+  string completed_by = 9;
+  string due_date = 10;                  // ISO date string
+  string notes = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
 // ── Requests ──
 
 message GetDashboardRequest { string org_id = 1; }
 message GetAttentionItemsRequest {
   string org_id = 1;
   int32 limit = 2;
+}
+message GetCompliancePostureRequest { string org_id = 1; }
+
+message UpsertChecklistItemRequest {
+  string org_id = 1;
+  string framework = 2;
+  string control_id = 3;
+  string title = 4;
+  string description = 5;
+  string status = 6;
+  string due_date = 7;                   // ISO date string
+  string notes = 8;
+}
+
+message CompleteChecklistItemRequest {
+  string id = 1;
+}
+
+message ListChecklistRequest { string org_id = 1; }
+message ListChecklistByFrameworkRequest {
+  string org_id = 1;
+  string framework = 2;
+}
+
+message ListChecklistResponse {
+  repeated ChecklistItem items = 1;
 }
