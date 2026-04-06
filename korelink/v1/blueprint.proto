@@ -46,6 +46,7 @@ service BlueprintService {
   rpc ListRepoBlueprints(BlueprintListRepoAssignmentsRequest) returns (BlueprintListRepoAssignmentsResponse);
   rpc CheckBlueprintUpdates(CheckUpdatesRequest) returns (CheckUpdatesResponse);
   rpc GetBlueprintAnalytics(GetAnalyticsRequest) returns (BlueprintAnalytics);
+  rpc UpdateAdoptionParams(UpdateAdoptionParamsRequest) returns (BlueprintAssignResponse);
 
   // Purchases (premium blueprints)
   rpc RecordBlueprintPurchase(RecordPurchaseRequest) returns (RecordPurchaseResponse);
@@ -348,9 +349,15 @@ message BlueprintAssignRequest {
     string project_id = 3;
     string repo_id = 4;
   }
+  string param_overrides_json = 5;       // optional: per-rule param overrides JSON
 }
 message BlueprintAssignResponse {
   ScopedBlueprintAssignment assignment = 1;
+}
+
+message UpdateAdoptionParamsRequest {
+  string adoption_id = 1;
+  string param_overrides_json = 2;       // per-rule param overrides JSON
 }
 
 message BlueprintRemoveRequest {
