@@ -34,6 +34,9 @@ service BuildService {
 
   // Canvas graph snapshot (static load for existing repos)
   rpc GetRepositoryGraph(GetRepositoryGraphRequest) returns (GetRepositoryGraphReply);
+
+  // Source code viewer — serves file content for selected canvas nodes
+  rpc GetFileContent(GetFileContentRequest) returns (GetFileContentReply);
 }
 
 // ── AI Code Generation ──
@@ -309,4 +312,19 @@ message GetFullAppRequest {
 message GetFullAppReply {
   string preview_url = 1;
   string error = 2;
+}
+
+// ── Source Code Viewer ──
+
+message GetFileContentRequest {
+  string project_id = 1;
+  string repo_id = 2;
+  string file_path = 3;
+  string ref = 4;              // branch/commit ref, defaults to HEAD
+}
+
+message GetFileContentReply {
+  string content = 1;
+  string language = 2;         // detected language for syntax highlighting
+  repeated int32 violation_lines = 3;
 }
