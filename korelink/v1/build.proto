@@ -37,6 +37,9 @@ service BuildService {
 
   // Source code viewer — serves file content for selected canvas nodes
   rpc GetFileContent(GetFileContentRequest) returns (GetFileContentReply);
+
+  // What-If simulation — evaluate impact of hypothetical architectural changes
+  rpc EvaluateWhatIf(EvaluateWhatIfRequest) returns (EvaluateWhatIfReply);
 }
 
 // ── AI Code Generation ──
@@ -327,4 +330,49 @@ message GetFileContentReply {
   string content = 1;
   string language = 2;         // detected language for syntax highlighting
   repeated int32 violation_lines = 3;
+}
+
+// ── What-If Simulation ──
+
+message EvaluateWhatIfRequest {
+  string project_id = 1;
+  string repo_id = 2;
+  repeated WhatIfAction actions = 3;
+}
+
+message WhatIfAction {
+  WhatIfActionType type = 1;
+  string node_id = 2;
+  string target_layer = 3;        // for MOVE_NODE
+  string target_node_id = 4;      // for ADD_EDGE / REMOVE_EDGE
+  string edge_kind = 5;           // DependencyKind as string
+  string description = 6;         // human-readable for UI
+}
+
+enum WhatIfActionType {
+  WHAT_IF_ACTION_UNSPECIFIED = 0;
+  WHAT_IF_ACTION_MOVE_NODE = 1;
+  WHAT_IF_ACTION_REMOVE_EDGE = 2;
+  WHAT_IF_ACTION_ADD_EDGE = 3;
+  WHAT_IF_ACTION_REMOVE_NODE = 4;
+  WHAT_IF_ACTION_CHANGE_TAG = 5;
+}
+
+message EvaluateWhatIfReply {
+  int32 before_violations = 1;
+  string before_coverage = 2;
+  int32 after_violations = 3;
+  string after_coverage = 4;
+  string delta_summary = 5;
+  repeated WhatIfViolationChange resolved = 6;
+  repeated WhatIfViolationChange introduced = 7;
+  repeated CanvasNode updated_nodes = 8;
+  repeated CanvasEdge updated_edges = 9;
+}
+
+message WhatIfViolationChange {
+  string source_node_id = 1;
+  string target_node_id = 2;
+  string edge_kind = 3;
+  string reason = 4;
 }
