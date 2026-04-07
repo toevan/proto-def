@@ -88,6 +88,18 @@ message CanvasUpdate {
   repeated CanvasNode nodes = 2;
   repeated CanvasEdge edges = 3;
   google.protobuf.Timestamp timestamp = 4;
+
+  // Extensions for richer real-time updates
+  repeated ViolationSummary violation_updates = 5;
+  repeated FileTreeNode file_tree_updates = 6;
+  GraphMetrics metrics = 7;
+  CanvasUpdateType update_type = 8;
+}
+
+enum CanvasUpdateType {
+  CANVAS_UPDATE_FULL = 0;
+  CANVAS_UPDATE_INCREMENTAL = 1;
+  CANVAS_UPDATE_LAYOUT = 2;
 }
 
 message StreamCanvasRequest { string project_id = 1; }
