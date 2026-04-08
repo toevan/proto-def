@@ -1,0 +1,198 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// ============================================
+// Agent Orchestration Service
+// ============================================
+
+service AgentService {
+  // Config CRUD
+  rpc CreateAgentConfig(CreateAgentConfigRequest) returns (CreateAgentConfigResponse);
+  rpc GetAgentConfig(GetAgentConfigRequest) returns (GetAgentConfigResponse);
+  rpc ListAgentConfigs(ListAgentConfigsRequest) returns (ListAgentConfigsResponse);
+  rpc UpdateAgentConfig(UpdateAgentConfigRequest) returns (UpdateAgentConfigResponse);
+  rpc DeleteAgentConfig(DeleteAgentConfigRequest) returns (DeleteAgentConfigResponse);
+
+  // Runs
+  rpc TriggerAgentRun(TriggerAgentRunRequest) returns (TriggerAgentRunResponse);
+  rpc GetAgentRun(GetAgentRunRequest) returns (GetAgentRunResponse);
+  rpc ListAgentRuns(ListAgentRunsRequest) returns (ListAgentRunsResponse);
+
+  // Steps & Logs
+  rpc ListAgentSteps(ListAgentStepsRequest) returns (ListAgentStepsResponse);
+  rpc ListAgentLogs(ListAgentLogsRequest) returns (ListAgentLogsResponse);
+
+  // Analytics
+  rpc GetAgentAnalytics(GetAgentAnalyticsRequest) returns (GetAgentAnalyticsResponse);
+}
+
+// ── Enums ──
+
+enum AgentType {
+  AGENT_TYPE_UNSPECIFIED = 0;
+  AGENT_TYPE_PR_REVIEW = 1;
+  AGENT_TYPE_VIOLATION_FIX = 2;
+  AGENT_TYPE_IMPLEMENTATION = 3;
+  AGENT_TYPE_MIGRATION = 4;
+}
+
+enum AgentRunStatus {
+  AGENT_RUN_STATUS_UNSPECIFIED = 0;
+  AGENT_RUN_STATUS_QUEUED = 1;
+  AGENT_RUN_STATUS_RUNNING = 2;
+  AGENT_RUN_STATUS_COMPLETED = 3;
+  AGENT_RUN_STATUS_FAILED = 4;
+  AGENT_RUN_STATUS_CANCELLED = 5;
+}
+
+enum AgentScope {
+  AGENT_SCOPE_UNSPECIFIED = 0;
+  AGENT_SCOPE_ORG = 1;
+  AGENT_SCOPE_PROJECT = 2;
+  AGENT_SCOPE_REPO = 3;
+}
+
+// ── Core Messages ──
+
+message AgentConfig {
+  string id = 1;
+  string org_id = 2;
+  string project_id = 3;
+  string repo_id = 4;
+  AgentType agent_type = 5;
+  AgentScope scope = 6;
+  bool enabled = 7;
+  google.protobuf.Struct settings = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message AgentRun {
+  string id = 1;
+  string org_id = 2;
+  string repo_id = 3;
+  AgentType agent_type = 4;
+  AgentRunStatus status = 5;
+  string trigger = 6;
+  string trigger_ref = 7;
+  string summary = 8;
+  string error_message = 9;
+  google.protobuf.Timestamp started_at = 10;
+  google.protobuf.Timestamp completed_at = 11;
+  int32 duration_ms = 12;
+  google.protobuf.Timestamp created_at = 13;
+}
+
+message AgentStep {
+  string id = 1;
+  string run_id = 2;
+  int32 step_number = 3;
+  string name = 4;
+  AgentRunStatus status = 5;
+  string message = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp completed_at = 8;
+  int32 duration_ms = 9;
+}
+
+message AgentLog {
+  int64 id = 1;
+  string run_id = 2;
+  string level = 3;
+  string message = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+// ── Config Requests ──
+
+message CreateAgentConfigRequest {
+  string org_id = 1;
+  string project_id = 2;           // optional
+  string repo_id = 3;              // optional
+  AgentType agent_type = 4;
+  AgentScope scope = 5;
+  bool enabled = 6;
+  google.protobuf.Struct settings = 7;
+}
+
+message CreateAgentConfigResponse { AgentConfig config = 1; }
+
+message GetAgentConfigRequest { string config_id = 1; }
+message GetAgentConfigResponse { AgentConfig config = 1; }
+
+message ListAgentConfigsRequest { string org_id = 1; }
+message ListAgentConfigsResponse { repeated AgentConfig configs = 1; }
+
+message UpdateAgentConfigRequest {
+  string config_id = 1;
+  bool enabled = 2;
+  google.protobuf.Struct settings = 3;
+}
+message UpdateAgentConfigResponse { AgentConfig config = 1; }
+
+message DeleteAgentConfigRequest { string config_id = 1; }
+message DeleteAgentConfigResponse { bool success = 1; }
+
+// ── Run Requests ──
+
+message TriggerAgentRunRequest {
+  string org_id = 1;
+  string repo_id = 2;              // optional
+  AgentType agent_type = 3;
+  string trigger = 4;              // "manual", "webhook", "scheduled"
+  string trigger_ref = 5;          // PR number, commit SHA, etc.
+  google.protobuf.Struct params = 6;
+}
+message TriggerAgentRunResponse { AgentRun run = 1; }
+
+message GetAgentRunRequest { string run_id = 1; }
+message GetAgentRunResponse {
+  AgentRun run = 1;
+  repeated AgentStep steps = 2;
+}
+
+message ListAgentRunsRequest {
+  string org_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+message ListAgentRunsResponse {
+  repeated AgentRun runs = 1;
+}
+
+// ── Steps & Logs ──
+
+message ListAgentStepsRequest { string run_id = 1; }
+message ListAgentStepsResponse { repeated AgentStep steps = 1; }
+
+message ListAgentLogsRequest {
+  string run_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+message ListAgentLogsResponse { repeated AgentLog logs = 1; }
+
+// ── Analytics ──
+
+message GetAgentAnalyticsRequest { string org_id = 1; }
+
+message AgentTypeBreakdown {
+  AgentType agent_type = 1;
+  int32 total = 2;
+  int32 passed = 3;
+  int32 failed = 4;
+}
+
+message GetAgentAnalyticsResponse {
+  string org_id = 1;
+  int32 total_runs = 2;
+  int32 passed_runs = 3;
+  int32 failed_runs = 4;
+  repeated AgentTypeBreakdown by_type = 5;
+}
