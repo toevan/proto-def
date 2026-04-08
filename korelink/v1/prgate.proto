@@ -115,12 +115,19 @@ message ExceptionBrief {
 
 message PRGateConfig {
   string org_id = 1;
-  bool block_on_error = 2;              // default: true
-  bool block_on_warning = 3;            // default: false
-  bool auto_dismiss_on_fix = 4;         // default: true
-  bool post_pr_comment = 5;             // default: true
-  int32 max_violations_in_comment = 6;  // default: 25
-  bool skip_info_violations = 7;        // default: false
+  bool block_on_error = 2;                       // default: true
+  bool block_on_warning = 3;                      // default: false
+  bool auto_dismiss_on_fix = 4;                   // default: true
+  bool post_pr_comment = 5;                       // default: true
+  int32 max_violations_in_comment = 6;            // default: 25
+  bool skip_info_violations = 7;                  // default: false
+
+  // AI Auto-Fix settings
+  string auto_fix_policy = 8;                     // "disabled", "suggest", "auto_apply"
+  float suggestion_confidence_threshold = 9;      // 0.0-1.0 (default: 0.8)
+  int32 auto_fix_batch_limit = 10;                // max fixes per commit (default: 10)
+  bool remediation_on_index = 11;                 // auto-open PR after initial index
+  int32 remediation_max_fixes = 12;               // max fixes per remediation PR (default: 20)
 }
 
 message PRCheckSummary {
