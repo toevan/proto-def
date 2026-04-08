@@ -34,6 +34,13 @@ service AgentService {
 
   // Analytics
   rpc GetAgentAnalytics(GetAgentAnalyticsRequest) returns (GetAgentAnalyticsResponse);
+
+  // Task ingestion + approval
+  rpc IngestTask(IngestTaskRequest) returns (IngestTaskResponse);
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc ApproveTaskPlan(ApproveTaskPlanRequest) returns (ApproveTaskPlanResponse);
+  rpc RejectTaskPlan(RejectTaskPlanRequest) returns (RejectTaskPlanResponse);
 }
 
 // ── Enums ──
@@ -218,3 +225,77 @@ message GetAgentAnalyticsResponse {
   int32 failed_runs = 4;
   repeated AgentTypeBreakdown by_type = 5;
 }
+
+// ── Task Ingestion + Approval ──
+
+enum AgentTaskStatus {
+  AGENT_TASK_STATUS_UNSPECIFIED = 0;
+  AGENT_TASK_STATUS_INGESTED = 1;
+  AGENT_TASK_STATUS_PLANNING = 2;
+  AGENT_TASK_STATUS_PENDING_APPROVAL = 3;
+  AGENT_TASK_STATUS_APPROVED = 4;
+  AGENT_TASK_STATUS_EXECUTING = 5;
+  AGENT_TASK_STATUS_COMPLETED = 6;
+  AGENT_TASK_STATUS_FAILED = 7;
+  AGENT_TASK_STATUS_REJECTED = 8;
+}
+
+message AgentTask {
+  string id = 1;
+  string org_id = 2;
+  string repo_id = 3;
+  string source_type = 4;
+  string source_id = 5;
+  string source_url = 6;
+  string title = 7;
+  string description = 8;
+  string priority = 9;
+  repeated string labels = 10;
+  AgentTaskStatus status = 11;
+  google.protobuf.Struct plan = 12;
+  bool plan_approved = 13;
+  string plan_approved_by = 14;
+  google.protobuf.Timestamp plan_approved_at = 15;
+  string plan_rejected_reason = 16;
+  string agent_run_id = 17;
+  string result_pr_url = 18;
+  string result_summary = 19;
+  google.protobuf.Timestamp created_at = 20;
+  google.protobuf.Timestamp updated_at = 21;
+}
+
+message IngestTaskRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  string source_type = 3;
+  string source_id = 4;
+  string source_url = 5;
+  string title = 6;
+  string description = 7;
+  string priority = 8;
+  repeated string labels = 9;
+}
+message IngestTaskResponse { AgentTask task = 1; }
+
+message GetTaskRequest { string task_id = 1; }
+message GetTaskResponse { AgentTask task = 1; }
+
+message ListTasksRequest {
+  string org_id = 1;
+  AgentTaskStatus status = 2;   // optional filter
+  int32 limit = 3;
+  int32 offset = 4;
+}
+message ListTasksResponse { repeated AgentTask tasks = 1; }
+
+message ApproveTaskPlanRequest {
+  string task_id = 1;
+  string approver_id = 2;
+}
+message ApproveTaskPlanResponse { bool success = 1; }
+
+message RejectTaskPlanRequest {
+  string task_id = 1;
+  string reason = 2;
+}
+message RejectTaskPlanResponse { bool success = 1; }
