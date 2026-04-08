@@ -23,6 +23,10 @@ service AgentService {
   rpc TriggerAgentRun(TriggerAgentRunRequest) returns (TriggerAgentRunResponse);
   rpc GetAgentRun(GetAgentRunRequest) returns (GetAgentRunResponse);
   rpc ListAgentRuns(ListAgentRunsRequest) returns (ListAgentRunsResponse);
+  rpc CancelAgentRun(CancelAgentRunRequest) returns (CancelAgentRunResponse);
+
+  // Streaming
+  rpc StreamAgentProgress(StreamAgentProgressRequest) returns (stream AgentProgressUpdate);
 
   // Steps & Logs
   rpc ListAgentSteps(ListAgentStepsRequest) returns (ListAgentStepsResponse);
@@ -164,6 +168,24 @@ message ListAgentRunsRequest {
 }
 message ListAgentRunsResponse {
   repeated AgentRun runs = 1;
+}
+
+// ── Cancel ──
+
+message CancelAgentRunRequest { string run_id = 1; }
+message CancelAgentRunResponse { bool success = 1; }
+
+// ── Streaming ──
+
+message StreamAgentProgressRequest { string run_id = 1; }
+
+message AgentProgressUpdate {
+  string run_id = 1;
+  string phase = 2;
+  int32 step = 3;
+  string message = 4;
+  AgentRunStatus status = 5;
+  bool completed = 6;
 }
 
 // ── Steps & Logs ──
