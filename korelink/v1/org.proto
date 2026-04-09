@@ -33,6 +33,9 @@ service OrgService {
   rpc DeclineInvitation(DeclineInvitationRequest) returns (DeclineInvitationResponse);
   rpc RevokeInvitation(RevokeInvitationRequest) returns (RevokeInvitationResponse);
   rpc ResendInvitation(ResendInvitationRequest) returns (ResendInvitationResponse);
+
+  // Audit log queries
+  rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse);
 }
 
 // ── Core Types ──
@@ -280,4 +283,35 @@ message ResendInvitationRequest { string invitation_id = 1; }
 message ResendInvitationResponse {
   bool success = 1;
   string error = 2;
+}
+
+// ---- Audit Logs ----
+
+message AuditLogEntry {
+  string id = 1;
+  string org_id = 2;
+  string actor_id = 3;
+  string actor_email = 4;
+  string action = 5;
+  string resource_type = 6;
+  string resource_id = 7;
+  string metadata_json = 8;                           // JSON-encoded action-specific details
+  string ip_address = 9;
+  string user_agent = 10;
+  google.protobuf.Timestamp created_at = 11;
+}
+
+message ListAuditLogsRequest {
+  string org_id = 1;
+  string action_filter = 2;                           // optional: filter by action type
+  string actor_id_filter = 3;                         // optional: filter by actor
+  string resource_type_filter = 4;                    // optional: filter by resource type
+  google.protobuf.Timestamp since = 5;                // optional: start of date range
+  google.protobuf.Timestamp until = 6;                // optional: end of date range
+  int32 limit = 7;
+  int32 offset = 8;
+}
+message ListAuditLogsResponse {
+  repeated AuditLogEntry entries = 1;
+  int32 total = 2;
 }

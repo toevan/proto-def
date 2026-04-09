@@ -18,6 +18,11 @@ service AuthService {
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
   rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse);
   rpc RevokeAllSessions(RevokeAllSessionsRequest) returns (RevokeAllSessionsResponse);
+
+  // API Key management
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
+  rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
+  rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (RevokeAPIKeyResponse);
 }
 
 // User-level plan — governs individual user access and personal feature limits.
@@ -133,4 +138,46 @@ message RevokeAllSessionsRequest {}
 message RevokeAllSessionsResponse {
   bool success = 1;
   string error = 2;
+}
+
+// ---- API Key management ----
+
+message APIKeyInfo {
+  string id = 1;
+  string org_id = 2;
+  string name = 3;
+  string key_prefix = 4;                              // "kl_xxxx" (display only, not full key)
+  repeated string scopes = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  google.protobuf.Timestamp last_used_at = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message CreateAPIKeyRequest {
+  string org_id = 1;
+  string name = 2;
+  repeated string scopes = 3;
+  google.protobuf.Timestamp expires_at = 4;           // optional
+}
+message CreateAPIKeyResponse {
+  APIKeyInfo api_key = 1;
+  string secret = 2;                                  // full key — shown ONLY at creation
+}
+
+message ListAPIKeysRequest {
+  string org_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+message ListAPIKeysResponse {
+  repeated APIKeyInfo api_keys = 1;
+  int32 total = 2;
+}
+
+message RevokeAPIKeyRequest {
+  string org_id = 1;
+  string key_id = 2;
+}
+message RevokeAPIKeyResponse {
+  bool success = 1;
 }
