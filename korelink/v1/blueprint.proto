@@ -51,6 +51,10 @@ service BlueprintService {
   // Purchases (premium blueprints)
   rpc RecordBlueprintPurchase(RecordPurchaseRequest) returns (RecordPurchaseResponse);
   rpc GetUserPurchases(GetUserPurchasesRequest) returns (GetUserPurchasesResponse);
+
+  // Compliance Coverage
+  rpc ListComplianceFrameworks(ListComplianceFrameworksRequest) returns (ListComplianceFrameworksResponse);
+  rpc GetComplianceCoverage(GetComplianceCoverageRequest) returns (ComplianceCoverageReport);
 }
 
 // ── Core Blueprint Types ──
@@ -420,4 +424,57 @@ message BlueprintPurchase {
 }
 message GetUserPurchasesResponse {
   repeated BlueprintPurchase purchases = 1;
+}
+
+// ── Compliance Coverage ──
+
+message ComplianceFrameworkInfo {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+  string description = 4;
+}
+
+message ListComplianceFrameworksRequest {}
+message ListComplianceFrameworksResponse {
+  repeated ComplianceFrameworkInfo frameworks = 1;
+}
+
+message GetComplianceCoverageRequest {
+  string org_id = 1;
+  string project_id = 2;                             // optional: scope to project's adopted blueprints
+  string framework_id = 3;                            // e.g., "soc2", "iso27001"
+}
+
+message ComplianceCoverageReport {
+  string framework_id = 1;
+  string framework_name = 2;
+  int32 total_controls = 3;
+  int32 covered_controls = 4;
+  float coverage_percentage = 5;
+  repeated CoveredControlInfo covered = 6;
+  repeated UncoveredControlInfo gaps = 7;
+  repeated SuggestedBlueprintInfo suggestions = 8;
+}
+
+message CoveredControlInfo {
+  string control_id = 1;
+  string control_name = 2;
+  string category = 3;
+  string rule_id = 4;
+  string blueprint_id = 5;
+  string coverage = 6;                                // "full" or "partial"
+}
+
+message UncoveredControlInfo {
+  string control_id = 1;
+  string control_name = 2;
+  string description = 3;
+  string category = 4;
+}
+
+message SuggestedBlueprintInfo {
+  string blueprint_id = 1;
+  string blueprint_name = 2;
+  int32 additional_controls_covered = 3;
 }
