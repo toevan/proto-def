@@ -118,6 +118,7 @@ message Blueprint {
   repeated string validation_errors = 31;
   string blueprint_type = 32;      // "compliance", "structural", "design", "security"
   string visibility = 33;          // "public" (marketplace) or "org_private" (org-only)
+  string source = 34;              // "system" (KoreLink-maintained), "community" (user-created), "marketplace" (curated/paid)
 }
 
 message BlueprintVersionEntry {
@@ -223,6 +224,7 @@ message ListMarketplaceRequest {
   string license = 6;
   string project_type = 7;
   string framework = 8;
+  string source = 9;              // filter by source: "system", "community", "marketplace"
 }
 message ListMarketplaceResponse {
   repeated Blueprint blueprints = 1;
