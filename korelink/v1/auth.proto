@@ -23,6 +23,9 @@ service AuthService {
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
   rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (RevokeAPIKeyResponse);
+
+  // Platform role management (super-admin only)
+  rpc UpdatePlatformRole(UpdatePlatformRoleRequest) returns (UpdatePlatformRoleResponse);
 }
 
 // User-level plan — governs individual user access and personal feature limits.
@@ -180,4 +183,16 @@ message RevokeAPIKeyRequest {
 }
 message RevokeAPIKeyResponse {
   bool success = 1;
+}
+
+// ---- Platform Role Management ----
+
+message UpdatePlatformRoleRequest {
+  string user_id = 1;
+  PlatformRole new_role = 2;
+}
+message UpdatePlatformRoleResponse {
+  bool success = 1;
+  string previous_role = 2;
+  string new_role = 3;
 }
