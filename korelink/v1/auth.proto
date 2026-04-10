@@ -71,6 +71,7 @@ message AuthUser {
                                                     // No "author" role — blueprint publishing is a capability,
                                                     // not a role. Any user can create/publish blueprints.
   repeated string permissions = 10;                 // permissions assigned to the user (e.g. "project.create", "project.read", "project.update", "project.delete")
+  string username = 11;                              // provider username (e.g. GitHub login: "kwado-tech")
 }
 
 message OAuthLoginRequest {
