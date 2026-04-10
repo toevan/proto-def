@@ -62,6 +62,7 @@ message BlueprintRule {
   string target_layer = 4;   // layer being depended on
   bool   allowed = 5;
   string description = 6;
+  string enforcement = 7;    // "required", "recommended", "optional"
 }
 
 // Blueprint scope: project or repo
@@ -112,6 +113,7 @@ message Blueprint {
   google.protobuf.Timestamp reviewed_at = 30;
   repeated string validation_errors = 31;
   string blueprint_type = 32;      // "compliance", "structural", "design", "security"
+  string visibility = 33;          // "public" (marketplace) or "org_private" (org-only)
 }
 
 message BlueprintVersionEntry {
