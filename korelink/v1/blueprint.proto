@@ -76,6 +76,23 @@ enum BlueprintScope {
   BLUEPRINT_SCOPE_REPO = 2;
 }
 
+// Blueprint source: who maintains it
+enum BlueprintSource {
+  BLUEPRINT_SOURCE_UNSPECIFIED = 0;
+  BLUEPRINT_SOURCE_SYSTEM = 1;       // KoreLink-maintained essentials
+  BLUEPRINT_SOURCE_COMMUNITY = 2;    // user-created, shared publicly
+  BLUEPRINT_SOURCE_MARKETPLACE = 3;  // curated/paid blueprints
+}
+
+// Blueprint type: what it enforces
+enum BlueprintType {
+  BLUEPRINT_TYPE_UNSPECIFIED = 0;
+  BLUEPRINT_TYPE_SECURITY = 1;
+  BLUEPRINT_TYPE_COMPLIANCE = 2;
+  BLUEPRINT_TYPE_STRUCTURAL = 3;
+  BLUEPRINT_TYPE_DESIGN = 4;
+}
+
 // Blueprint reference with both ID and display name for UI rendering
 message BlueprintRef {
   string blueprint_id = 1;
@@ -201,6 +218,9 @@ message SearchBlueprintsRequest {
   string query = 1;
   repeated string tags = 2;
   int32 limit = 3;
+  BlueprintSource source = 4;      // filter by source (0 = all)
+  BlueprintType type = 5;          // filter by type (0 = all)
+  string language = 6;             // filter by language
 }
 message SearchBlueprintsResponse {
   repeated Blueprint blueprints = 1;
@@ -224,7 +244,8 @@ message ListMarketplaceRequest {
   string license = 6;
   string project_type = 7;
   string framework = 8;
-  string source = 9;              // filter by source: "system", "community", "marketplace"
+  BlueprintSource source = 9;     // filter by source (0 = all)
+  BlueprintType type = 10;        // filter by type (0 = all)
 }
 message ListMarketplaceResponse {
   repeated Blueprint blueprints = 1;
