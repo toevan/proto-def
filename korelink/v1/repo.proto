@@ -27,6 +27,7 @@ service RepoService {
   rpc BatchReindexRepos(BatchReindexReposRequest) returns (BatchReindexReposResponse);
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
   rpc StreamIndexProgress(StreamIndexProgressRequest) returns (stream IndexProgressUpdate);
+  rpc StreamBatchIndexProgress(StreamBatchIndexProgressRequest) returns (stream IndexProgressUpdate);
   rpc GetRepoProgressMetrics(GetRepoProgressMetricsRequest) returns (GetRepoProgressMetricsResponse);
 
   // Blueprint assignment (repo-scoped)
@@ -258,6 +259,10 @@ message GetIndexStatusRequest { string job_id = 1; }
 message GetIndexStatusResponse { IndexStatus status = 1; }
 
 message StreamIndexProgressRequest { string job_id = 1; }
+
+message StreamBatchIndexProgressRequest {
+  repeated string job_ids = 1;          // track multiple jobs over a single stream
+}
 
 message GetRepoProgressMetricsRequest {}
 message GetRepoProgressMetricsResponse {
