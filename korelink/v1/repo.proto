@@ -196,14 +196,22 @@ message OnboardRepoResponse {
 message OnboardReposRequest {
   string org_id = 1;
   repeated string github_ids = 2;       // multiple github repo IDs to onboard
-  string project_id = 3;                // optional — shared across all repos
+  string project_id = 3;                // existing project (mutually exclusive with new_project)
   repeated string blueprint_ids = 4;    // optional — shared across all repos
+  NewProjectSpec new_project = 5;       // create new project inline (mutually exclusive with project_id)
+}
+
+// Inline project creation spec for OnboardRepos.
+message NewProjectSpec {
+  string name = 1;                      // required project name
+  string description = 2;              // optional description
 }
 
 message OnboardReposResponse {
   repeated OnboardRepoResult results = 1;
   int32 succeeded = 2;
   int32 failed = 3;
+  string project_id = 4;               // populated when new_project was created or project_id was provided
 }
 
 message OnboardRepoResult {
