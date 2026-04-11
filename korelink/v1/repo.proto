@@ -164,8 +164,17 @@ message IndexProgressUpdate {
 
 // ── Requests/Responses ──
 
+// Controls which GitHub repos are returned based on onboarding status.
+enum GitHubRepoFilter {
+  GITHUB_REPO_FILTER_UNSPECIFIED = 0;   // default = available (non-onboarded) only
+  GITHUB_REPO_FILTER_ALL = 1;           // all repos from GitHub installation
+  GITHUB_REPO_FILTER_AVAILABLE = 2;     // only repos not yet onboarded
+  GITHUB_REPO_FILTER_ONBOARDED = 3;     // only repos already onboarded
+}
+
 message ListGitHubReposRequest {
   string org_id = 1;
+  GitHubRepoFilter filter = 2;          // defaults to available-only for backward compat
 }
 message ListGitHubReposResponse {
   repeated GitHubRepo repos = 1;
