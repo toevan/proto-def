@@ -17,12 +17,14 @@ service RepoService {
 
   // Repo CRUD
   rpc OnboardRepo(OnboardRepoRequest) returns (OnboardRepoResponse);
+  rpc OnboardRepos(OnboardReposRequest) returns (OnboardReposResponse);
   rpc GetRepo(GetRepoRequest) returns (GetRepoResponse);
   rpc ListRepos(ListReposRequest) returns (ListReposResponse);
   rpc DisconnectRepo(DisconnectRepoRequest) returns (DisconnectRepoResponse);
 
   // Indexing
   rpc ReindexRepo(ReindexRepoRequest) returns (ReindexRepoResponse);
+  rpc BatchReindexRepos(BatchReindexReposRequest) returns (BatchReindexReposResponse);
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
   rpc StreamIndexProgress(StreamIndexProgressRequest) returns (stream IndexProgressUpdate);
   rpc GetRepoProgressMetrics(GetRepoProgressMetricsRequest) returns (GetRepoProgressMetricsResponse);
@@ -179,6 +181,28 @@ message OnboardRepoResponse {
   string index_job_id = 2;              // track progress with GetIndexStatus or StreamIndexProgress
 }
 
+// ── Batch Onboarding ──
+
+message OnboardReposRequest {
+  string org_id = 1;
+  repeated string github_ids = 2;       // multiple github repo IDs to onboard
+  string project_id = 3;                // optional — shared across all repos
+  repeated string blueprint_ids = 4;    // optional — shared across all repos
+}
+
+message OnboardReposResponse {
+  repeated OnboardRepoResult results = 1;
+  int32 succeeded = 2;
+  int32 failed = 3;
+}
+
+message OnboardRepoResult {
+  string github_id = 1;
+  Repo repo = 2;                        // set on success
+  string index_job_id = 3;              // set on success
+  string error = 4;                     // set on failure
+}
+
 message GetRepoRequest { string repo_id = 1; }
 message GetRepoResponse { Repo repo = 1; }
 
@@ -208,6 +232,26 @@ message ReindexRepoResponse {
   string job_id = 1;
   bool accepted = 2;
   string error = 3;
+}
+
+// ── Batch Reindex ──
+
+message BatchReindexReposRequest {
+  repeated string repo_ids = 1;
+  bool full = 2;                        // true = full reindex, false = incremental
+}
+
+message BatchReindexReposResponse {
+  repeated ReindexRepoResult results = 1;
+  int32 succeeded = 2;
+  int32 failed = 3;
+}
+
+message ReindexRepoResult {
+  string repo_id = 1;
+  string job_id = 2;                    // set on success
+  bool accepted = 3;
+  string error = 4;                     // set on failure
 }
 
 message GetIndexStatusRequest { string job_id = 1; }
