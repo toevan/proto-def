@@ -55,6 +55,11 @@ service BlueprintService {
   // Compliance Coverage
   rpc ListComplianceFrameworks(ListComplianceFrameworksRequest) returns (ListComplianceFrameworksResponse);
   rpc GetComplianceCoverage(GetComplianceCoverageRequest) returns (ComplianceCoverageReport);
+
+  // Auto-Detected (Inferred) Blueprints
+  rpc GetInferredBlueprint(GetInferredBlueprintRequest) returns (GetInferredBlueprintResponse);
+  rpc AdoptInferredBlueprint(AdoptInferredBlueprintRequest) returns (AdoptInferredBlueprintResponse);
+  rpc ReinferBlueprint(ReinferBlueprintRequest) returns (ReinferBlueprintResponse);
 }
 
 // ── Core Blueprint Types ──
@@ -500,4 +505,45 @@ message SuggestedBlueprintInfo {
   string blueprint_id = 1;
   string blueprint_name = 2;
   int32 additional_controls_covered = 3;
+}
+
+// ── Auto-Detected (Inferred) Blueprint ──
+
+message GetInferredBlueprintRequest {
+  string repo_id = 1;
+}
+
+message GetInferredBlueprintResponse {
+  Blueprint blueprint = 1;
+  optional string pattern_name = 2;
+  double confidence = 3;
+  repeated string design_signals = 4;
+  string boundary_health = 5;
+  int32 layer_count = 6;
+  repeated CyclicDependency cyclic_groups = 7;
+  google.protobuf.Timestamp inferred_at = 8;
+}
+
+message CyclicDependency {
+  repeated string layers = 1;
+}
+
+message AdoptInferredBlueprintRequest {
+  string repo_id = 1;
+  string blueprint_id = 2;
+  string name = 3;
+  string description = 4;
+}
+
+message AdoptInferredBlueprintResponse {
+  Blueprint blueprint = 1;
+  string assignment_id = 2;
+}
+
+message ReinferBlueprintRequest {
+  string repo_id = 1;
+}
+
+message ReinferBlueprintResponse {
+  string job_id = 1;
 }
