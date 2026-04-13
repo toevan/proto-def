@@ -138,7 +138,7 @@ message GetProjectRequest { string project_id = 1; }
 message GetProjectResponse { Project project = 1; }
 
 message ListProjectsRequest {
-  string account_id = 1;                               // [NEW] scope to account
+  string org_id = 1;    // when set: list org-owned projects the caller has access to; when absent: list caller's personal projects
   int32 limit = 2;
   int32 offset = 3;
 }

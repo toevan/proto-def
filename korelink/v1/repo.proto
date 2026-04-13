@@ -160,6 +160,8 @@ message IndexProgressUpdate {
   int32 files_processed = 6;
   int32 symbols_found = 7;
   string current_file = 8;
+  int32 files_total = 9;
+  int32 edges_found = 10;
 }
 
 // ── Requests/Responses ──
