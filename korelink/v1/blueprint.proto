@@ -38,8 +38,7 @@ service BlueprintService {
   rpc ReviewBlueprint(ReviewBlueprintRequest) returns (ReviewBlueprintResponse);
   rpc GetBlueprintReviews(GetReviewsRequest) returns (GetReviewsResponse);
 
-  // Adoption & Updates
-  rpc AdoptBlueprint(AdoptBlueprintRequest) returns (AdoptBlueprintResponse);
+  // Assignment & Updates
   rpc AssignBlueprint(BlueprintAssignRequest) returns (BlueprintAssignResponse);
   rpc RemoveBlueprint(BlueprintRemoveRequest) returns (BlueprintRemoveResponse);
   rpc ListProjectBlueprints(ListProjectBlueprintsRequest) returns (ListProjectBlueprintsResponse);
@@ -361,20 +360,8 @@ message GetReviewsResponse {
   repeated BlueprintReview reviews = 1;
 }
 
-// ── Adoption & Updates ──
+// ── Assignment & Updates ──
 
-message AdoptBlueprintRequest {
-  string blueprint_id = 1;
-  string blueprint_version = 2;
-  string project_id = 3;
-  string user_id = 4;
-}
-message AdoptBlueprintResponse {
-  bool   success = 1;
-  string error = 2;
-  string license = 3;
-  float  price = 4;
-}
 
 message BlueprintAssignRequest {
   string blueprint_id = 1;
