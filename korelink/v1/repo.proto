@@ -61,6 +61,10 @@ message Repo {
   int32 file_count = 16;
   int32 violation_count = 17;
 
+  // Compliance metrics — derived from evidence_records at list time
+  float compliance_rate = 20;                          // 0.0–1.0; 0.0 when never scanned
+  google.protobuf.Timestamp last_scan_at = 21;         // last constraint evaluation; absent when never scanned
+
   // Timestamps
   google.protobuf.Timestamp created_at = 18;
   google.protobuf.Timestamp updated_at = 19;
@@ -233,9 +237,21 @@ message ListReposRequest {
   int32 limit = 4;
   int32 offset = 5;
 }
+
+// RepoListSummary drives the top-of-screen analytics bar on the Repositories page.
+// Counts are over ALL repos in the org (or project), not just the current page.
+message RepoListSummary {
+  int32 total            = 1;   // all non-deleted repos
+  int32 healthy          = 2;   // violation_count == 0
+  int32 warning          = 3;   // violation_count 1–5
+  int32 critical         = 4;   // violation_count > 5
+  int32 open_violations  = 5;   // SUM(violation_count) across all repos
+}
+
 message ListReposResponse {
-  repeated Repo repos = 1;
-  int32 total = 2;
+  repeated Repo repos      = 1;
+  int32 total              = 2;
+  RepoListSummary summary  = 3;  // top-of-screen analytics bar
 }
 
 message DisconnectRepoRequest { string repo_id = 1; }
