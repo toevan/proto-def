@@ -232,6 +232,29 @@ message GetRepoResponse {
   Repo repo = 1;
   repeated IndexRun index_runs = 2;                  // recent indexing runs
   repeated BlueprintAssignment blueprint_assignments = 3; // enriched assignments with violation/rule counts
+  repeated RepoActivity recent_activity = 4;          // unified timeline of repo events
+}
+
+// RepoActivity represents a single event in a repository's timeline.
+message RepoActivity {
+  string id = 1;
+  RepoActivityType type = 2;
+  string title = 3;
+  string description = 4;
+  string severity = 5;                                // "info", "success", "warning", "error"
+  string action_url = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+enum RepoActivityType {
+  REPO_ACTIVITY_UNSPECIFIED = 0;
+  REPO_ACTIVITY_ONBOARDED = 1;                        // repo was connected
+  REPO_ACTIVITY_INDEXED = 2;                          // indexing completed
+  REPO_ACTIVITY_INDEX_FAILED = 3;                     // indexing failed
+  REPO_ACTIVITY_PR_PASSED = 4;                        // PR check passed
+  REPO_ACTIVITY_PR_BLOCKED = 5;                       // PR check blocked (violations)
+  REPO_ACTIVITY_BLUEPRINT_ASSIGNED = 6;               // blueprint adopted
+  REPO_ACTIVITY_BLUEPRINT_REMOVED = 7;                // blueprint removed
 }
 
 // IndexRun represents a single completed or in-progress indexing run.
