@@ -64,6 +64,7 @@ message Repo {
   // Compliance metrics — derived from evidence_records at list time
   float compliance_rate = 20;                          // 0.0–1.0; 0.0 when never scanned
   google.protobuf.Timestamp last_scan_at = 21;         // last constraint evaluation; absent when never scanned
+  RepoHealthLabel health_label = 22;                   // computed from violation_count: healthy/warning/critical
 
   // Timestamps
   google.protobuf.Timestamp created_at = 18;
@@ -79,6 +80,13 @@ enum RepoStatus {
   REPO_STATUS_PARTIAL = 5;             // tree-sitter done, LSP failed
   REPO_STATUS_ERROR = 6;               // indexing failed
   REPO_STATUS_DISCONNECTED = 7;        // GitHub access revoked
+}
+
+enum RepoHealthLabel {
+  REPO_HEALTH_UNSPECIFIED = 0;          // not yet scanned
+  REPO_HEALTH_HEALTHY = 1;             // 0 violations
+  REPO_HEALTH_WARNING = 2;             // 1–5 violations
+  REPO_HEALTH_CRITICAL = 3;            // >5 violations
 }
 
 message RepoProjectRef {
