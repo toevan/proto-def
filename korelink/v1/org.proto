@@ -132,6 +132,7 @@ message GitHubOrg {
   bool already_connected = 4;            // true if already linked to a KoreLink org
   string existing_org_id = 5;            // KoreLink org ID if already connected
   int64 github_id = 6;                   // numeric GitHub org ID (for installation deep-link)
+  bool app_installed = 7;                // true if KoreLink GitHub App is installed on this org
 }
 
 // ── Requests/Responses ──
