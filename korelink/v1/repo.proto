@@ -255,6 +255,9 @@ enum RepoActivityType {
   REPO_ACTIVITY_PR_BLOCKED = 5;                       // PR check blocked (violations)
   REPO_ACTIVITY_BLUEPRINT_ASSIGNED = 6;               // blueprint adopted
   REPO_ACTIVITY_BLUEPRINT_REMOVED = 7;                // blueprint removed
+  REPO_ACTIVITY_PR_WARNING = 8;                       // PR check passed with warnings
+  REPO_ACTIVITY_PR_PENDING = 9;                       // PR check scanning
+  REPO_ACTIVITY_PR_ERROR = 10;                        // PR check errored
 }
 
 // IndexRun represents a single completed or in-progress indexing run.
