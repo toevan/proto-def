@@ -94,6 +94,10 @@ message CanvasUpdate {
   repeated FileTreeNode file_tree_updates = 6;
   GraphMetrics metrics = 7;
   CanvasUpdateType update_type = 8;
+
+  // Source context — which entry point produced this update
+  string repo_id = 9;
+  string pr_number = 10;
 }
 
 enum CanvasUpdateType {
@@ -102,7 +106,14 @@ enum CanvasUpdateType {
   CANVAS_UPDATE_LAYOUT = 2;
 }
 
-message StreamCanvasRequest { string project_id = 1; }
+message StreamCanvasRequest {
+  string project_id = 1;
+  string repo_id = 2;          // open canvas from a repo
+  string pr_number = 3;        // open canvas from a PR (diff view)
+  string base_ref = 4;         // optional: for PR diff view
+  string head_ref = 5;         // optional: for PR diff view
+  string view = 6;             // "architecture", "dependencies", "data_flow", "violations", "diff"
+}
 
 // ── GetRepositoryGraph ──
 
