@@ -162,23 +162,36 @@ message FileTreeNode {
   repeated FileTreeNode children = 7;
 }
 
+enum ViolationSeverity {
+  VIOLATION_SEVERITY_INFO = 0;
+  VIOLATION_SEVERITY_WARNING = 1;
+  VIOLATION_SEVERITY_ERROR = 2;
+  VIOLATION_SEVERITY_CRITICAL = 3;
+}
+
+enum ViolationCategory {
+  VIOLATION_CATEGORY_STRUCTURAL = 0;   // layer boundary violations
+  VIOLATION_CATEGORY_SECURITY = 1;     // secrets, weak crypto, encryption
+  VIOLATION_CATEGORY_COMPLIANCE = 2;   // data flow, deletion, breach notification
+  VIOLATION_CATEGORY_DATA_FLOW = 3;    // PII/PHI/PAN data propagation
+}
+
 message ViolationSummary {
   string node_id = 1;
   int32 violation_count = 2;
-  string most_severe = 3;          // "CRITICAL", "ERROR", "WARNING"
+  ViolationSeverity most_severe = 3;
   repeated string violation_ids = 4;
-  repeated NodeViolation details = 5; // individual violation details for rendering
+  repeated NodeViolation details = 5;
 }
 
 // NodeViolation represents a single violation attached to a canvas node.
-// Used by the client to render violation badges, tooltips, and lists.
 message NodeViolation {
-  string rule_id = 1;              // e.g., "secret-detection-high", "layer-violation"
-  string message = 2;              // human-readable description
-  string severity = 3;             // "CRITICAL", "ERROR", "WARNING", "INFO"
-  string category = 4;             // "structural", "security", "compliance", "data_flow"
-  string file_path = 5;            // source file (for click-to-navigate)
-  int32 line = 6;                  // line number in file
+  string rule_id = 1;
+  string message = 2;
+  ViolationSeverity severity = 3;
+  ViolationCategory category = 4;
+  string file_path = 5;
+  int32 line = 6;
 }
 
 message GraphMetrics {
