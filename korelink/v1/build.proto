@@ -162,13 +162,6 @@ message FileTreeNode {
   repeated FileTreeNode children = 7;
 }
 
-enum ViolationSeverity {
-  VIOLATION_SEVERITY_INFO = 0;
-  VIOLATION_SEVERITY_WARNING = 1;
-  VIOLATION_SEVERITY_ERROR = 2;
-  VIOLATION_SEVERITY_CRITICAL = 3;
-}
-
 enum ViolationCategory {
   VIOLATION_CATEGORY_STRUCTURAL = 0;   // layer boundary violations
   VIOLATION_CATEGORY_SECURITY = 1;     // secrets, weak crypto, encryption
@@ -179,7 +172,7 @@ enum ViolationCategory {
 message ViolationSummary {
   string node_id = 1;
   int32 violation_count = 2;
-  ViolationSeverity most_severe = 3;
+  ViolationSeverity most_severe = 3;   // reused from types.proto
   repeated string violation_ids = 4;
   repeated NodeViolation details = 5;
 }
@@ -188,7 +181,7 @@ message ViolationSummary {
 message NodeViolation {
   string rule_id = 1;
   string message = 2;
-  ViolationSeverity severity = 3;
+  ViolationSeverity severity = 3;      // reused from types.proto
   ViolationCategory category = 4;
   string file_path = 5;
   int32 line = 6;
