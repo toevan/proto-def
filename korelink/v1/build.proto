@@ -137,6 +137,19 @@ message GetRepositoryGraphReply {
   repeated FileTreeNode file_tree = 3;
   repeated ViolationSummary violations = 4;
   GraphMetrics metrics = 5;
+  repeated CanvasCluster clusters = 6;     // layer groupings for visual clustering
+}
+
+// CanvasCluster represents a visual grouping of nodes by architectural layer.
+// The client renders a labeled bounding box around each cluster.
+message CanvasCluster {
+  string layer = 1;           // layer ID (e.g., "presentation", "domain")
+  string label = 2;           // display label (e.g., "Presentation")
+  double x = 3;               // top-left X of bounding box
+  double y = 4;               // top-left Y of bounding box
+  double width = 5;           // bounding box width
+  double height = 6;          // bounding box height
+  int32 count = 7;            // number of nodes in this cluster
 }
 
 message FileTreeNode {
