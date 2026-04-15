@@ -106,13 +106,21 @@ enum CanvasUpdateType {
   CANVAS_UPDATE_LAYOUT = 2;
 }
 
+enum CanvasView {
+  CANVAS_VIEW_ARCHITECTURE = 0;    // full graph — all nodes, all edges (default)
+  CANVAS_VIEW_DEPENDENCIES = 1;    // structural edges only, no violation highlighting
+  CANVAS_VIEW_DATA_FLOW = 2;       // nodes with data-flow tags (PII/PAN/PHI/CDE) and their connections
+  CANVAS_VIEW_VIOLATIONS = 3;      // violation edges and the nodes they connect
+  CANVAS_VIEW_DIFF = 4;            // changed files only (requires base_ref/head_ref)
+}
+
 message StreamCanvasRequest {
   string project_id = 1;
   string repo_id = 2;          // open canvas from a repo
   string pr_number = 3;        // open canvas from a PR (diff view)
   string base_ref = 4;         // optional: for PR diff view
   string head_ref = 5;         // optional: for PR diff view
-  string view = 6;             // "architecture", "dependencies", "data_flow", "violations", "diff"
+  CanvasView view = 6;
 }
 
 // ── GetRepositoryGraph ──
@@ -120,7 +128,7 @@ message StreamCanvasRequest {
 message GetRepositoryGraphRequest {
   string project_id = 1;
   string repo_id = 2;
-  string view = 3;          // "architecture", "dependencies", "data_flow", "violations", "diff"
+  CanvasView view = 3;
   string pr_number = 4;     // optional: for diff view
   string base_ref = 5;      // optional: for diff view
   string head_ref = 6;      // optional: for diff view
