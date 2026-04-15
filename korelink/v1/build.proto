@@ -115,12 +115,9 @@ enum CanvasView {
 }
 
 message StreamCanvasRequest {
-  string project_id = 1;
-  string repo_id = 2;          // open canvas from a repo
-  string pr_number = 3;        // open canvas from a PR (diff view)
-  string base_ref = 4;         // optional: for PR diff view
-  string head_ref = 5;         // optional: for PR diff view
-  CanvasView view = 6;
+  string repo_id = 1;          // open canvas from a repo
+  string pr_number = 2;        // open canvas from a PR (diff view)
+  CanvasView view = 3;
 }
 
 // ── GetRepositoryGraph ──
