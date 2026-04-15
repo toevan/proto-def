@@ -126,12 +126,11 @@ message StreamCanvasRequest {
 // ── GetRepositoryGraph ──
 
 message GetRepositoryGraphRequest {
-  string project_id = 1;
-  string repo_id = 2;
-  CanvasView view = 3;
-  string pr_number = 4;     // optional: for diff view
-  string base_ref = 5;      // optional: for diff view
-  string head_ref = 6;      // optional: for diff view
+  string repo_id = 1;
+  CanvasView view = 2;
+  string pr_number = 3;     // optional: for diff view
+  string base_ref = 4;      // optional: for diff view
+  string head_ref = 5;      // optional: for diff view
 }
 
 message GetRepositoryGraphReply {
