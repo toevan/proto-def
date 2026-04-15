@@ -167,6 +167,18 @@ message ViolationSummary {
   int32 violation_count = 2;
   string most_severe = 3;          // "CRITICAL", "ERROR", "WARNING"
   repeated string violation_ids = 4;
+  repeated NodeViolation details = 5; // individual violation details for rendering
+}
+
+// NodeViolation represents a single violation attached to a canvas node.
+// Used by the client to render violation badges, tooltips, and lists.
+message NodeViolation {
+  string rule_id = 1;              // e.g., "secret-detection-high", "layer-violation"
+  string message = 2;              // human-readable description
+  string severity = 3;             // "CRITICAL", "ERROR", "WARNING", "INFO"
+  string category = 4;             // "structural", "security", "compliance", "data_flow"
+  string file_path = 5;            // source file (for click-to-navigate)
+  int32 line = 6;                  // line number in file
 }
 
 message GraphMetrics {
