@@ -207,7 +207,10 @@ message CreateBlueprintResponse {
   repeated ValidationIssue validation_issues = 2;
 }
 
-message GetBlueprintRequest { string blueprint_id = 1; }
+message GetBlueprintRequest {
+  string blueprint_id = 1;   // lookup by UUID
+  string slug = 2;           // lookup by URL-friendly slug (published blueprints only)
+}
 
 message UpdateBlueprintRequest {
   string blueprint_id = 1;
