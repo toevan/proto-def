@@ -40,6 +40,9 @@ service BuildService {
 
   // What-If simulation — evaluate impact of hypothetical architectural changes
   rpc EvaluateWhatIf(EvaluateWhatIfRequest) returns (EvaluateWhatIfReply);
+
+  // AI node analysis — contextual AI analysis for a selected canvas node
+  rpc AnalyzeNode(AnalyzeNodeRequest) returns (AnalyzeNodeResponse);
 }
 
 // ── AI Code Generation ──
@@ -461,4 +464,20 @@ message WhatIfViolationChange {
   string target_node_id = 2;
   string edge_kind = 3;
   string reason = 4;
+}
+
+// ── AnalyzeNode (AI) ──
+
+message AnalyzeNodeRequest {
+  string repo_id = 1;
+  string node_id = 2;
+  string question = 3;       // optional: specific question about the node
+}
+
+message AnalyzeNodeResponse {
+  string summary = 1;                             // what this component does
+  string risk_assessment = 2;                      // risk level + reasoning
+  repeated string refactoring_suggestions = 3;
+  repeated string compliance_notes = 4;
+  string raw_response = 5;                         // full AI response
 }
