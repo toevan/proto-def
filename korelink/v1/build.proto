@@ -73,6 +73,7 @@ message CanvasNode {
   double x = 6;
   double y = 7;
   map<string, string> style = 8;
+  string file_path = 9;        // source file path for click-to-navigate
 }
 
 message CanvasEdge {
