@@ -160,6 +160,7 @@ message FileTreeNode {
   int32 violation_count = 5;
   string linked_node_id = 6;
   repeated FileTreeNode children = 7;
+  repeated string linked_node_ids = 8; // all canvas node IDs in this file
 }
 
 enum ViolationCategory {
