@@ -43,6 +43,10 @@ service BuildService {
 
   // AI node analysis — contextual AI analysis for a selected canvas node
   rpc AnalyzeNode(AnalyzeNodeRequest) returns (AnalyzeNodeResponse);
+
+  // Canvas chat history — persisted AI conversations per repository
+  rpc GetCanvasChatHistory(GetCanvasChatHistoryRequest) returns (GetCanvasChatHistoryReply);
+  rpc ClearCanvasChatHistory(ClearCanvasChatHistoryRequest) returns (ClearCanvasChatHistoryReply);
 }
 
 // ── AI Code Generation ──
@@ -492,4 +496,35 @@ message AnalyzeNodeResponse {
   repeated string refactoring_suggestions = 3;
   repeated string compliance_notes = 4;
   string raw_response = 5;                         // full AI response
+}
+
+// ── Canvas Chat History ──
+
+message CanvasChatMessage {
+  string id = 1;
+  string repo_id = 2;
+  string user_id = 3;
+  string node_id = 4;                             // optional: which node was selected
+  string role = 5;                                 // "user" or "assistant"
+  string content = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message GetCanvasChatHistoryRequest {
+  string repo_id = 1;
+  int32 limit = 2;                                 // default 50
+  int32 offset = 3;                                // default 0
+}
+
+message GetCanvasChatHistoryReply {
+  repeated CanvasChatMessage messages = 1;
+  int32 total_count = 2;
+}
+
+message ClearCanvasChatHistoryRequest {
+  string repo_id = 1;
+}
+
+message ClearCanvasChatHistoryReply {
+  bool success = 1;
 }
