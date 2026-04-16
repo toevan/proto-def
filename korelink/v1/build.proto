@@ -73,7 +73,32 @@ message CanvasNode {
   double x = 6;
   double y = 7;
   map<string, string> style = 8;
-  string file_path = 9;        // source file path for click-to-navigate
+  string file_path = 9;                   // source file path for click-to-navigate
+  NodeMetrics metrics = 10;               // computed metrics for the detail panel
+}
+
+// NodeMetrics carries structured detail data for the node info panel.
+message NodeMetrics {
+  int32 line_count = 1;
+  repeated string method_names = 2;       // methods/functions in this symbol's file
+  repeated NodeDependency dependencies = 3; // outgoing: this node depends on these
+  repeated NodeDependency dependents = 4;   // incoming: these nodes depend on this
+  repeated NodeDataFlow data_flows = 5;     // data flow connections (PII/PHI/PAN)
+}
+
+// NodeDependency describes a single dependency relationship for the detail panel.
+message NodeDependency {
+  string node_id = 1;         // target/source canvas node ID
+  string label = 2;           // display name (e.g., "PaymentService")
+  string kind = 3;            // "imports", "extends", "implements", "calls"
+}
+
+// NodeDataFlow describes a data flow connection for the detail panel.
+message NodeDataFlow {
+  string node_id = 1;         // connected node ID
+  string label = 2;           // display name (e.g., "Payment")
+  string tag = 3;             // data flow tag (e.g., "PAN", "PII")
+  string direction = 4;       // "inbound" or "outbound"
 }
 
 message CanvasEdge {
