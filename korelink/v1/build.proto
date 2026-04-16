@@ -167,6 +167,18 @@ message GetRepositoryGraphReply {
   repeated ViolationSummary violations = 4;
   GraphMetrics metrics = 5;
   repeated CanvasCluster clusters = 6;     // layer groupings for visual clustering
+  repeated SuggestedAction suggested_actions = 7; // contextual quick actions for the chat panel
+}
+
+// SuggestedAction is a contextual quick action derived from the repo's
+// violations and architecture. The client renders these as tappable chips
+// that trigger an AnalyzeNode call with the pre-filled question.
+message SuggestedAction {
+  string label = 1;          // display text (e.g., "Fix PII violation")
+  string question = 2;       // pre-filled question for AnalyzeNode RPC
+  string node_id = 3;        // optional: target node (empty = repo-level)
+  string category = 4;       // "fix", "analyze", "refactor"
+  ViolationSeverity severity = 5; // visual priority indicator
 }
 
 // CanvasCluster represents a visual grouping of nodes by architectural layer.
