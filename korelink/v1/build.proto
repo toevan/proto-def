@@ -172,6 +172,7 @@ message GetRepositoryGraphReply {
   GraphMetrics metrics = 5;
   repeated CanvasCluster clusters = 6;     // layer groupings for visual clustering
   repeated SuggestedAction suggested_actions = 7; // contextual quick actions for the chat panel
+  repeated FileViolation file_violations = 8;     // file-level violations not attached to any node
 }
 
 // SuggestedAction is a contextual quick action derived from the repo's
@@ -228,6 +229,17 @@ message NodeViolation {
   string rule_id = 1;
   string message = 2;
   ViolationSeverity severity = 3;      // reused from types.proto
+  ViolationCategory category = 4;
+  string file_path = 5;
+  int32 line = 6;
+}
+
+// FileViolation represents a violation on a file with no architectural node.
+// Rendered separately from the graph (e.g., in a violations list panel).
+message FileViolation {
+  string rule_id = 1;
+  string message = 2;
+  ViolationSeverity severity = 3;
   ViolationCategory category = 4;
   string file_path = 5;
   int32 line = 6;
