@@ -66,11 +66,15 @@ service BlueprintService {
 message BlueprintRule {
   string id = 1;
   string name = 2;
-  string source_layer = 3;   // layer that depends
-  string target_layer = 4;   // layer being depended on
-  bool   allowed = 5;
+  string source_layer = 3;   // layer that depends (architectural rules)
+  string target_layer = 4;   // layer being depended on (architectural rules)
+  bool   allowed = 5;        // architectural rules only
   string description = 6;
   string enforcement = 7;    // "required", "recommended", "optional"
+  string rule_type = 8;      // constraint type: "secret_detection", "iac_access_control", etc.
+  string severity = 9;       // "CRITICAL", "ERROR", "WARNING", "INFO"
+  string params_json = 10;   // JSON-encoded rule parameters
+  string controls_json = 11; // JSON-encoded compliance control mappings
 }
 
 // Blueprint scope: project or repo
