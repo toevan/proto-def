@@ -34,6 +34,7 @@ service BlueprintService {
   rpc CreateBlueprintVersion(CreateVersionRequest) returns (CreateVersionResponse);
   rpc GetBlueprintVersionHistory(GetVersionHistoryRequest) returns (GetVersionHistoryResponse);
   rpc CompareBlueprintVersions(CompareBlueprintVersionsRequest) returns (CompareBlueprintVersionsResponse);
+  rpc GetBlueprintImpactAnalysis(GetBlueprintImpactAnalysisRequest) returns (GetBlueprintImpactAnalysisResponse);
 
   // User Reviews
   rpc ReviewBlueprint(ReviewBlueprintRequest) returns (ReviewBlueprintResponse);
@@ -569,4 +570,31 @@ message FieldDiff {
   string field = 1;
   string old_value = 2;
   string new_value = 3;
+}
+
+// ── Impact Analysis ──
+
+message GetBlueprintImpactAnalysisRequest {
+  string blueprint_id = 1;             // current adopted version
+  string target_version_id = 2;        // version to upgrade to
+}
+
+message GetBlueprintImpactAnalysisResponse {
+  int32 repos_using = 1;               // repos currently adopting this blueprint
+  int32 repos_governed = 2;            // total repos in scope for context
+  int32 new_violations = 3;            // estimated new violations if upgraded
+  int32 prs_affected = 4;              // open PRs that would fail
+  float compliance_rate = 5;           // percentage of repos already passing
+  repeated AffectedRepo affected_repos = 6;
+  repeated RuleDiff new_rules = 7;     // rules added in target version
+  repeated RuleDiff removed_rules = 8; // rules removed in target version
+}
+
+message AffectedRepo {
+  string repo_id = 1;
+  string repo_name = 2;
+  string current_version = 3;
+  string target_version = 4;
+  int32 current_violations = 5;
+  string status = 6;                   // "passing", "would_fail", "already_failing"
 }
