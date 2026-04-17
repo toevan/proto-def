@@ -33,6 +33,7 @@ service BlueprintService {
   // Versioning
   rpc CreateBlueprintVersion(CreateVersionRequest) returns (CreateVersionResponse);
   rpc GetBlueprintVersionHistory(GetVersionHistoryRequest) returns (GetVersionHistoryResponse);
+  rpc CompareBlueprintVersions(CompareBlueprintVersionsRequest) returns (CompareBlueprintVersionsResponse);
 
   // User Reviews
   rpc ReviewBlueprint(ReviewBlueprintRequest) returns (ReviewBlueprintResponse);
@@ -541,4 +542,31 @@ message ReinferBlueprintRequest {
 
 message ReinferBlueprintResponse {
   string job_id = 1;
+}
+
+// ── Version Diff ──
+
+message CompareBlueprintVersionsRequest {
+  string from_blueprint_id = 1;   // base version (older)
+  string to_blueprint_id = 2;     // target version (newer)
+}
+
+message CompareBlueprintVersionsResponse {
+  string from_version = 1;
+  string to_version = 2;
+  repeated RuleDiff rule_diffs = 3;
+  repeated FieldDiff field_diffs = 4;
+}
+
+message RuleDiff {
+  string rule_id = 1;
+  string change_type = 2;        // "added", "removed", "modified"
+  BlueprintRule old_rule = 3;     // nil for added rules
+  BlueprintRule new_rule = 4;     // nil for removed rules
+}
+
+message FieldDiff {
+  string field = 1;
+  string old_value = 2;
+  string new_value = 3;
 }
