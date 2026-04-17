@@ -60,6 +60,7 @@ message Repo {
   int32 edge_count = 15;
   int32 file_count = 16;
   int32 violation_count = 17;
+  int32 layer_count = 23;
 
   // Compliance metrics — derived from evidence_records at list time
   float compliance_rate = 20;                          // 0.0–1.0; 0.0 when never scanned
