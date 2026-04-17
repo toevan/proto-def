@@ -144,6 +144,7 @@ message Blueprint {
   string blueprint_type = 32;      // "compliance", "structural", "design", "security"
   string visibility = 33;          // "public" (marketplace) or "org_private" (org-only)
   string source = 34;              // "system" (KoreLink-maintained), "community" (user-created), "marketplace" (curated/paid)
+  string documentation = 35;       // markdown documentation: implementation guides, best practices, usage instructions
 }
 
 message BlueprintVersionEntry {
