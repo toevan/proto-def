@@ -580,6 +580,7 @@ message FieldDiff {
 message GetBlueprintImpactAnalysisRequest {
   string blueprint_id = 1;             // current adopted version
   string target_version_id = 2;        // version to upgrade to
+  string org_id = 3;                   // scope results to this organization
 }
 
 message GetBlueprintImpactAnalysisResponse {
@@ -606,6 +607,7 @@ message AffectedRepo {
 
 message ListBlueprintAdoptersRequest {
   string blueprint_id = 1;
+  string org_id = 2;                   // scope results to this organization
 }
 
 message ListBlueprintAdoptersResponse {
