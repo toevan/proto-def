@@ -148,6 +148,9 @@ message Blueprint {
   string visibility = 33;          // "public" (marketplace) or "org_private" (org-only)
   string source = 34;              // "system" (KoreLink-maintained), "community" (user-created), "marketplace" (curated/paid)
   string documentation = 35;       // markdown documentation: implementation guides, best practices, usage instructions
+  google.protobuf.Timestamp deprecated_at = 36;  // when the blueprint was deprecated (null = active)
+  string successor_id = 37;                       // ID of the successor blueprint (null = no successor)
+  string migration_guide = 38;                    // markdown migration instructions
 }
 
 message BlueprintVersionEntry {
@@ -592,6 +595,14 @@ message GetBlueprintImpactAnalysisResponse {
   repeated AffectedRepo affected_repos = 6;
   repeated RuleDiff new_rules = 7;     // rules added in target version
   repeated RuleDiff removed_rules = 8; // rules removed in target version
+  DeprecationInfo deprecation = 9;     // deprecation status of the target version
+}
+
+message DeprecationInfo {
+  bool is_deprecated = 1;
+  string successor_id = 2;
+  string successor_name = 3;
+  string migration_guide = 4;
 }
 
 message AffectedRepo {
