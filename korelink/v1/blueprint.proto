@@ -48,6 +48,7 @@ service BlueprintService {
   rpc CheckBlueprintUpdates(CheckUpdatesRequest) returns (CheckUpdatesResponse);
   rpc GetBlueprintAnalytics(GetAnalyticsRequest) returns (BlueprintAnalytics);
   rpc UpdateAdoptionParams(UpdateAdoptionParamsRequest) returns (BlueprintAssignResponse);
+  rpc ListBlueprintAdopters(ListBlueprintAdoptersRequest) returns (ListBlueprintAdoptersResponse);
 
   // Purchases (premium blueprints)
   rpc RecordBlueprintPurchase(RecordPurchaseRequest) returns (RecordPurchaseResponse);
@@ -597,4 +598,25 @@ message AffectedRepo {
   string target_version = 4;
   int32 current_violations = 5;
   string status = 6;                   // "passing", "would_fail", "already_failing"
+}
+
+// ── Blueprint Adopters ──
+
+message ListBlueprintAdoptersRequest {
+  string blueprint_id = 1;
+}
+
+message ListBlueprintAdoptersResponse {
+  repeated BlueprintAdopter project_adopters = 1;  // project-scope adoptions
+  repeated BlueprintAdopter repo_adopters = 2;     // repo-scope adoptions
+  int32 total = 3;
+}
+
+message BlueprintAdopter {
+  string adopter_id = 1;                            // project_id or repo_id
+  string adopter_name = 2;                          // project name or repo name
+  string scope = 3;                                 // "project" or "repo"
+  string blueprint_version = 4;
+  int32 violation_count = 5;
+  google.protobuf.Timestamp adopted_at = 6;
 }
