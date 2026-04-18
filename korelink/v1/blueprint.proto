@@ -650,6 +650,7 @@ message DryRunBlueprintConstraintsResponse {
   int32 total_violations = 2;
   int32 total_affected_files = 3;
   int32 repos_evaluated = 4;
+  int32 repos_failed = 5;                  // repos where evaluation failed (best-effort)
 }
 
 message RepoDryRunResult {
