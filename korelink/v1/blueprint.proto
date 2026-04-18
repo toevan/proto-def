@@ -166,6 +166,8 @@ message BlueprintReview {
   int32  rating = 4;             // 1-5
   string comment = 5;
   google.protobuf.Timestamp created_at = 6;
+  string user_name = 7;
+  string user_avatar_url = 8;
 }
 
 message BlueprintAdoption {
