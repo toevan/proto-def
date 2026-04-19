@@ -612,7 +612,8 @@ message AffectedRepo {
   string current_version = 3;
   string target_version = 4;
   int32 current_violations = 5;
-  string status = 6;                   // "passing", "would_fail", "already_failing"
+  string status = 6;                   // "pending", "passing", "would_fail", "already_failing"
+  bool evaluated = 7;                  // false = repo not yet indexed/evaluated with this blueprint
 }
 
 // ── Blueprint Adopters ──
