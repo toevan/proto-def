@@ -606,13 +606,23 @@ message DeprecationInfo {
   string migration_guide = 4;
 }
 
+// Status of a repo relative to a blueprint upgrade.
+enum RepoImpactStatus {
+  REPO_IMPACT_STATUS_UNSPECIFIED = 0;
+  REPO_IMPACT_STATUS_INDEXING = 1;         // active index job, results may be stale
+  REPO_IMPACT_STATUS_PENDING = 2;          // never indexed/evaluated with this blueprint
+  REPO_IMPACT_STATUS_PASSING = 3;          // all rules pass
+  REPO_IMPACT_STATUS_WOULD_FAIL = 4;       // currently passing, new rules would introduce violations
+  REPO_IMPACT_STATUS_ALREADY_FAILING = 5;  // already has violations on current version
+}
+
 message AffectedRepo {
   string repo_id = 1;
   string repo_name = 2;
   string current_version = 3;
   string target_version = 4;
   int32 current_violations = 5;
-  string status = 6;                   // "indexing", "pending", "passing", "would_fail", "already_failing"
+  RepoImpactStatus status = 6;
   bool evaluated = 7;                  // false = repo not yet indexed/evaluated with this blueprint
   bool is_indexing = 8;                // true = repo has an active index job (results may be stale)
 }
