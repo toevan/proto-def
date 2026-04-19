@@ -671,6 +671,8 @@ message RepoDryRunResult {
   int32 violation_count = 3;
   int32 affected_file_count = 4;
   repeated DryRunViolation violations = 5;
+  bool skipped = 6;                        // true = repo was not evaluated (language mismatch, etc.)
+  string skip_reason = 7;                  // human-readable reason when skipped (e.g. "language not supported")
 }
 
 message DryRunViolation {
