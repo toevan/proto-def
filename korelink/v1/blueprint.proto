@@ -383,15 +383,23 @@ message GetReviewsResponse {
 
 message BlueprintAssignRequest {
   string blueprint_id = 1;
-  string blueprint_version = 2; // optional; defaults to latest published version
-  oneof target {
-    string project_id = 3;
-    string repo_id = 4;
-  }
+  string blueprint_version = 2;          // optional; defaults to latest published version
+  repeated string project_ids = 3;       // project-scoped targets (compliance, security)
+  repeated string repo_ids = 4;          // repo-scoped targets (structural, design)
   string param_overrides_json = 5;       // optional: per-rule param overrides JSON
 }
+
+// Per-target assignment result. On failure, assignment is nil and error is set.
+message AssignmentResult {
+  string target_id = 1;                  // project_id or repo_id that was targeted
+  ScopedBlueprintAssignment assignment = 2; // populated on success
+  string error = 3;                      // populated on failure (savepoint rolled back)
+}
+
 message BlueprintAssignResponse {
-  ScopedBlueprintAssignment assignment = 1;
+  repeated AssignmentResult results = 1;
+  int32 succeeded = 2;
+  int32 failed = 3;
 }
 
 message UpdateAdoptionParamsRequest {
