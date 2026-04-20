@@ -259,7 +259,7 @@ message PublishBlueprintResponse {
 message ListMarketplaceRequest {
   repeated string tags = 1;
   string language = 2;
-  string sort_by = 3;
+  string sort_by = 3;              // "downloads", "newest", "relevance" (default when query is set)
   int32  limit = 4;
   int32  offset = 5;
   string license = 6;
@@ -267,6 +267,7 @@ message ListMarketplaceRequest {
   string framework = 8;
   BlueprintSource source = 9;     // filter by source (0 = all)
   BlueprintType type = 10;        // filter by type (0 = all)
+  string query = 11;              // free-text search against name, tags, languages, frameworks
 }
 message ListMarketplaceResponse {
   repeated Blueprint blueprints = 1;
