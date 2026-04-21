@@ -79,6 +79,12 @@ message Project {
 
   // Agents [NEW — UI displays agents per project]
   repeated string agents = 16;
+
+  // Scalar counts for list endpoints (avoids hydrating nested objects).
+  // Detail endpoint (GetProject) populates the repeated fields above instead.
+  int32 repo_count = 17;
+  int32 blueprint_count = 18;
+  int32 member_count = 19;
 }
 
 enum ProjectStatus {
