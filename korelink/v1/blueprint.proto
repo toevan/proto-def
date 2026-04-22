@@ -712,11 +712,16 @@ message OrgAdoptedBlueprintStats {
 // Bulk-toggle is_active on adoption rows of a single blueprint across many
 // project or repo adopters in one call. adopter_ids are project_ids when
 // scope=PROJECT and repo_ids when scope=REPO — the two lists cannot mix.
+// org_id gates the caller (must be an org member) and scopes coverage —
+// adopters outside the org are silently skipped in the SQL flip so a
+// cross-org id leak can't flip foreign adoption state even if the caller
+// passed per-adopter RBAC checks in a weaker deployment.
 message SetAdoptionStatusRequest {
   string blueprint_id = 1;
   BlueprintScope scope = 2;            // required; determines which column adopter_ids maps to
   repeated string adopter_ids = 3;     // project_ids or repo_ids; must be non-empty
   bool is_active = 4;                  // target state
+  string org_id = 5;                   // required; org that owns the adopters
 }
 
 message SetAdoptionStatusResponse {
