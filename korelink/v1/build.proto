@@ -114,6 +114,12 @@ message CanvasEdge {
   string target_node_id = 3;
   string kind = 4;
   bool   is_violation = 5;
+  // Optional short label (e.g., "GDPR Art.32") rendered near the edge.
+  // Used by synthetic violation-flow edges to cite the breaching rule.
+  string label = 6;
+  // Rule ID backing a synthetic violation edge (kind = "violation_flow").
+  // Empty for structural dependency edges.
+  string rule_id = 7;
 }
 
 message CanvasUpdate {
@@ -232,6 +238,14 @@ message NodeViolation {
   ViolationCategory category = 4;
   string file_path = 5;
   int32 line = 6;
+  // Optional target endpoint — the other side of a relationship violation
+  // (e.g., the service an unauthorized caller invokes). Clients use these
+  // to draw dashed violation-flow edges between source and target nodes.
+  string target_file = 7;
+  int32 target_line = 8;
+  string target_symbol = 9;
+  // Short citation label (e.g., "GDPR Art.32"). Rendered near the edge/badge.
+  string label = 10;
 }
 
 // FileViolation represents a violation on a file with no architectural node.
@@ -243,6 +257,10 @@ message FileViolation {
   ViolationCategory category = 4;
   string file_path = 5;
   int32 line = 6;
+  string target_file = 7;
+  int32 target_line = 8;
+  string target_symbol = 9;
+  string label = 10;
 }
 
 message GraphMetrics {
