@@ -51,6 +51,7 @@ service BlueprintService {
   rpc UpdateAdoptionParams(UpdateAdoptionParamsRequest) returns (BlueprintAssignResponse);
   rpc ListBlueprintAdopters(ListBlueprintAdoptersRequest) returns (ListBlueprintAdoptersResponse);
   rpc ListOrgAdoptedBlueprints(ListOrgAdoptedBlueprintsRequest) returns (ListOrgAdoptedBlueprintsResponse);
+  rpc SetAdoptionStatus(SetAdoptionStatusRequest) returns (SetAdoptionStatusResponse);
 
   // Purchases (premium blueprints)
   rpc RecordBlueprintPurchase(RecordPurchaseRequest) returns (RecordPurchaseResponse);
@@ -706,6 +707,21 @@ message OrgAdoptedBlueprintStats {
   int32 draft = 3;          // blueprint.status = 'draft'
   int32 enabled = 4;        // blueprint.status = 'published' AND any active adoption
   int32 total_rules = 5;    // sum of rule_count across items
+}
+
+// Bulk-toggle is_active on adoption rows of a single blueprint across many
+// project or repo adopters in one call. adopter_ids are project_ids when
+// scope=PROJECT and repo_ids when scope=REPO — the two lists cannot mix.
+message SetAdoptionStatusRequest {
+  string blueprint_id = 1;
+  BlueprintScope scope = 2;            // required; determines which column adopter_ids maps to
+  repeated string adopter_ids = 3;     // project_ids or repo_ids; must be non-empty
+  bool is_active = 4;                  // target state
+}
+
+message SetAdoptionStatusResponse {
+  int32 updated_count = 1;              // adoption rows whose state actually flipped
+  repeated string updated_adopter_ids = 2; // project_ids or repo_ids whose adoption flipped
 }
 
 // ── Dry Run ──
