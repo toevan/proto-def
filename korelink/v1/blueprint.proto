@@ -659,6 +659,7 @@ message BlueprintAdopter {
   string blueprint_version = 4;
   int32 violation_count = 5;
   google.protobuf.Timestamp adopted_at = 6;
+  bool is_active = 7;                               // latest adoption state; false = deactivated via SetAdoptionStatus
 }
 
 // ── Org Adopted Blueprints ──
