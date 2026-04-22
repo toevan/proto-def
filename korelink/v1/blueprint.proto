@@ -50,6 +50,7 @@ service BlueprintService {
   rpc GetBlueprintAnalytics(GetAnalyticsRequest) returns (BlueprintAnalytics);
   rpc UpdateAdoptionParams(UpdateAdoptionParamsRequest) returns (BlueprintAssignResponse);
   rpc ListBlueprintAdopters(ListBlueprintAdoptersRequest) returns (ListBlueprintAdoptersResponse);
+  rpc ListOrgAdoptedBlueprints(ListOrgAdoptedBlueprintsRequest) returns (ListOrgAdoptedBlueprintsResponse);
 
   // Purchases (premium blueprints)
   rpc RecordBlueprintPurchase(RecordPurchaseRequest) returns (RecordPurchaseResponse);
@@ -273,6 +274,7 @@ message ListMarketplaceResponse {
   repeated Blueprint blueprints = 1;
   int32 total = 2;
 }
+
 
 message ArchiveBlueprintRequest { string blueprint_id = 1; }
 message ArchiveBlueprintResponse {
@@ -656,6 +658,54 @@ message BlueprintAdopter {
   string blueprint_version = 4;
   int32 violation_count = 5;
   google.protobuf.Timestamp adopted_at = 6;
+}
+
+// ── Org Adopted Blueprints ──
+//
+// Aggregated view of all blueprints the org currently has at least one
+// adoption for. Powers Configure → Blueprints, where the UI needs one row per
+// blueprint with scope + counts + violation totals, not one row per adoption.
+// Adopter identities (specific projects/repos) are fetched on demand via
+// ListBlueprintAdopters to keep this payload small.
+
+enum AdoptionStatusFilter {
+  ADOPTION_STATUS_FILTER_UNSPECIFIED = 0;   // defaults to ACTIVE
+  ADOPTION_STATUS_FILTER_ACTIVE = 1;        // at least one is_active=true adoption
+  ADOPTION_STATUS_FILTER_INACTIVE = 2;      // only deactivated adoptions
+  ADOPTION_STATUS_FILTER_ALL = 3;           // both
+}
+
+message ListOrgAdoptedBlueprintsRequest {
+  string org_id = 1;
+  string search = 2;                        // matches blueprint name/slug (ILIKE)
+  repeated BlueprintType types = 3;         // OR filter; empty = all types
+  AdoptionStatusFilter status = 4;
+  int32 limit = 5;                          // default 50
+  int32 offset = 6;
+}
+
+message ListOrgAdoptedBlueprintsResponse {
+  repeated OrgAdoptedBlueprint items = 1;
+  int32 total = 2;                          // for pagination
+  OrgAdoptedBlueprintStats stats = 3;       // header card numbers (not paginated)
+}
+
+message OrgAdoptedBlueprint {
+  Blueprint blueprint = 1;
+  BlueprintScope scope = 2;                 // from blueprint_adoptions.scope
+  int32 adopter_count = 3;                  // projects if scope=project, repos if scope=repo
+  int32 violation_count = 4;                // summed across governed repos
+  int32 total_checks = 5;
+  google.protobuf.Timestamp first_adopted_at = 6;
+  google.protobuf.Timestamp last_adopted_at = 7;
+}
+
+message OrgAdoptedBlueprintStats {
+  int32 total = 1;          // distinct adopted blueprints (honours filters)
+  int32 active = 2;         // with at least one is_active=true adoption
+  int32 draft = 3;          // blueprint.status = 'draft'
+  int32 enabled = 4;        // blueprint.status = 'published' AND any active adoption
+  int32 total_rules = 5;    // sum of rule_count across items
 }
 
 // ── Dry Run ──
