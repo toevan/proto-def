@@ -261,19 +261,31 @@ message NodeViolation {
   // `explanation` is rendered in the violation detail sheet.
   string explanation = 12;
 
+  // Inclusive end line for multi-line violations. Zero/unset means single
+  // line (the UI renders only `line`). Populated for detectors that can
+  // emit a span (AST-backed rules covering a function/class body, etc.);
+  // left zero for detectors that only have point data (secrets, IaC).
+  int32 end_line = 13;
+
+  // Deep link to the rule's documentation (blueprint rule page, compliance
+  // spec anchor, regulation text). Opened by the client's "Learn more"
+  // action. Empty when the blueprint author did not supply one.
+  string docs_url = 18;
+
   // Stable violation ID for cross-surface linking (e.g. PR Gate ↔ Canvas).
   // Server populates with the evidence-row UUID; clients treat as opaque.
   string violation_id = 19;
 
-  // Phase 2 fields — reserved to lock the wire layout. Do not reuse these
+  // Phase 2b fields — reserved to lock the wire layout. Do not reuse these
   // numbers; they map 1:1 to the client's violation detail sheet:
-  //   13 int32  end_line              — multi-line violation span end
   //   14 string current_code          — extracted offending snippet
   //   15 string suggested_fix         — AI-generated replacement
   //   16 int32  estimated_fix_minutes — AI fix effort estimate
   //   17 float  confidence            — AI fix confidence 0.0–1.0
-  //   18 string docs_url              — deep link to rule documentation
-  reserved 13, 14, 15, 16, 17, 18;
+  // These ride on a future lazy GetViolationDetail(violation_id) RPC rather
+  // than this list response, so a canvas load does not trigger per-violation
+  // AI fix generation.
+  reserved 14, 15, 16, 17;
 }
 
 // FileViolation represents a violation on a file with no architectural node.
@@ -293,9 +305,11 @@ message FileViolation {
 
   string rule_name = 11;
   string explanation = 12;
+  int32 end_line = 13;
+  string docs_url = 18;
   string violation_id = 19;
 
-  reserved 13, 14, 15, 16, 17, 18;
+  reserved 14, 15, 16, 17;
 }
 
 message GraphMetrics {
