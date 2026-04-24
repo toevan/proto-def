@@ -231,9 +231,13 @@ message ViolationSummary {
 }
 
 // NodeViolation represents a single violation attached to a canvas node.
+//
+// Fields 1-10 are the compact card shape. Fields 11+ power the violation
+// detail sheet — see FileViolation for the identical shape used when a
+// violation has no architectural node.
 message NodeViolation {
   string rule_id = 1;
-  string message = 2;
+  string message = 2;                  // short card text; today mirrors rule_name for backward compat
   ViolationSeverity severity = 3;      // reused from types.proto
   ViolationCategory category = 4;
   string file_path = 5;
@@ -246,10 +250,35 @@ message NodeViolation {
   string target_symbol = 9;
   // Short citation label (e.g., "GDPR Art.32"). Rendered near the edge/badge.
   string label = 10;
+
+  // Human-readable rule title, e.g. "GDPR breach-notification handler required".
+  // Distinct from rule_id ("breach-notification-gdpr"). Falls back to rule_id
+  // on the client when empty.
+  string rule_name = 11;
+
+  // Long-form explanation — the "why this fails" paragraph. Sourced from the
+  // blueprint rule's description. `message` remains the short card form;
+  // `explanation` is rendered in the violation detail sheet.
+  string explanation = 12;
+
+  // Stable violation ID for cross-surface linking (e.g. PR Gate ↔ Canvas).
+  // Server populates with the evidence-row UUID; clients treat as opaque.
+  string violation_id = 19;
+
+  // Phase 2 fields — reserved to lock the wire layout. Do not reuse these
+  // numbers; they map 1:1 to the client's violation detail sheet:
+  //   13 int32  end_line              — multi-line violation span end
+  //   14 string current_code          — extracted offending snippet
+  //   15 string suggested_fix         — AI-generated replacement
+  //   16 int32  estimated_fix_minutes — AI fix effort estimate
+  //   17 float  confidence            — AI fix confidence 0.0–1.0
+  //   18 string docs_url              — deep link to rule documentation
+  reserved 13, 14, 15, 16, 17, 18;
 }
 
 // FileViolation represents a violation on a file with no architectural node.
 // Rendered separately from the graph (e.g., in a violations list panel).
+// Field numbers and semantics mirror NodeViolation — see above for field docs.
 message FileViolation {
   string rule_id = 1;
   string message = 2;
@@ -261,6 +290,12 @@ message FileViolation {
   int32 target_line = 8;
   string target_symbol = 9;
   string label = 10;
+
+  string rule_name = 11;
+  string explanation = 12;
+  string violation_id = 19;
+
+  reserved 13, 14, 15, 16, 17, 18;
 }
 
 message GraphMetrics {
