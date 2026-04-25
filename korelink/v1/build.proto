@@ -38,6 +38,15 @@ service BuildService {
   // Source code viewer — serves file content for selected canvas nodes
   rpc GetFileContent(GetFileContentRequest) returns (GetFileContentReply);
 
+  // Violation detail — lazy-loaded "Learn more" payload for a single
+  // violation. Returns the offending code snippet, an AI-generated fix
+  // suggestion, and effort/confidence metadata. Called by the client when
+  // the violation detail sheet opens — NOT eagerly on canvas load, because
+  // AI fix generation is too expensive to fan out across every open
+  // violation on every snapshot request. Result is cached per violation_id
+  // so repeat opens of the same sheet are free.
+  rpc GetViolationDetail(GetViolationDetailRequest) returns (GetViolationDetailReply);
+
   // What-If simulation — evaluate impact of hypothetical architectural changes
   rpc EvaluateWhatIf(EvaluateWhatIfRequest) returns (EvaluateWhatIfReply);
 
@@ -514,6 +523,63 @@ message GetFileContentReply {
   string content = 1;
   string language = 2;         // detected language for syntax highlighting
   repeated int32 violation_lines = 3;
+}
+
+// ── Violation Detail (lazy) ──
+
+message GetViolationDetailRequest {
+  // Stable evidence-row UUID — comes from NodeViolation.violation_id /
+  // FileViolation.violation_id on a prior GetRepositoryGraph response.
+  // Clients treat the value as opaque.
+  string violation_id = 1;
+}
+
+// GetViolationDetailReply carries everything the violation detail sheet
+// needs to render. The cheap fields (rule_name, explanation, line, etc.)
+// are echoed from the evidence row so the client doesn't need to keep a
+// reference to the originating list-row around. The expensive fields
+// (current_code, suggested_fix, estimated_fix_minutes, confidence) are
+// the actual point of this RPC — they require file I/O and AI calls
+// that would be prohibitively expensive to ship eagerly with every
+// canvas snapshot.
+message GetViolationDetailReply {
+  // Identity / cheap fields — echoed from the underlying evidence row
+  // for client convenience.
+  string violation_id = 1;
+  string rule_id = 2;
+  string rule_name = 3;
+  string explanation = 4;
+  ViolationSeverity severity = 5;
+  string file_path = 6;
+  int32 line = 7;          // 1-based; 0 means "no line known"
+  int32 end_line = 8;      // 0 means single-line; see canvas.NodeViolation sentinel doc
+  string docs_url = 9;
+  string label = 10;       // short citation (e.g. "GDPR Art.32")
+
+  // Expensive fields — populated server-side per request, cached by
+  // violation_id. Empty when the underlying source is unavailable
+  // (file not in repo, AI client offline, etc.) — clients hide the
+  // corresponding UI section.
+
+  // current_code is the offending snippet extracted from file_path
+  // between line and end_line (inclusive), dedented, no line numbers.
+  // Capped at a reasonable line count; truncated snippets append "…".
+  // Empty when file_path resolves to no file (structural violations
+  // without a localized snippet).
+  string current_code = 11;
+
+  // suggested_fix is an AI-generated replacement snippet. Empty when no
+  // fix is available (rule not addressable by AI, generation failed,
+  // confidence below threshold).
+  string suggested_fix = 12;
+
+  // estimated_fix_minutes is the rough effort estimate to apply the
+  // suggested fix. 0 when not estimable.
+  int32 estimated_fix_minutes = 13;
+
+  // confidence is the AI fix confidence in [0.0, 1.0]. 0 when not set.
+  // The client renders a confidence chip when > 0.
+  float confidence = 14;
 }
 
 // ── What-If Simulation ──
