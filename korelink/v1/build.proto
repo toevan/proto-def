@@ -568,9 +568,13 @@ message GetViolationDetailReply {
   // without a localized snippet).
   string current_code = 11;
 
-  // suggested_fix is an AI-generated replacement snippet. Empty when no
-  // fix is available (rule not addressable by AI, generation failed,
-  // confidence below threshold).
+  // suggested_fix is an AI-generated replacement snippet that resolves
+  // the constraint. When the file has multiple co-located violations
+  // (same source_file, overlapping line range), this single fix is
+  // generated to address all of them at once — see `resolves` and
+  // `validation_status` below for which rules it actually covers.
+  // Empty when no fix is available (rule not addressable by AI,
+  // generation failed, confidence below threshold).
   string suggested_fix = 12;
 
   // estimated_fix_minutes is the rough effort estimate to apply the
@@ -580,6 +584,76 @@ message GetViolationDetailReply {
   // confidence is the AI fix confidence in [0.0, 1.0]. 0 when not set.
   // The client renders a confidence chip when > 0.
   float confidence = 14;
+
+  // resolves lists every violation_id the suggested_fix is intended
+  // to address. Always includes the requested violation_id; may
+  // include others when the server detected co-located violations
+  // (overlapping line ranges in the same file) and asked the AI to
+  // produce one fix covering all of them. Lets the client mark
+  // multiple sheet entries as "resolved by this fix" without making
+  // N separate detail requests.
+  repeated string resolves = 15;
+
+  // validation_status maps each violation_id in `resolves` to the
+  // outcome of the deterministic post-fix validation pass. The server
+  // applies the fix in-memory, re-runs the relevant constraint
+  // runners against the modified content, and reports per-rule
+  // resolution. Lets the client distinguish "AI claims to fix this"
+  // (suggested_fix non-empty) from "the constraint engine confirms
+  // this fix resolves the rule" (status = RESOLVED).
+  map<string, FixValidationStatus> validation_status = 16;
+
+  // deterministically_validated is true when at least one rule in
+  // scope was validatable (file-based) and the validation pass ran.
+  // False when all in-scope rules are graph-based (data flow, layer,
+  // breach notification, deletion) and require re-indexing to verify
+  // — the suggested_fix is then AI-only with no deterministic
+  // backstop. Clients render an "AI-suggested, requires re-index to
+  // verify" indicator in that case.
+  bool deterministically_validated = 17;
+
+  // fix_scope conveys how broad the suggested change is, derived
+  // server-side from line counts + the AI's own FIX_SCOPE marker.
+  // The client surfaces this so a user about to apply a 200-line
+  // file rewrite knows it isn't a one-line tweak before clicking.
+  FixScope fix_scope = 18;
+}
+
+// FixValidationStatus is the per-violation outcome of the deterministic
+// post-fix validation pass.
+enum FixValidationStatus {
+  FIX_VALIDATION_STATUS_UNSPECIFIED = 0;
+  // The rule's constraint runner did not fire after applying the fix
+  // to the file content — the constraint is satisfied by the fix.
+  FIX_VALIDATION_STATUS_RESOLVED = 1;
+  // The rule still fires after applying the fix — the AI's fix did
+  // not actually satisfy this constraint.
+  FIX_VALIDATION_STATUS_UNRESOLVED = 2;
+  // The rule is graph-based (data flow, layer violation, etc.) and
+  // requires re-indexing into Neo4j to verify; we couldn't run the
+  // check deterministically.
+  FIX_VALIDATION_STATUS_NOT_VALIDATABLE = 3;
+  // A rule that wasn't firing before now fires after applying the
+  // fix — the fix introduced a new violation.
+  FIX_VALIDATION_STATUS_INTRODUCED = 4;
+}
+
+// FixScope conveys the breadth of an AI-generated suggested fix so the
+// client can render an honest scope indicator.
+enum FixScope {
+  FIX_SCOPE_UNSPECIFIED = 0;
+  // The fix replaces only the offending lines (or fewer).
+  FIX_SCOPE_LINE = 1;
+  // The fix replaces a function/method body — affects more than just
+  // the offending lines but stays within one function.
+  FIX_SCOPE_FUNCTION = 2;
+  // The fix touches multiple functions or replaces a significant
+  // portion of the file — UI should warn the user.
+  FIX_SCOPE_FILE = 3;
+  // The fix requires changes across multiple files (rare; usually
+  // means new dependency, new helper module, etc.). UI should warn
+  // strongly and recommend manual review.
+  FIX_SCOPE_BROADER = 4;
 }
 
 // ── What-If Simulation ──
