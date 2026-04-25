@@ -568,14 +568,22 @@ message GetViolationDetailReply {
   // without a localized snippet).
   string current_code = 11;
 
-  // suggested_fix is an AI-generated replacement snippet that resolves
-  // the constraint. When the file has multiple co-located violations
-  // (same source_file, overlapping line range), this single fix is
-  // generated to address all of them at once — see `resolves` and
-  // `validation_status` below for which rules it actually covers.
-  // Empty when no fix is available (rule not addressable by AI,
-  // generation failed, confidence below threshold).
-  string suggested_fix = 12;
+  // fix_plan carries the AI-generated change set that resolves the
+  // constraint(s). Phase 2d replaced the prior single-string
+  // suggested_fix with a structured plan so multi-file fixes (a
+  // primary edit + helper-file create + import edit) can be conveyed
+  // honestly.
+  //
+  // For a line-scoped fix, fix_plan has exactly one PRIMARY hunk —
+  // hunks[0].replacement is what the prior suggested_fix string
+  // would have been. For multi-file fixes, additional hunks
+  // describe the supporting changes (new files, edits to
+  // dependencies). Clients apply hunks atomically: all or nothing.
+  //
+  // Empty (fix_plan unset / hunks empty) when no fix was generated
+  // (rule not addressable by AI, generation failed, confidence
+  // below threshold).
+  FixPlan fix_plan = 12;
 
   // estimated_fix_minutes is the rough effort estimate to apply the
   // suggested fix. 0 when not estimable.
@@ -654,6 +662,108 @@ enum FixScope {
   // means new dependency, new helper module, etc.). UI should warn
   // strongly and recommend manual review.
   FIX_SCOPE_BROADER = 4;
+}
+
+// FixPlan is the structured change set the violation-detail RPC returns.
+// One plan is the unit of application — clients apply ALL hunks together
+// or skip the whole fix. Phase 2d replaced the prior single-string
+// suggested_fix surface with this shape so multi-file fixes can be
+// conveyed honestly: a fix that adds a `defer breachNotifier.notify(...)`
+// line is meaningless without the file that defines `breachNotifier`,
+// so both must travel together as one plan.
+message FixPlan {
+  // hunks[0] is always the PRIMARY hunk — the change to the file the
+  // violation was recorded on. Subsequent hunks describe dependency
+  // edits, new files, or migrations the primary requires. Order is
+  // preserved server-side; clients render them in this order.
+  repeated FixHunk hunks = 1;
+
+  // affected_files lists every distinct file_path the plan touches,
+  // de-duplicated and sorted. Lets the client render
+  // "Affects N files" without re-walking the hunks slice.
+  repeated string affected_files = 2;
+
+  // requires lists symbols the primary hunk references that must
+  // exist after the plan is applied — either provided by a sibling
+  // hunk (provided_by_hunk index points into hunks[]) or
+  // pre-existing in the codebase (provided_by_hunk = -1). Server
+  // verifies this list against the modified workspace before
+  // returning, so clients can trust that "missing dependency"
+  // indicates a real gap, not just a missing hunk.
+  repeated FixDependency requires = 3;
+}
+
+// FixHunk is one file-level change in a FixPlan.
+//
+// For PRIMARY and DEPENDENCY_EDIT hunks: line_start / line_end are
+// 1-based inclusive line ranges identifying the region being replaced
+// (same semantics as canvas.NodeViolation's line/end_line); original
+// is the pre-fix content of those lines, replacement is the new
+// content.
+//
+// For DEPENDENCY_CREATE hunks: line_start = line_end = 0 (sentinel
+// for "no existing range"); original is empty; replacement is the
+// full content of the new file.
+//
+// For MIGRATION hunks: same shape as DEPENDENCY_CREATE (typically a
+// new SQL/YAML file), but the role tells the client this hunk
+// requires an out-of-band step (DB migration run, redeploy, etc.)
+// rather than just a code commit.
+message FixHunk {
+  string file_path = 1;
+  int32  line_start = 2;
+  int32  line_end = 3;
+  string original = 4;
+  string replacement = 5;
+  FixHunkRole role = 6;
+  // rationale is a short author-style explanation of why this hunk
+  // is in the plan ("Adds breach notifier referenced by primary").
+  // Populated for non-PRIMARY hunks; empty on PRIMARY since the
+  // overall fix's reason lives in the violation's `explanation`.
+  string rationale = 7;
+}
+
+// FixHunkRole identifies what kind of change a hunk represents. The
+// client renders different framing per role: PRIMARY is the focal
+// diff, DEPENDENCY_* are supporting changes, MIGRATION carries a
+// "schema change" badge so the user knows the fix isn't complete
+// until a separate migration step runs.
+enum FixHunkRole {
+  FIX_HUNK_ROLE_UNSPECIFIED = 0;
+  FIX_HUNK_ROLE_PRIMARY = 1;
+  FIX_HUNK_ROLE_DEPENDENCY_EDIT = 2;
+  FIX_HUNK_ROLE_DEPENDENCY_CREATE = 3;
+  FIX_HUNK_ROLE_MIGRATION = 4;
+}
+
+// FixDependency describes one symbol the primary hunk references and
+// where it comes from. Lets the client warn explicitly when the AI
+// proposes a fix that references a function or type the codebase
+// doesn't actually define — currently a silent "fix that won't
+// compile" failure mode in single-string fix outputs.
+message FixDependency {
+  // The symbol name as it appears in the primary hunk (function name,
+  // type name, variable name, import path, env var key).
+  string symbol = 1;
+
+  // What kind of symbol it is — drives the client's rendering and
+  // the server's verification approach (function declarations vs.
+  // imports vs. env vars all check differently).
+  FixDependencyKind kind = 2;
+
+  // Index into the FixPlan.hunks slice of the hunk that provides
+  // this symbol. -1 when the symbol is expected to already exist in
+  // the codebase (no supporting hunk needed).
+  int32 provided_by_hunk = 3;
+}
+
+enum FixDependencyKind {
+  FIX_DEPENDENCY_KIND_UNSPECIFIED = 0;
+  FIX_DEPENDENCY_KIND_FUNCTION = 1;
+  FIX_DEPENDENCY_KIND_TYPE = 2;
+  FIX_DEPENDENCY_KIND_VARIABLE = 3;
+  FIX_DEPENDENCY_KIND_IMPORT = 4;
+  FIX_DEPENDENCY_KIND_ENV_VAR = 5;
 }
 
 // ── What-If Simulation ──
