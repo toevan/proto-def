@@ -841,6 +841,15 @@ message ViolationDetailFooter {
   // multi-violation summary line ("This fix addresses 3 rules: X,
   // Y, Z") in one pass.
   map<string, string> resolves_names = 7;
+  // fix_plan_summary is the LLM-generated 1-2 sentence "what does
+  // this fix do" explainer. Mirrors [FixPlan.summary] from the
+  // unary RPC. Streamed in the FOOTER (after all hunks) because
+  // the value is only known once the full envelope completes
+  // parsing — Feed-stage hunks arrive before the model finishes
+  // emitting the trailing summary token. Empty on pattern-matched
+  // fixes (deterministic catalog has no narrative) and when the
+  // model-side soft-fill placeholder fires.
+  string fix_plan_summary = 8;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
