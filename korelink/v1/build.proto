@@ -782,19 +782,28 @@ message StreamViolationDetailRequest {
 // Wire-order contract:
 //
 //   1. HEADER — exactly one, FIRST.
-//   2. HUNK — zero or more, in plan order (hunks[0] is PRIMARY).
-//   3. VALIDATION — zero or more, one per rule_id in resolves[].
-//   4. FOOTER — exactly one, LAST. After this message the server
+//   2. PROGRESS — zero or more, between HEADER and HUNK. Streamed
+//      from the agentic-fix-loop's tool-call activity (the AI's
+//      "thinking" / "reading file X" / "searching for symbol Y"
+//      reasoning) so the client can render visible progress
+//      under the spinner instead of dead time. Clients SHOULD
+//      treat absence of PROGRESS messages as fine (older deploys
+//      and cache-hit bursts skip them) — never block on receipt.
+//   3. HUNK — zero or more, in plan order (hunks[0] is PRIMARY).
+//   4. VALIDATION — zero or more, one per rule_id in resolves[].
+//   5. FOOTER — exactly one, LAST. After this message the server
 //      closes the stream.
 //
 // On error mid-stream: the server emits ERROR and closes. Clients
-// should keep whatever HEADER + HUNK + VALIDATION messages they've
-// already received and render the sheet in degraded state.
+// should keep whatever HEADER + PROGRESS + HUNK + VALIDATION
+// messages they've already received and render the sheet in
+// degraded state.
 //
-// On cache hit: the server may emit all four payload types in a
-// single non-streaming burst (HEADER + N HUNK + N VALIDATION +
-// FOOTER). Clients render identically — the streaming wire shape
-// is correct for both warm-cache and cold-compute paths.
+// On cache hit: the server emits HEADER + N HUNK + N VALIDATION +
+// FOOTER in a single non-streaming burst (no PROGRESS messages
+// because there's no agentic compute to narrate). Clients render
+// identically — the streaming wire shape is correct for both
+// warm-cache and cold-compute paths.
 message ViolationDetailUpdate {
   oneof payload {
     ViolationDetailHeader header = 1;
@@ -802,7 +811,58 @@ message ViolationDetailUpdate {
     ValidationStatusEntry validation = 3;
     ViolationDetailFooter footer = 4;
     ViolationDetailError error = 5;
+    ViolationDetailProgress progress = 6;
   }
+}
+
+// ViolationDetailProgress carries one observable from the
+// agentic-fix-loop's reasoning trace. Sent between HEADER and
+// HUNK so the client can render the AI's tool-call activity
+// inline with the spinner — same UX as Claude Code's tool-use
+// trace.
+//
+// **Kind discrimination**: the `kind` enum tells the client how
+// to render the message. Clients MUST handle unknown values
+// gracefully (treat as KIND_THINKING and render `text`) so
+// adding new kinds doesn't break older clients.
+//
+// **Privacy**: `text` and `args_summary` are server-redacted
+// before send — they MUST NOT contain raw file contents,
+// secrets, or full tool result bodies. The agentloop's
+// summarizeResultText helper enforces this contract; client
+// renders verbatim.
+message ViolationDetailProgress {
+  // ProgressKind mirrors the agentloop ProgressKind enum.
+  // Stable wire identifier; never reused.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // KIND_THINKING — model's natural-language reasoning text.
+    // From provider's reasoning blocks (Anthropic native) or
+    // synthesized from tool name when reasoning isn't surfaced
+    // by the upstream.
+    KIND_THINKING = 1;
+    // KIND_TOOL_CALL — model is about to invoke a tool. tool_name
+    // is set; args_summary carries a redacted JSON arg summary.
+    KIND_TOOL_CALL = 2;
+    // KIND_TOOL_RESULT — a tool just returned. tool_name is set;
+    // text carries a one-line outcome summary
+    // ("read_file: ok (1024 bytes)" / "<tool>: error: <reason>").
+    KIND_TOOL_RESULT = 3;
+  }
+
+  Kind kind = 1;
+
+  // tool_name is set on KIND_TOOL_CALL and KIND_TOOL_RESULT.
+  // Empty for KIND_THINKING.
+  string tool_name = 2;
+
+  // text is the human-readable summary (model prose for
+  // THINKING; one-line outcome for TOOL_RESULT). Server-redacted.
+  string text = 3;
+
+  // args_summary is set on KIND_TOOL_CALL and carries a redacted
+  // summary of the tool arguments. Empty otherwise.
+  string args_summary = 4;
 }
 
 // ViolationDetailHeader carries the cheap identity fields echoed
