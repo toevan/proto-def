@@ -47,6 +47,47 @@ service BuildService {
   // so repeat opens of the same sheet are free.
   rpc GetViolationDetail(GetViolationDetailRequest) returns (GetViolationDetailReply);
 
+  // StreamViolationDetail is the progressive-render variant of
+  // GetViolationDetail. The server emits a sequence of partial
+  // updates as the AI plan generates + validates: header (cheap
+  // identity fields, ~150ms), then each plan hunk as it parses
+  // out of the LLM's streaming JSON, then per-rule validation
+  // results, then the footer (confidence/scope/effort estimate/
+  // resolves[]). Lets the client render the sheet container
+  // immediately and progressively fill in plan hunks as they
+  // arrive — perceived latency drops from 30s → ~3s to first
+  // visible plan content.
+  //
+  // Cache-hit short-circuit: when the violation_id (or signature)
+  // is in Redis, the server emits one HEADER + the cached plan
+  // hunks + validation + FOOTER as a single non-streaming burst.
+  // Client renders identically; the streaming RPC is correct for
+  // both paths.
+  //
+  // The unary GetViolationDetail RPC remains supported for
+  // clients that haven't adopted streaming yet — both RPCs share
+  // the same Service.GetDetail / Service.computeDetailFromRow
+  // backend, so behavior is identical apart from the wire shape.
+  rpc StreamViolationDetail(StreamViolationDetailRequest) returns (stream ViolationDetailUpdate);
+
+  // WarmViolationDetail is a fire-and-forget pre-compute trigger.
+  // Returns immediately after either confirming the result is
+  // already in Redis (cache_hit=true) OR launching a background
+  // goroutine to compute it (cache_hit=false). Designed to be
+  // called speculatively from client UX events (hover dwell,
+  // scroll-into-viewport dwell) so by the time the user clicks a
+  // violation card, the result is already in the cache.
+  //
+  // Bounds AI cost by user attention rather than violation count
+  // — eager pre-compute on every indexed violation would be
+  // prohibitive at $0.13/fix × hundreds of violations per repo.
+  //
+  // Hardening: same auth as GetViolationDetail (capability via
+  // violation_id); per-user rate limit on the gRPC interceptor;
+  // single-flight via Redis SETNX so concurrent warms for the
+  // same violation_id trigger ONE compute, not N.
+  rpc WarmViolationDetail(WarmViolationDetailRequest) returns (WarmViolationDetailReply);
+
   // Apply a previously-suggested FixPlan to the repository. Creates a
   // new branch off the violation's recorded commit_sha, applies every
   // hunk in plan order (PRIMARY/EDIT splice + DEPENDENCY_CREATE/
@@ -647,6 +688,158 @@ message GetViolationDetailReply {
   // The client surfaces this so a user about to apply a 200-line
   // file rewrite knows it isn't a one-line tweak before clicking.
   FixScope fix_scope = 18;
+}
+
+// StreamViolationDetailRequest is the input shape for
+// [BuildService.StreamViolationDetail]. Identical to
+// [GetViolationDetailRequest] today; lives as its own message so
+// the streaming RPC can evolve without dragging the unary RPC's
+// shape (e.g. adding stream-specific options like "skip header"
+// for clients that already cached the cheap fields).
+message StreamViolationDetailRequest {
+  string violation_id = 1;
+}
+
+// ViolationDetailUpdate is one message on the
+// [BuildService.StreamViolationDetail] stream. Exactly one oneof
+// payload is set per message. Clients MUST handle every payload
+// type — unknown payloads should be ignored gracefully (allows
+// adding new update types without breaking older clients).
+//
+// Wire-order contract:
+//
+//   1. HEADER — exactly one, FIRST.
+//   2. HUNK — zero or more, in plan order (hunks[0] is PRIMARY).
+//   3. VALIDATION — zero or more, one per rule_id in resolves[].
+//   4. FOOTER — exactly one, LAST. After this message the server
+//      closes the stream.
+//
+// On error mid-stream: the server emits ERROR and closes. Clients
+// should keep whatever HEADER + HUNK + VALIDATION messages they've
+// already received and render the sheet in degraded state.
+//
+// On cache hit: the server may emit all four payload types in a
+// single non-streaming burst (HEADER + N HUNK + N VALIDATION +
+// FOOTER). Clients render identically — the streaming wire shape
+// is correct for both warm-cache and cold-compute paths.
+message ViolationDetailUpdate {
+  oneof payload {
+    ViolationDetailHeader header = 1;
+    FixHunk hunk = 2;
+    ValidationStatusEntry validation = 3;
+    ViolationDetailFooter footer = 4;
+    ViolationDetailError error = 5;
+  }
+}
+
+// ViolationDetailHeader carries the cheap identity fields echoed
+// from the evidence row plus the offending code snippet. Sent
+// FIRST on the stream so the client can render the sheet
+// container immediately (~150ms after the RPC starts) — well
+// before any AI work completes.
+//
+// Field set is the strict subset of [GetViolationDetailReply]
+// that doesn't depend on the AI plan. The remaining fields
+// (fix_plan, validation_status, deterministically_validated,
+// confidence, estimated_fix_minutes, fix_scope, resolves) arrive
+// in subsequent stream messages.
+message ViolationDetailHeader {
+  string violation_id = 1;
+  string rule_id = 2;
+  string rule_name = 3;
+  string explanation = 4;
+  ViolationSeverity severity = 5;
+  string file_path = 6;
+  int32 line = 7;
+  int32 end_line = 8;
+  string docs_url = 9;
+  string label = 10;
+  string current_code = 11;
+}
+
+// ValidationStatusEntry pairs one violation_id with its
+// deterministic-validation outcome. Streamed as the per-rule
+// validation runs complete (one entry per rule_id eventually
+// listed in [ViolationDetailFooter.resolves]).
+message ValidationStatusEntry {
+  string violation_id = 1;
+  FixValidationStatus status = 2;
+}
+
+// ViolationDetailFooter is the wrap-up message — sent LAST after
+// all hunks + validation. Carries the metadata that depends on
+// the full plan (confidence/scope/effort estimate) plus the
+// deterministically_validated bit and the resolves[] list.
+//
+// After receiving this message the client should mark the sheet
+// as "fully loaded" and enable the Apply button (subject to the
+// Apply safety floor: no UNRESOLVED / INTRODUCED entries).
+message ViolationDetailFooter {
+  int32 estimated_fix_minutes = 1;
+  float confidence = 2;
+  repeated string resolves = 3;
+  bool deterministically_validated = 4;
+  FixScope fix_scope = 5;
+}
+
+// ViolationDetailError is the stream-level failure shape. Emitted
+// by the server when the AI call failed transiently, the plan
+// schema parse failed, or the upstream timed out. The client
+// should render the sheet in degraded state (showing whatever
+// HEADER + HUNK + VALIDATION arrived) plus an error indicator;
+// existing partial content is NOT discarded.
+//
+// Stream-level errors are distinct from gRPC-status errors:
+// gRPC-status errors abort the stream entirely (no payload
+// messages reach the client). ViolationDetailError lets the
+// server send "the stream's content is incomplete because of X"
+// while still delivering whatever HEADER + partial hunks made it
+// through.
+message ViolationDetailError {
+  // code is a short machine-readable error category. Currently:
+  //   "transient_ai" — upstream AI failure (timeout, retry-exhausted, 5xx).
+  //   "schema_invalid" — model emitted JSON that didn't match the FixPlan schema.
+  //   "not_json" — model emitted non-JSON content (model regression signal).
+  //   "internal" — server-side error not attributable to AI.
+  string code = 1;
+  // message is a human-readable one-line explanation. Safe to
+  // surface in the UI; does NOT contain raw upstream error bodies
+  // or internal stack traces.
+  string message = 2;
+}
+
+// WarmViolationDetailRequest is the input shape for
+// [BuildService.WarmViolationDetail]. Single field today; the
+// shape exists for forward compatibility (future: priority hint,
+// cancellation token, etc.).
+message WarmViolationDetailRequest {
+  string violation_id = 1;
+}
+
+// WarmViolationDetailReply is the immediate response from the
+// fire-and-forget warm trigger. Returns within milliseconds
+// regardless of whether the AI compute is ongoing in the
+// background.
+message WarmViolationDetailReply {
+  // cache_hit is true when the result was already in Redis (no
+  // background work was triggered). False when the warm
+  // launched a background goroutine — the result will land in
+  // Redis when the AI call completes (~10-30s typical), and a
+  // subsequent GetViolationDetail / StreamViolationDetail will
+  // hit the cache.
+  bool cache_hit = 1;
+  // single_flight_lost is true when this warm did NOT trigger
+  // background compute because another concurrent warm for the
+  // same violation_id won the single-flight lock. The cache will
+  // be populated by the winning warm; this caller should poll or
+  // wait the same way it would for cache_hit=false.
+  bool single_flight_lost = 2;
+  // rate_limited is true when this warm was rejected because the
+  // caller exceeded the per-user-per-minute warm budget. The
+  // server returns the rejection as a clean 200 reply (not gRPC
+  // RESOURCE_EXHAUSTED) so client-side hover/scroll handlers can
+  // back off without surfacing a user-visible error.
+  bool rate_limited = 3;
 }
 
 // FixValidationStatus is the per-violation outcome of the deterministic
