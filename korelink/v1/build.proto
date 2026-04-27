@@ -595,6 +595,24 @@ message GetViolationDetailRequest {
   // FileViolation.violation_id on a prior GetRepositoryGraph response.
   // Clients treat the value as opaque.
   string violation_id = 1;
+
+  // force_regenerate, when true, makes the server bypass the Redis
+  // cache entry for this violation_id and re-run the FixPlan
+  // generation pipeline (file fetch + package context + LLM call +
+  // validation). The fresh result is then written into Redis, so
+  // subsequent reads observe the new plan. Used by the client's
+  // "Try a different fix" / "Retry" CTA on the stream-error banner
+  // — the user has explicitly indicated the prior result was
+  // unusable and clearing the client's local cache without
+  // bypassing the server cache would just re-burst the same stale
+  // entry.
+  //
+  // Defaults false: the cache hit is the overwhelmingly common path
+  // and the warm-RPC's value depends on it. Server applies the same
+  // per-user / per-violation rate limit to force-regenerate calls
+  // as to warm calls, so a stuck client can't hammer the AI
+  // pipeline.
+  bool force_regenerate = 2;
 }
 
 // GetViolationDetailReply carries everything the violation detail sheet
@@ -741,6 +759,18 @@ message GetViolationDetailReply {
 // for clients that already cached the cheap fields).
 message StreamViolationDetailRequest {
   string violation_id = 1;
+
+  // force_regenerate mirrors [GetViolationDetailRequest.force_regenerate]:
+  // when true, the server bypasses the Redis cache entry for this
+  // violation_id and re-runs the streaming compute path. The fresh
+  // result is written back to Redis so the next non-forced read
+  // sees the new plan. Used by the client's "Try a different fix"
+  // CTA on the stream-error banner.
+  //
+  // Same rate-limiter applies as the warm RPC's per-user budget —
+  // a stuck client looping on regenerate can't outrun the AI cost
+  // ceiling.
+  bool force_regenerate = 2;
 }
 
 // ViolationDetailUpdate is one message on the
