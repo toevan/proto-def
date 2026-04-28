@@ -21,6 +21,26 @@ service PRGateService {
   rpc GetPRGateConfig(GetPRGateConfigRequest) returns (GetPRGateConfigResponse);
   rpc UpdatePRGateConfig(UpdatePRGateConfigRequest) returns (UpdatePRGateConfigResponse);
   rpc GetPRCheckSummary(GetPRCheckSummaryRequest) returns (GetPRCheckSummaryResponse);
+
+  // KA-244 step 4 — admin operator-unblock for the auto-fix
+  // convergence loop. Clears
+  // pr_violation_fix_branch.loop_capped_at, allowing fix_apply
+  // to resume dispatches against the violation. Operators
+  // invoke this after manually inspecting the PR + confirming
+  // the loop should resume (e.g. they hand-resolved an
+  // ambiguous review comment that was causing oscillation).
+  //
+  // Authorization: admin role required. Without role checks,
+  // any user could clear the cap on any violation, defeating
+  // the safety floor.
+  rpc ClearAutoFixLoopCap(ClearAutoFixLoopCapRequest) returns (ClearAutoFixLoopCapResponse);
+
+  // KA-244 step 4 — operator dashboard query for
+  // "violations whose loop hit the cap." Surfaces the
+  // queue of operator-action items so triage can route
+  // through ClearAutoFixLoopCap or hand-resolve.
+  rpc ListAutoFixLoopCappedViolations(ListAutoFixLoopCappedViolationsRequest)
+      returns (ListAutoFixLoopCappedViolationsResponse);
 }
 
 // ── Core Types ──
@@ -208,3 +228,54 @@ message UpdatePRGateConfigResponse { PRGateConfig config = 1; }
 
 message GetPRCheckSummaryRequest { string org_id = 1; }
 message GetPRCheckSummaryResponse { PRCheckSummary summary = 1; }
+
+// ── Auto-fix Loop Cap (KA-244 step 4) ──
+
+// AutoFixLoopCappedViolation represents one
+// pr_violation_fix_branch row whose loop_capped_at is set —
+// the queue of operator-action items the convergence loop
+// surfaced through StateCapHit comments.
+message AutoFixLoopCappedViolation {
+  string violation_id = 1;
+  int32 pr_number = 2;
+  string branch_name = 3;
+  string pr_url = 4;
+  string last_commit_sha = 5;
+  int32 attempt_count = 6;
+  google.protobuf.Timestamp last_applied_at = 7;
+  google.protobuf.Timestamp loop_capped_at = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message ClearAutoFixLoopCapRequest {
+  // ViolationID is the canonical evidence_records.id used by
+  // the auto-fix dispatcher. Operators copy this from the
+  // cap-hit PR comment OR from the
+  // ListAutoFixLoopCappedViolations dashboard query.
+  string violation_id = 1;
+
+  // Reason is the operator's free-form note explaining why
+  // the cap is being cleared (e.g. "hand-resolved review
+  // comment ambiguity"). Audit-logged but does not affect
+  // the clear semantics.
+  string reason = 2;
+}
+
+message ClearAutoFixLoopCapResponse {
+  // Cleared echoes the post-clear row state so the operator
+  // sees confirmation in the gRPC reply (rather than a
+  // separate Get round-trip).
+  AutoFixLoopCappedViolation cleared = 1;
+}
+
+message ListAutoFixLoopCappedViolationsRequest {
+  string org_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListAutoFixLoopCappedViolationsResponse {
+  repeated AutoFixLoopCappedViolation violations = 1;
+  int32 total = 2;
+}
