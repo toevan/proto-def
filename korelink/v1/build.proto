@@ -974,6 +974,15 @@ message ViolationDetailFooter {
   // fixes (deterministic catalog has no narrative) and when the
   // model-side soft-fill placeholder fires.
   string fix_plan_summary = 8;
+  // validation_outcome mirrors [GetViolationDetailReply.validation_outcome]
+  // — the tri-state collapse of the per-rule validation_status map
+  // (validated / failed / could-not-validate). Streamed in the
+  // FOOTER so the client routes the chip + the conditional "Try a
+  // different fix" CTA off this single value rather than
+  // re-implementing the derivation rule from per-rule VALIDATION
+  // events. See the field godoc on the unary reply for the full
+  // routing contract.
+  ValidationOutcome validation_outcome = 9;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
