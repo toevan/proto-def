@@ -749,6 +749,40 @@ message GetViolationDetailReply {
   // signals the row's rule_name column was NULL — clients fall back
   // to displaying the rule_id. Missing key is a server bug.
   map<string, string> resolves_names = 21;
+
+  // validation_outcome is the single-axis collapse of the per-rule
+  // `validation_status` map into the three render states the client
+  // actually needs. Today the client conflates "we couldn't check"
+  // with "we checked and it failed", which surfaces a misleading
+  // "AI plan failed validation" CTA on graph-based rules where the
+  // file-only validator returns NOT_VALIDATABLE for every entry —
+  // there is no evidence the fix is wrong, only an absence of
+  // positive evidence. Eroding-trust UX bug observed in production
+  // logs 2026-04-28 on rule_id=breach-notification-handler.
+  //
+  // Routing rule (positive evidence wins, negative evidence trumps
+  // absence-of-evidence):
+  //
+  //   - any UNRESOLVED or INTRODUCED → FAILED  (real failure: render
+  //     red chip + "Try a different fix" CTA + list newly-tripped
+  //     rules from INTRODUCED entries)
+  //
+  //   - else any RESOLVED              → VALIDATED  (positive
+  //     evidence; mixed RESOLVED+NOT_VALIDATABLE counts as validated
+  //     because at least one rule was checked and passed)
+  //
+  //   - else (all NOT_VALIDATABLE)     → COULD_NOT_VALIDATE  (yellow
+  //     chip; do NOT show "Try a different fix" — it would burn AI
+  //     budget on a re-roll that has no signal to improve against)
+  //
+  //   - empty map (no validation ran) → UNSPECIFIED  (client falls
+  //     back to its no-validation rendering, same as today)
+  //
+  // Derived server-side from `validation_status` so the client
+  // doesn't have to re-implement the routing rule. The map stays on
+  // the wire for clients that want the per-rule breakdown (e.g.,
+  // listing which rules INTRODUCED).
+  ValidationOutcome validation_outcome = 22;
 }
 
 // StreamViolationDetailRequest is the input shape for
@@ -1019,6 +1053,30 @@ enum FixValidationStatus {
   // A rule that wasn't firing before now fires after applying the
   // fix — the fix introduced a new violation.
   FIX_VALIDATION_STATUS_INTRODUCED = 4;
+}
+
+// ValidationOutcome is the single-axis collapse of the per-rule
+// `validation_status` map into the three render states the canvas
+// detail view actually surfaces (validated / failed / could-not-
+// validate). Derivation rule lives on
+// [GetViolationDetailReply.validation_outcome] so the per-rule map
+// and the collapsed outcome can't drift.
+enum ValidationOutcome {
+  VALIDATION_OUTCOME_UNSPECIFIED = 0;
+  // At least one rule was deterministically checked and resolved by
+  // the fix; no rule was UNRESOLVED or INTRODUCED. Render the green
+  // "validated" chip.
+  VALIDATION_OUTCOME_VALIDATED = 1;
+  // At least one rule fired post-fix (UNRESOLVED) or wasn't firing
+  // before but fires now (INTRODUCED). Render the red "failed
+  // validation" chip + "Try a different fix" CTA.
+  VALIDATION_OUTCOME_FAILED = 2;
+  // Every rule in scope is graph-based or otherwise non-file-
+  // validatable (NOT_VALIDATABLE) — no positive evidence and no
+  // negative evidence either. Render the yellow "could not be auto-
+  // validated" chip and DO NOT surface the "Try a different fix"
+  // CTA: a re-roll has no signal to improve against.
+  VALIDATION_OUTCOME_COULD_NOT_VALIDATE = 3;
 }
 
 // FixScope conveys the breadth of an AI-generated suggested fix so the
