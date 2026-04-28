@@ -6,6 +6,7 @@ option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelin
 
 import "google/protobuf/timestamp.proto";
 import "korelink/v1/types.proto";
+import "korelink/v1/agent.proto";
 
 // ============================================
 // BuildService — Code Generation, Build Orchestration, Previews
@@ -109,6 +110,36 @@ service BuildService {
   // violation, and the user shouldn't be one click away from
   // committing a known-bad fix without an opt-in.
   rpc ApplyFixPlan(ApplyFixPlanRequest) returns (ApplyFixPlanReply);
+
+  // ApplyFixViaAgent dispatches the canvas-detail Apply Fix action
+  // through the agentloop fix_apply agent (KA-242) and streams the
+  // agent's progress back to the caller. Distinct from
+  // [ApplyFixPlan]:
+  //
+  //   - ApplyFixPlan is the legacy best-effort path: server-side
+  //     branch + commit + return coordinates; the user still has to
+  //     open the PR and re-run validators themselves.
+  //
+  //   - ApplyFixViaAgent dispatches the fix_apply agent which owns
+  //     the full lifecycle: branch off origin/main, splice each
+  //     hunk, re-run validators via tools, push, open the PR, and
+  //     emit a [AgentProgressUpdate] per step. The agent uses the
+  //     [fix_plan] field as a hint and is free to adapt if the
+  //     workspace has drifted since the plan was generated.
+  //
+  // The stream emits [AgentProgressUpdate] frames as the agent
+  // transitions phases (apply_hunk start/end, run_validators
+  // result, branch pushed, PR opened). The terminal frame carries
+  // `completed = true` along with `status = AGENT_RUN_STATUS_COMPLETED`
+  // (success — PR URL and metadata available via [GetAgentRun] or
+  // [ListAgentRuns]) or `status = AGENT_RUN_STATUS_FAILED` (failure
+  // — `message` carries the operator-visible reason).
+  //
+  // Idempotency: if the agent has already opened a PR for the
+  // (violation_id, fix_plan signature) within the dedup window,
+  // the existing run's progress replays through this stream and no
+  // duplicate PR is opened.
+  rpc ApplyFixViaAgent(ApplyFixViaAgentRequest) returns (stream AgentProgressUpdate);
 
   // What-If simulation — evaluate impact of hypothetical architectural changes
   rpc EvaluateWhatIf(EvaluateWhatIfRequest) returns (EvaluateWhatIfReply);
@@ -1323,6 +1354,41 @@ message AppliedHunk {
   // E.g., "race: file content changed since the plan was
   // generated" or "merge conflict on existing branch".
   string reason = 3;
+}
+
+// ApplyFixViaAgentRequest dispatches the canvas Apply Fix CTA
+// through the agentloop fix_apply agent (KA-242). The agent owns
+// the full lifecycle (branch → splice → validators → push → PR
+// open) and streams progress via [AgentProgressUpdate]. The
+// server resolves the FixPlan from cache when [fix_plan] is unset,
+// matching [ApplyFixPlanRequest]'s convention.
+message ApplyFixViaAgentRequest {
+  // The violation the agent should fix. Server resolves
+  // org_id/repo_id and the seed FixPlan from this id.
+  string violation_id = 1;
+
+  // Optional FixPlan hint. When set, the agent uses this plan as
+  // its starting point; when unset, the agent fetches the cached
+  // plan via the same path GetViolationDetail uses.
+  //
+  // Why allow client-supplied: the canvas client already holds the
+  // plan (it just rendered the diff to the user). Passing the same
+  // bytes saves the agent a cache lookup and pins the plan the
+  // user actually saw — a workspace drift between "user clicked
+  // Apply" and "agent re-fetches from cache" otherwise risks
+  // applying a slightly different plan than the one previewed.
+  //
+  // The agent is still free to adapt the plan if the workspace
+  // has drifted (e.g. line numbers shifted under merge); this
+  // field is a HINT, not an authoritative payload.
+  FixPlan fix_plan = 2;
+
+  // Optional branch name. When unset, the agent generates one of
+  // the form `korelink/fix-violation-<short_id>` so concurrent
+  // ApplyFixViaAgent calls for the same violation collide on the
+  // canonical name (idempotency anchor — same convention as
+  // [ApplyFixPlanRequest.branch_name]).
+  string branch_name = 3;
 }
 
 enum ApplyHunkStatus {
