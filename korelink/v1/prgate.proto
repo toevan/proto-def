@@ -243,42 +243,45 @@ message PRGateConfig {
 
   // AI Auto-Fix settings.
   //
-  // auto_fix_policy gates the inline-suggestion review-comment
-  // surface (CreatePRReview with embedded suggestion blocks).
-  // Two valid values:
+  // Two parallel boolean toggles, two parallel surfaces:
   //
-  //   "disabled" (default) — no review-comment suggestions
-  //   "suggest" — server posts AI-suggested fixes as inline
-  //     GitHub review comments on PR pushes
+  //   - auto_fix_post_suggestions (field 15): server posts
+  //     AI-suggested fixes as inline GitHub review comments
+  //     on PR pushes (review-and-click flow). Replaces the
+  //     legacy `auto_fix_policy = "suggest"` enum value.
   //
-  // The "auto_apply" value (legacy direct-commit batch path)
-  // was REMOVED in this commit. UpdatePRGateConfig now rejects
-  // it as InvalidArgument. Orgs that previously had this set
-  // were migrated to the new agentloop-backed dispatcher
-  // (auto_fix_enabled below); the field 10 (auto_fix_batch_limit)
-  // that used to gate that path is also gone.
-  string auto_fix_policy = 8;
-  float suggestion_confidence_threshold = 9;      // 0.0-1.0 (default: 0.8) — gates BOTH legacy "suggest" AND new dispatcher
-  // field 10 (auto_fix_batch_limit) — REMOVED with the legacy
-  // auto_apply direct-commit path. Field number reserved so
-  // old clients sending it get a clear "unknown field"
-  // signal instead of silently re-using the slot.
+  //   - auto_fix_enabled (field 13): agentloop-backed
+  //     dispatcher opens fix PRs autonomously (full lifecycle
+  //     — branch + splice + tool-driven validators + push +
+  //     PR open + convergence loop).
+  //
+  // Both can be true; they post on different surfaces.
+  //
+  // field 8 (auto_fix_policy) — RETIRED. The legacy 3-value
+  // enum collapsed to a single live value ("suggest") after
+  // §3.F removed "auto_apply"; that single value is now the
+  // bool auto_fix_post_suggestions. Reserved so old clients
+  // sending the string field get an unknown-field signal.
+  reserved 8;
+  reserved "auto_fix_policy";
+  float suggestion_confidence_threshold = 9;      // 0.0-1.0 (default: 0.8) — gates BOTH suggestion-posting AND new dispatcher
+  // field 10 (auto_fix_batch_limit) — RETIRED with the
+  // legacy auto_apply direct-commit path (§3.F).
   reserved 10;
   reserved "auto_fix_batch_limit";
   bool remediation_on_index = 11;                 // auto-open PR after initial index
   int32 remediation_max_fixes = 12;               // max fixes per remediation PR (default: 20)
 
   // KA-245 step 4.a — opt-in for the agentloop-backed
-  // dispatcher (workflow doc §9). The CANONICAL auto-fix
-  // path going forward (full lifecycle: branch + splice +
-  // tool-driven validators + push + PR open + convergence
-  // loop). Coexists with auto_fix_policy="suggest" — both
-  // can fire on the same PR; they post on different surfaces.
+  // dispatcher (workflow doc §9). The CANONICAL auto-commit
+  // surface (full lifecycle — branch + splice + tool-driven
+  // validators + push + PR open + convergence loop).
+  // Coexists with auto_fix_post_suggestions (field 15) —
+  // both can fire on the same PR; they post on different
+  // surfaces.
   //
   // Server-side storage: agent_configs.settings JSON under
-  // agent_type='canvas_detail'. Read-modify-write at the
-  // PRGateService.UpdatePRGateConfig handler federates
-  // alongside the legacy fields.
+  // agent_type='canvas_detail'.
   bool auto_fix_enabled = 13;
 
   // KA-244 step 5 — opt-in for auto-merge when the
@@ -290,6 +293,23 @@ message PRGateConfig {
   // Same agent_configs.settings JSON storage as
   // auto_fix_enabled.
   bool auto_merge_on_convergence = 14;
+
+  // Replaces the retired auto_fix_policy="suggest" enum value.
+  // When true, the server posts AI-suggested fixes as inline
+  // GitHub review comments on every PR push (CreatePRReview
+  // with embedded suggestion blocks). The user reviews each
+  // suggestion in the PR UI and clicks GitHub's native "Apply
+  // suggestion" button.
+  //
+  // Independent of auto_fix_enabled — both can be on. A PR
+  // viewing this combo sees BOTH the agent-opened fix PR AND
+  // inline review-comment suggestions on the user's PR. Two
+  // surfaces, two distinct user flows.
+  //
+  // Storage: pr_gate_configs.auto_fix_post_suggestions
+  // (boolean column added in migration 000064 alongside the
+  // auto_fix_policy column drop).
+  bool auto_fix_post_suggestions = 15;
 }
 
 message PRCheckSummary {
