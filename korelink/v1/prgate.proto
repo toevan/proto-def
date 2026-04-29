@@ -118,6 +118,73 @@ message EnrichedViolation {
   ExceptionBrief exception = 22;
 
   google.protobuf.Timestamp detected_at = 23;
+
+  // KA-244 — convergence-loop state surfaced from
+  // pr_violation_fix_branch + the convergence comment
+  // lifecycle. Empty / unspecified when this violation
+  // has never been auto-dispatched (no row in
+  // pr_violation_fix_branch). Client UIs render a state
+  // badge per violation row + a status block in the
+  // detail sheet (see canvas-fix-application-client-spec
+  // scenario C).
+  AutoFixLifecycleState auto_fix_state = 24;
+
+  // Iteration counter from pr_violation_fix_branch.attempt_count.
+  // Zero when no row exists; positive once fix_apply has
+  // recorded at least one commit. Surfaced as
+  // "iteration N of M" in the detail sheet.
+  int32 auto_fix_attempt_count = 25;
+
+  // Set when pr_violation_fix_branch.loop_capped_at is non-NULL.
+  // Drives the operator-action affordance in the detail
+  // sheet (admin-gated Unblock button).
+  google.protobuf.Timestamp auto_fix_loop_capped_at = 26;
+
+  // Most recent commit SHA pushed by fix_apply for this
+  // violation. Empty until the first successful push.
+  string auto_fix_last_commit_sha = 27;
+
+  // GitHub PR URL the fix-branch is opened against. Empty
+  // until the first dispatch resolved a PR. Drives the
+  // "View PR" affordance in the detail sheet.
+  string auto_fix_pr_url = 28;
+}
+
+// AutoFixLifecycleState mirrors
+// [internal/agent/convergence.State] (KA-244 step 1) for
+// per-violation state surfacing. Stable wire labels —
+// dashboard event pipelines may pattern-match these.
+// Append new values; never rename.
+enum AutoFixLifecycleState {
+  AUTO_FIX_LIFECYCLE_STATE_UNSPECIFIED = 0;
+  // No pr_violation_fix_branch row yet — violation has
+  // never been auto-dispatched. Distinguished from
+  // DISABLED (org didn't opt into auto-fix) by inspecting
+  // PRGateConfig.auto_fix_enabled.
+  AUTO_FIX_LIFECYCLE_STATE_NEVER_DISPATCHED = 1;
+  // First dispatch fired; agent run started.
+  AUTO_FIX_LIFECYCLE_STATE_DISPATCHED = 2;
+  // Re-dispatch after pr_review found further findings.
+  // Visually distinct from DISPATCHED so operators see
+  // "iteration N of M" progress.
+  AUTO_FIX_LIFECYCLE_STATE_IN_PROGRESS = 3;
+  // Auto-merged + zero remaining findings. Terminal.
+  AUTO_FIX_LIFECYCLE_STATE_CONVERGED = 4;
+  // pr_violation_fix_branch.loop_capped_at set. Operator
+  // unblock required (ClearAutoFixLoopCap admin RPC).
+  AUTO_FIX_LIFECYCLE_STATE_CAP_HIT = 5;
+  // Per-org rate-limit window exhausted. Auto-retry on
+  // next push event.
+  AUTO_FIX_LIFECYCLE_STATE_RATE_LIMITED = 6;
+  // Global kill switch active. Operator unblock required
+  // (clear the Redis flag).
+  AUTO_FIX_LIFECYCLE_STATE_KILL_SWITCH = 7;
+  // Org has not opted into auto_fix_enabled. Manual
+  // Apply Fix still available via the canvas detail sheet.
+  AUTO_FIX_LIFECYCLE_STATE_DISABLED = 8;
+  // Infra error in the dispatcher (TriggerRun failed,
+  // marshal failed, etc.). Will retry on next push.
+  AUTO_FIX_LIFECYCLE_STATE_FAILED = 9;
 }
 
 enum ExceptionBriefStatus {
