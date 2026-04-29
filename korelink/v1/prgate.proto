@@ -41,6 +41,38 @@ service PRGateService {
   // through ClearAutoFixLoopCap or hand-resolve.
   rpc ListAutoFixLoopCappedViolations(ListAutoFixLoopCappedViolationsRequest)
       returns (ListAutoFixLoopCappedViolationsResponse);
+
+  // §3.C streaming surface — server-side fanout from the
+  // convergence comment-lifecycle write path so canvas clients
+  // see per-violation state transitions in real time without
+  // polling. The pull-only refresh policy (GetViolation /
+  // ListViolations) remains as the cold-load + reconciliation
+  // path; this stream is purely additive for live updates.
+  //
+  // Scope: keyed on (org_id, pr_number). The canvas typically
+  // views one PR at a time, so per-PR is the natural unit —
+  // per-violation would fan out N subscriptions for one canvas
+  // open and per-org would surface unrelated traffic.
+  //
+  // Auth: org member (same as the read RPCs). PR existence is
+  // verified before subscription so cross-tenant probes get
+  // NotFound rather than a side-channel that confirms the PR
+  // is being processed somewhere.
+  //
+  // Lifecycle: stream stays open until the client disconnects;
+  // there is no terminal frame (lifecycle events are open-ended
+  // — the convergence loop fires on every push). Clients
+  // typically open a stream when entering the canvas detail
+  // sheet + close it on navigation away.
+  //
+  // Coexistence with EnrichedViolation lifecycle fields: the
+  // event mirrors the same five fields the read RPC surfaces
+  // (auto_fix_state, attempt_count, loop_capped_at,
+  // last_commit_sha, pr_url) so clients can apply each event
+  // verbatim onto their cached EnrichedViolation without a
+  // re-fetch.
+  rpc StreamViolationLifecycle(StreamViolationLifecycleRequest)
+      returns (stream ViolationLifecycleEvent);
 }
 
 // ── Core Types ──
@@ -388,4 +420,35 @@ message ListAutoFixLoopCappedViolationsRequest {
 message ListAutoFixLoopCappedViolationsResponse {
   repeated AutoFixLoopCappedViolation violations = 1;
   int32 total = 2;
+}
+
+// StreamViolationLifecycleRequest opens a server-stream of
+// per-violation lifecycle events for one PR. Auth: org member
+// (same as ListViolations).
+message StreamViolationLifecycleRequest {
+  string org_id = 1;
+  int64 pr_number = 2;
+  // repo_id disambiguates when an org has multiple repos with
+  // the same pr_number. Required — the convergence broker
+  // partitions on (org_id, repo_id, pr_number) so the
+  // subscriber sees only events for the specific PR.
+  string repo_id = 3;
+}
+
+// ViolationLifecycleEvent fans out from the convergence
+// comment-lifecycle write path. Mirrors the five lifecycle
+// fields on EnrichedViolation so clients can apply each event
+// verbatim onto their cached row.
+message ViolationLifecycleEvent {
+  string violation_id = 1;
+  AutoFixLifecycleState state = 2;
+  int32 attempt_count = 3;
+  google.protobuf.Timestamp loop_capped_at = 4;
+  string last_commit_sha = 5;
+  string pr_url = 6;
+  // emitted_at is the server-side wall-clock when the
+  // convergence write fired; useful for client-side dedup
+  // when re-opening a stream after a disconnect (apply only
+  // events strictly newer than the last-seen).
+  google.protobuf.Timestamp emitted_at = 7;
 }
