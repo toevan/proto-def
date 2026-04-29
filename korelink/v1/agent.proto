@@ -223,6 +223,7 @@ enum AgentRunFailureCode {
   AGENT_RUN_FAILURE_CODE_PREFLIGHT_DB_ERROR = 7;   // idempotency pre-flight DB error
   AGENT_RUN_FAILURE_CODE_WORKTREE_FAILED = 8;      // resolver couldn't materialize the worktree
   AGENT_RUN_FAILURE_CODE_MARSHAL_FAILED = 9;       // dispatcher couldn't serialize Params
+  AGENT_RUN_FAILURE_CODE_REFACTOR_BLAST_RADIUS = 10; // FixPlan rename has uncovered callers OR post-fix build failed; see docs/architecture/refactor-blast-radius-validation.md
 }
 
 // ── Steps & Logs ──
