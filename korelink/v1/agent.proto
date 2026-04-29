@@ -206,6 +206,215 @@ message AgentProgressUpdate {
   // server-side analytics + client-side branching see the same
   // categorization.
   AgentRunFailureCode failure_code = 7;
+
+  // Optional structured failure metadata. Set when
+  // `failure_code == AGENT_RUN_FAILURE_CODE_REFACTOR_BLAST_RADIUS`
+  // and the runner attributed the failure to Phase A
+  // (blast-radius static analysis) or Phase B (build/lint
+  // validation). Empty on success / non-terminal frames OR when
+  // the failure code is anything other than
+  // `REFACTOR_BLAST_RADIUS`.
+  //
+  // Lets the canvas client render structured operator-readable
+  // detail (renamed symbol, uncovered callers, build errors)
+  // instead of a generic toast — load-bearing for the
+  // KoreLink value proposition: a fix the agent rejects MUST
+  // surface WHY at file:line precision, not just "blast-radius
+  // exceeded."
+  BlastRadiusFailureMetadata blast_radius_metadata = 8;
+}
+
+// BlastRadiusFailureMetadata carries the structured payload
+// the canvas client needs to render Phase A / Phase B failure
+// detail. Mirrors the in-process metadata the runner writes to
+// `agent_runs.metadata` after a fail-closed validation
+// outcome (see internal/agent/fixapply/runner.go).
+//
+// Phase discriminator:
+//
+//   - BLAST_RADIUS_PHASE_BLAST_RADIUS_BLOCKED: Phase A
+//     (rename detection + graph-backed caller search). The
+//     agent's FixPlan renamed a symbol but didn't update all
+//     its callers. `renames` + `uncovered` are populated;
+//     `language` / `build_errors` / `truncated` are empty.
+//
+//   - BLAST_RADIUS_PHASE_BUILD_VALIDATE_BLOCKED: Phase B
+//     (post-plan build/lint). The agent's mutated worktree
+//     produced analyzer errors. `language` + `build_errors`
+//     + `truncated` are populated; `renames` / `uncovered`
+//     are empty.
+message BlastRadiusFailureMetadata {
+  BlastRadiusPhase phase = 1;
+
+  // Phase A: the per-hunk rename candidates the validator
+  // detected, in detection order. Always populated on Phase A
+  // Blocked even when only some have uncovered callers — the
+  // detection list itself is operator-relevant signal.
+  repeated SymbolRename renames = 2;
+
+  // Phase A: the uncovered caller list per detected rename.
+  // Each entry's `rename_index` points back into `renames` so
+  // the client can pair "this rename" with "these uncovered
+  // callers." Renames with all callers covered by hunks in
+  // the FixPlan don't appear here.
+  repeated UncoveredCallerEntry uncovered = 3;
+
+  // Phase B: the language identifier of the project (matches
+  // pkg/base/language_registry canonical IDs:
+  // "go" / "dart" / "typescript" / "javascript" /
+  // "python" / "java"). Empty on Phase A frames.
+  string language = 4;
+
+  // Phase B: the parsed analyzer errors from the language
+  // tool's output. Capped server-side at MaxBuildErrors;
+  // `truncated` set when more existed than the cap allowed.
+  repeated BuildError build_errors = 5;
+
+  // Phase B: true when the parser hit MaxBuildErrors and
+  // capped the result. Operators see "more errors exist
+  // than what's listed" in the UI so they don't assume the
+  // listed set is complete.
+  bool truncated = 6;
+}
+
+// BlastRadiusPhase distinguishes which validation phase
+// fail-closed the run. Stable wire surface — the canvas
+// client switches on these values to render Phase A vs
+// Phase B detail panes. Append, never renumber.
+enum BlastRadiusPhase {
+  BLAST_RADIUS_PHASE_UNSPECIFIED = 0;
+  BLAST_RADIUS_PHASE_BLAST_RADIUS_BLOCKED = 1;   // Phase A
+  BLAST_RADIUS_PHASE_BUILD_VALIDATE_BLOCKED = 2; // Phase B
+}
+
+// SymbolRename mirrors the validator's per-hunk rename
+// detection product (internal/agent/fixapply/blastradius.SymbolRename).
+// Field-for-field 1:1; the client renders these in a
+// human-readable rename table.
+message SymbolRename {
+  // Worktree-relative path the rename was detected in.
+  string file_path = 1;
+
+  // Language identifier (matches pkg/base/language_registry).
+  string language = 2;
+
+  // The symbol name BEFORE the rename — this is what callers
+  // currently reference and what the build will fail on if
+  // they're not updated.
+  string original_identifier = 3;
+
+  // The symbol name AFTER the rename. Empty allowed for
+  // pure-deletion renames (rare).
+  string replacement_identifier = 4;
+
+  // Classification of the renamed symbol (const/var/func/
+  // class/type/etc.). Stable for metric labels + UI badges.
+  string declaration_kind = 5;
+
+  // Whether the symbol's visibility makes it a candidate for
+  // cross-file callers. Internal symbols can sometimes be
+  // renamed safely; the validator surfaces them anyway so the
+  // operator gets the full detection picture.
+  bool is_exported = 6;
+}
+
+// UncoveredCallerEntry pairs one rename (by index into
+// BlastRadiusFailureMetadata.renames) with the set of caller
+// files that still reference its `original_identifier` and
+// AREN'T covered by any hunk in the FixPlan.
+message UncoveredCallerEntry {
+  // Index into BlastRadiusFailureMetadata.renames identifying
+  // which detected rename has uncovered callers. Stable
+  // within one frame.
+  int32 rename_index = 1;
+
+  // The caller file:line list. Always populated when the entry
+  // is present — entries with empty hits aren't emitted.
+  CallerSet callers = 2;
+}
+
+// CallerSet is the result for one rename: caller hits in
+// worktree order + truncation flag.
+message CallerSet {
+  // Caller hits in worktree order (deterministic across runs
+  // for reproducible failure metadata + diffable across
+  // re-dispatches).
+  repeated CallerHit hits = 1;
+
+  // True when more matches existed than MaxCallerHits — the
+  // client surfaces this as "more callers exist than what's
+  // listed" so operators don't assume the list is complete.
+  bool truncated = 2;
+}
+
+// CallerHit is one caller-file location that needs updating
+// for the rename to be safe. The canvas client renders each
+// hit as a clickable row; tapping it jumps the code viewer to
+// `file_path:line`.
+message CallerHit {
+  // Worktree-relative path of the caller file.
+  string file_path = 1;
+
+  // 1-based line where the caller-symbol was found.
+  int32 line = 2;
+
+  // 1-based column. May be 0 when the search backend can't
+  // resolve column-precision (graph-backed search returns 1
+  // by convention when the source is not in the graph).
+  int32 column = 3;
+
+  // Short snippet of the matching context — typically the
+  // caller's containing symbol name. Surfaced in the failure
+  // pane so operators can eyeball whether the hit is a real
+  // caller or a false positive.
+  string snippet = 4;
+}
+
+// BuildError mirrors the Phase B parser's classified output
+// (internal/agent/fixapply/buildvalidate.BuildError). Each
+// entry is one analyzer diagnostic the post-plan build
+// surfaced.
+message BuildError {
+  // Worktree-relative (or absolute, depending on the language
+  // tool) path the diagnostic targets.
+  string file_path = 1;
+
+  // 1-based line.
+  int32 line = 2;
+
+  // 1-based column. May be 0 for tools that don't surface
+  // columns (Go's `go build` without vet, for example).
+  int32 column = 3;
+
+  // Language-agnostic taxonomy bucket. Drives the UI's
+  // grouping + icon: unresolved-identifier renders as a
+  // "missing reference" badge, type-mismatch as a "type
+  // error" badge, syntax-error as a "broken parse" badge.
+  BuildErrorClass class = 4;
+
+  // The analyzer's verbatim diagnostic text. Surfaced in the
+  // UI so operators can triage without re-running the build.
+  string message = 5;
+}
+
+// BuildErrorClass is the language-agnostic taxonomy the
+// Phase B parser classifies each analyzer entry into. Stable
+// wire surface — the canvas UI groups + colors by these.
+// Append new values, never renumber.
+enum BuildErrorClass {
+  BUILD_ERROR_CLASS_UNSPECIFIED = 0;
+  // Default bucket — parser matched a build-error line but
+  // couldn't classify it more specifically.
+  BUILD_ERROR_CLASS_UNKNOWN = 1;
+  // The class Phase A is designed to catch: rename without
+  // caller updates → undefined symbol at every caller site.
+  BUILD_ERROR_CLASS_UNRESOLVED_IDENTIFIER = 2;
+  // Caller exists but type signature disagrees with the
+  // renamed declaration.
+  BUILD_ERROR_CLASS_TYPE_MISMATCH = 3;
+  // Parser-level error — the agent's edit produced
+  // unparseable source. Should be rare.
+  BUILD_ERROR_CLASS_SYNTAX_ERROR = 4;
 }
 
 // Stable wire surface for terminal failure categorization on
