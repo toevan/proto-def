@@ -89,43 +89,14 @@ service BuildService {
   // same violation_id trigger ONE compute, not N.
   rpc WarmViolationDetail(WarmViolationDetailRequest) returns (WarmViolationDetailReply);
 
-  // Apply a previously-suggested FixPlan to the repository. Creates a
-  // new branch off the violation's recorded commit_sha, applies every
-  // hunk in plan order (PRIMARY/EDIT splice + DEPENDENCY_CREATE/
-  // MIGRATION add), commits with attribution, and opens a pull
-  // request. The existing PR Gate check runs automatically on the
-  // newly-opened PR — Apply itself does not validate against the
-  // PR Gate; that's the existing webhook-driven flow.
-  //
-  // Idempotent on violation_id: a second Apply for the same
-  // violation_id finds the existing branch (when present) and
-  // returns its coordinates rather than creating a duplicate.
-  // Concurrent Apply calls race on branch creation; the loser
-  // observes the existing-branch case and returns the same result
-  // shape.
-  //
-  // Safety floor: refuses to apply when the cached FixPlan has any
-  // ValidationStatus = UNRESOLVED or INTRODUCED — those plans
-  // weren't deterministically validated as resolving the seed
-  // violation, and the user shouldn't be one click away from
-  // committing a known-bad fix without an opt-in.
-  rpc ApplyFixPlan(ApplyFixPlanRequest) returns (ApplyFixPlanReply);
-
   // ApplyFixViaAgent dispatches the canvas-detail Apply Fix action
   // through the agentloop fix_apply agent (KA-242) and streams the
-  // agent's progress back to the caller. Distinct from
-  // [ApplyFixPlan]:
-  //
-  //   - ApplyFixPlan is the legacy best-effort path: server-side
-  //     branch + commit + return coordinates; the user still has to
-  //     open the PR and re-run validators themselves.
-  //
-  //   - ApplyFixViaAgent dispatches the fix_apply agent which owns
-  //     the full lifecycle: branch off origin/main, splice each
-  //     hunk, re-run validators via tools, push, open the PR, and
-  //     emit a [AgentProgressUpdate] per step. The agent uses the
-  //     [fix_plan] field as a hint and is free to adapt if the
-  //     workspace has drifted since the plan was generated.
+  // agent's progress back to the caller. The agent owns the full
+  // lifecycle: branch off origin/main, splice each hunk, re-run
+  // validators via tools, push, open the PR, and emit an
+  // [AgentProgressUpdate] per step. The agent uses the [fix_plan]
+  // field as a hint and is free to adapt if the workspace has
+  // drifted since the plan was generated.
   //
   // The stream emits [AgentProgressUpdate] frames as the agent
   // transitions phases (apply_hunk start/end, run_validators
@@ -1273,95 +1244,11 @@ enum FixDependencyKind {
 
 // ── Apply Fix (Phase 2e) ──
 
-// ApplyFixPlanRequest asks the server to materialize a previously-
-// suggested FixPlan as a real branch + commit + pull request.
-message ApplyFixPlanRequest {
-  // The violation whose FixPlan should be applied. Server resolves
-  // the plan via the same cache GetViolationDetail uses; if the
-  // plan isn't cached or has expired, the server re-computes it
-  // (running the full multi-hunk pipeline) before applying.
-  string violation_id = 1;
-
-  // Optional branch name. When unset, the server generates one of
-  // the form `korelink/fix-violation-<short_id>` so concurrent
-  // Apply calls for the same violation collide on the canonical
-  // name (idempotency anchor).
-  string branch_name = 2;
-
-  // Optional commit message. When unset, defaults to a
-  // server-rendered message in the form
-  // "fix(<rule_id>): <rule_name>" with the violation's location
-  // and FixPlan's rationale appended in the body.
-  string commit_message = 3;
-
-  // Optional PR title. When unset, defaults to the commit's
-  // subject line.
-  string pr_title = 4;
-
-  // Optional PR body. When unset, the server renders one from the
-  // FixPlan's rationale + per-hunk file/role list +
-  // ValidationStatus summary so reviewers can see the safety
-  // signals at a glance.
-  string pr_body = 5;
-
-  // When true, allow Apply to proceed even when the cached
-  // FixPlan has ValidationStatus = UNRESOLVED for some rule.
-  // Defaults false: the safety floor refuses to commit a fix the
-  // server couldn't deterministically validate. The opt-in exists
-  // for cases where the user has independently reviewed the plan
-  // and accepts the partial-resolution risk.
-  //
-  // INTRODUCED status remains a hard reject — applying a fix that
-  // ADDS a violation isn't something the user can override from
-  // the client; the LLM is asked to retry first.
-  bool allow_unresolved = 6;
-}
-
-// ApplyFixPlanReply describes the materialized branch + PR. The
-// PR Gate check runs automatically on PR open via the existing
-// webhook flow; this RPC does not block on its result.
-message ApplyFixPlanReply {
-  // Repo-relative canonical branch name the fix was committed to.
-  // Idempotent on violation_id: a second Apply for the same
-  // violation returns the same branch.
-  string branch_name = 1;
-
-  // Full commit SHA of the applied fix. Pin for clients that want
-  // to reference the exact change (e.g. linking to a checks page).
-  string commit_sha = 2;
-
-  // GitHub URL of the opened pull request. Empty when the server
-  // created the branch but couldn't open a PR (e.g. PR already
-  // exists for the same head — surfaced via existing_pr_url).
-  string pr_url = 3;
-
-  // When the apply path detected an existing PR for the branch
-  // (idempotent re-apply), the URL of that PR. Either pr_url OR
-  // existing_pr_url is set, never both.
-  string existing_pr_url = 4;
-
-  // Per-hunk apply outcome — one entry per FixPlan.Hunks entry,
-  // in the same order. APPLIED on success; SKIPPED when the hunk
-  // was previously applied on the existing branch (idempotency);
-  // FAILED with a reason when the apply step couldn't complete.
-  repeated AppliedHunk applied_hunks = 5;
-}
-
-message AppliedHunk {
-  string file_path = 1;
-  ApplyHunkStatus status = 2;
-  // Human-readable reason populated when status != APPLIED.
-  // E.g., "race: file content changed since the plan was
-  // generated" or "merge conflict on existing branch".
-  string reason = 3;
-}
-
 // ApplyFixViaAgentRequest dispatches the canvas Apply Fix CTA
 // through the agentloop fix_apply agent (KA-242). The agent owns
 // the full lifecycle (branch → splice → validators → push → PR
 // open) and streams progress via [AgentProgressUpdate]. The
-// server resolves the FixPlan from cache when [fix_plan] is unset,
-// matching [ApplyFixPlanRequest]'s convention.
+// server resolves the FixPlan from cache when [fix_plan] is unset.
 message ApplyFixViaAgentRequest {
   // The violation the agent should fix. Server resolves
   // org_id/repo_id and the seed FixPlan from this id.
@@ -1386,16 +1273,8 @@ message ApplyFixViaAgentRequest {
   // Optional branch name. When unset, the agent generates one of
   // the form `korelink/fix-violation-<short_id>` so concurrent
   // ApplyFixViaAgent calls for the same violation collide on the
-  // canonical name (idempotency anchor — same convention as
-  // [ApplyFixPlanRequest.branch_name]).
+  // canonical name (idempotency anchor).
   string branch_name = 3;
-}
-
-enum ApplyHunkStatus {
-  APPLY_HUNK_STATUS_UNSPECIFIED = 0;
-  APPLY_HUNK_STATUS_APPLIED = 1;
-  APPLY_HUNK_STATUS_SKIPPED = 2;  // already applied on existing branch
-  APPLY_HUNK_STATUS_FAILED = 3;
 }
 
 // ── What-If Simulation ──
