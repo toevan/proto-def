@@ -193,6 +193,36 @@ message AgentProgressUpdate {
   string message = 4;
   AgentRunStatus status = 5;
   bool completed = 6;
+
+  // Typed failure category, set on terminal frames where
+  // `status == AGENT_RUN_STATUS_FAILED`. Lets clients switch on a
+  // stable enum instead of substring-matching the free-form
+  // `message`. UNSPECIFIED on success frames OR when the runner
+  // returned a failure shape the executor couldn't classify
+  // (clients should fall back to `message` parsing then).
+  //
+  // Wire-stable: enum values mirror the metric outcome labels
+  // emitted by [internal/agent/fixapply.observeOutcome] so
+  // server-side analytics + client-side branching see the same
+  // categorization.
+  AgentRunFailureCode failure_code = 7;
+}
+
+// Stable wire surface for terminal failure categorization on
+// AgentProgressUpdate frames. Mirror of the metric-outcome
+// labels in [internal/agent/fixapply.metrics.go]. Append new
+// values, never renumber.
+enum AgentRunFailureCode {
+  AGENT_RUN_FAILURE_CODE_UNSPECIFIED = 0;          // success OR unmapped failure
+  AGENT_RUN_FAILURE_CODE_LOOP_CAPPED = 1;          // attempt cap reached; admin clear required
+  AGENT_RUN_FAILURE_CODE_AGENT_GAVE_UP = 2;        // planner returned empty hunks
+  AGENT_RUN_FAILURE_CODE_PARSE_FAILED = 3;         // agentloop output failed to parse
+  AGENT_RUN_FAILURE_CODE_PR_OPEN_FAILED = 4;       // GitHub PR-open call errored
+  AGENT_RUN_FAILURE_CODE_VALIDATE_FAILED = 5;      // input validation rejected the run
+  AGENT_RUN_FAILURE_CODE_AGENTLOOP_FAILED = 6;     // runtime error inside the agentloop
+  AGENT_RUN_FAILURE_CODE_PREFLIGHT_DB_ERROR = 7;   // idempotency pre-flight DB error
+  AGENT_RUN_FAILURE_CODE_WORKTREE_FAILED = 8;      // resolver couldn't materialize the worktree
+  AGENT_RUN_FAILURE_CODE_MARSHAL_FAILED = 9;       // dispatcher couldn't serialize Params
 }
 
 // ── Steps & Logs ──
