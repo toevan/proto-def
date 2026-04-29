@@ -148,6 +148,30 @@ message PRGateConfig {
   int32 auto_fix_batch_limit = 10;                // max fixes per commit (default: 10)
   bool remediation_on_index = 11;                 // auto-open PR after initial index
   int32 remediation_max_fixes = 12;               // max fixes per remediation PR (default: 20)
+
+  // KA-245 step 4.a — opt-in for the agentloop-backed
+  // dispatcher (workflow doc §9). Distinct from
+  // auto_fix_policy (the legacy 3-mode enum):
+  //   - auto_fix_enabled=true → fix_apply agent dispatched
+  //     on every PR push for unsuppressed violations
+  //   - auto_fix_enabled=false → suggestion blocks via
+  //     CreatePRReview (review-and-click flow)
+  //
+  // Server-side storage: agent_configs.settings JSON under
+  // agent_type='canvas_detail'. Read-modify-write at the
+  // PRGateService.UpdatePRGateConfig handler federates
+  // alongside the legacy fields.
+  bool auto_fix_enabled = 13;
+
+  // KA-244 step 5 — opt-in for auto-merge when the
+  // convergence loop terminates cleanly (workflow doc §6).
+  // Stricter opt-in than auto_fix_enabled because falsely
+  // merging is unrecoverable; orgs MUST explicitly enable
+  // even if auto_fix_enabled is true.
+  //
+  // Same agent_configs.settings JSON storage as
+  // auto_fix_enabled.
+  bool auto_merge_on_convergence = 14;
 }
 
 message PRCheckSummary {
