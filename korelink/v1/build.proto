@@ -112,6 +112,28 @@ service BuildService {
   // duplicate PR is opened.
   rpc ApplyFixViaAgent(ApplyFixViaAgentRequest) returns (stream AgentProgressUpdate);
 
+  // DispatchApplyFix is the unary counterpart to
+  // [ApplyFixViaAgent]. Splits dispatch from observation:
+  // returns immediately with the agent run_id, and the
+  // caller subscribes to lifecycle events via
+  // [AgentService.StreamAgentRunProgress] (multiplexed with
+  // any other in-flight runs the panel is tracking).
+  //
+  // Request shape mirrors [ApplyFixViaAgentRequest] verbatim
+  // (same violation_id + optional fix_plan + optional
+  // branch_name); the agent's dispatch path is identical —
+  // only the observation path differs. Existing
+  // [ApplyFixViaAgent] callers keep streaming; new clients
+  // (canvas panel BLoC) prefer this + multiplexed observe.
+  //
+  // Idempotency: the runner's branch-name dedup
+  // (pr_violation_fix_branches.violation_id unique) still
+  // applies — two concurrent DispatchApplyFix calls on the
+  // same violation produce two agent_runs rows, but the
+  // second's runner observes the first's branch and short-
+  // circuits without opening a duplicate PR.
+  rpc DispatchApplyFix(DispatchApplyFixRequest) returns (DispatchApplyFixResponse);
+
   // What-If simulation — evaluate impact of hypothetical architectural changes
   rpc EvaluateWhatIf(EvaluateWhatIfRequest) returns (EvaluateWhatIfReply);
 
@@ -1275,6 +1297,37 @@ message ApplyFixViaAgentRequest {
   // ApplyFixViaAgent calls for the same violation collide on the
   // canonical name (idempotency anchor).
   string branch_name = 3;
+}
+
+// DispatchApplyFixRequest dispatches the canvas Apply Fix
+// CTA through the same agent path as [ApplyFixViaAgentRequest]
+// but returns the run_id synchronously instead of streaming.
+// Field shape is intentionally identical so the two RPCs can
+// share request-construction code on the client and
+// param-marshaling code on the server.
+message DispatchApplyFixRequest {
+  string violation_id = 1;
+  FixPlan fix_plan    = 2;
+  string branch_name  = 3;
+}
+
+// DispatchApplyFixResponse carries the dispatched run's
+// identity. The caller feeds [run_id] into
+// [AgentService.StreamAgentRunProgress] to observe lifecycle
+// events (typically alongside other in-flight runs the panel
+// is already streaming).
+message DispatchApplyFixResponse {
+  // The agent_runs row id the dispatch created. Always
+  // populated on success — the runner is fire-and-forget but
+  // the agent_runs INSERT is synchronous within the dispatch
+  // call.
+  string run_id = 1;
+
+  // The agent_type that was dispatched. Always
+  // AGENT_TYPE_FIX_APPLY today; carried explicitly so future
+  // dispatch RPCs (project-scope DispatchProjectFixViolations,
+  // PR E) can share the response shape.
+  AgentType agent_type = 2;
 }
 
 // ── What-If Simulation ──
