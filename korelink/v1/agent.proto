@@ -28,6 +28,26 @@ service AgentService {
   // Streaming
   rpc StreamAgentProgress(StreamAgentProgressRequest) returns (stream AgentProgressUpdate);
 
+  // StreamAgentRunProgress is the multiplexed counterpart to
+  // [StreamAgentProgress]: one server-stream observes
+  // lifecycle events for N runs at once, demuxed client-side
+  // by [AgentProgressUpdate.run_id]. Mirrors
+  // [RepoService.StreamBatchIndexProgress] so canvas panels
+  // tracking concurrent Apply Fix runs don't open one HTTP/2
+  // stream per row — one connection serves the whole panel.
+  //
+  // Each requested run gets:
+  //   - A synthetic seed frame from the DB (via PR B
+  //     [SeedRunStateFromDB]) so late-connecting / reconnecting
+  //     clients recover current state.
+  //   - Live frames from the cross-pod pub/sub bus (PR A) or
+  //     the in-process broker fallback.
+  //
+  // The stream closes when EVERY tracked run has emitted a
+  // terminal frame (`completed = true`); per-run lifecycles
+  // are independent.
+  rpc StreamAgentRunProgress(StreamAgentRunProgressRequest) returns (stream AgentProgressUpdate);
+
   // Steps & Logs
   rpc ListAgentSteps(ListAgentStepsRequest) returns (ListAgentStepsResponse);
   rpc ListAgentLogs(ListAgentLogsRequest) returns (ListAgentLogsResponse);
@@ -185,6 +205,17 @@ message CancelAgentRunResponse { bool success = 1; }
 // ── Streaming ──
 
 message StreamAgentProgressRequest { string run_id = 1; }
+
+// StreamAgentRunProgressRequest carries the set of run_ids
+// the client wants to observe over a single multiplexed
+// stream. Each entry MUST be a valid UUID; invalid entries
+// surface as immediate error frames (Status =
+// AGENT_RUN_STATUS_FAILED) rather than failing the whole
+// call so partial visibility is preserved. Capped server-side
+// at MaxBatchSize (matches RepoService.StreamBatchIndexProgress).
+message StreamAgentRunProgressRequest {
+  repeated string run_ids = 1;
+}
 
 message AgentProgressUpdate {
   string run_id = 1;
