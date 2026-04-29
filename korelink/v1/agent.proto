@@ -222,6 +222,25 @@ message AgentProgressUpdate {
   // surface WHY at file:line precision, not just "blast-radius
   // exceeded."
   BlastRadiusFailureMetadata blast_radius_metadata = 8;
+
+  // PR coordinates set on the terminal success frame
+  // (`completed == true && status == AGENT_RUN_STATUS_COMPLETED`)
+  // for runners that open or update a pull request as their
+  // outcome (currently fixapply; future PR-producing runners
+  // populate the same pair). Empty / zero on:
+  //
+  //   - non-terminal frames
+  //   - terminal failure frames
+  //   - success frames from runners that don't produce a PR
+  //
+  // Wire contract: clients use these fields directly to render
+  // a "View PR" CTA on completion; they MUST NOT substring-parse
+  // [message] to find the URL (fragile + drift-prone). The
+  // server-side runner records the same pair in
+  // `agent_runs.metadata` for post-hoc lookup; the streaming
+  // fields are the load-bearing path for live UX.
+  string pr_url = 9;
+  int32 pr_number = 10;
 }
 
 // BlastRadiusFailureMetadata carries the structured payload
