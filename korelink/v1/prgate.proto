@@ -209,20 +209,39 @@ message PRGateConfig {
   int32 max_violations_in_comment = 6;            // default: 25
   bool skip_info_violations = 7;                  // default: false
 
-  // AI Auto-Fix settings
-  string auto_fix_policy = 8;                     // "disabled", "suggest", "auto_apply"
-  float suggestion_confidence_threshold = 9;      // 0.0-1.0 (default: 0.8)
-  int32 auto_fix_batch_limit = 10;                // max fixes per commit (default: 10)
+  // AI Auto-Fix settings.
+  //
+  // auto_fix_policy gates the inline-suggestion review-comment
+  // surface (CreatePRReview with embedded suggestion blocks).
+  // Two valid values:
+  //
+  //   "disabled" (default) — no review-comment suggestions
+  //   "suggest" — server posts AI-suggested fixes as inline
+  //     GitHub review comments on PR pushes
+  //
+  // The "auto_apply" value (legacy direct-commit batch path)
+  // was REMOVED in this commit. UpdatePRGateConfig now rejects
+  // it as InvalidArgument. Orgs that previously had this set
+  // were migrated to the new agentloop-backed dispatcher
+  // (auto_fix_enabled below); the field 10 (auto_fix_batch_limit)
+  // that used to gate that path is also gone.
+  string auto_fix_policy = 8;
+  float suggestion_confidence_threshold = 9;      // 0.0-1.0 (default: 0.8) — gates BOTH legacy "suggest" AND new dispatcher
+  // field 10 (auto_fix_batch_limit) — REMOVED with the legacy
+  // auto_apply direct-commit path. Field number reserved so
+  // old clients sending it get a clear "unknown field"
+  // signal instead of silently re-using the slot.
+  reserved 10;
+  reserved "auto_fix_batch_limit";
   bool remediation_on_index = 11;                 // auto-open PR after initial index
   int32 remediation_max_fixes = 12;               // max fixes per remediation PR (default: 20)
 
   // KA-245 step 4.a — opt-in for the agentloop-backed
-  // dispatcher (workflow doc §9). Distinct from
-  // auto_fix_policy (the legacy 3-mode enum):
-  //   - auto_fix_enabled=true → fix_apply agent dispatched
-  //     on every PR push for unsuppressed violations
-  //   - auto_fix_enabled=false → suggestion blocks via
-  //     CreatePRReview (review-and-click flow)
+  // dispatcher (workflow doc §9). The CANONICAL auto-fix
+  // path going forward (full lifecycle: branch + splice +
+  // tool-driven validators + push + PR open + convergence
+  // loop). Coexists with auto_fix_policy="suggest" — both
+  // can fire on the same PR; they post on different surfaces.
   //
   // Server-side storage: agent_configs.settings JSON under
   // agent_type='canvas_detail'. Read-modify-write at the
