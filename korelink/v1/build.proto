@@ -1297,6 +1297,21 @@ message ApplyFixViaAgentRequest {
   // ApplyFixViaAgent calls for the same violation collide on the
   // canonical name (idempotency anchor).
   string branch_name = 3;
+
+  // Optional client-provided deep-link URL pointing back at the
+  // violation in the canvas (e.g.,
+  // `https://app.korelink.dev/canvas/<project>?violation_id=<id>`).
+  // The server forwards this verbatim into the auto-generated PR
+  // body so reviewers can click through from GitHub to the
+  // violation's full context (rule definition, evidence trail,
+  // surrounding repo state) without manually reconstructing the
+  // URL.
+  //
+  // Client-provided (not server-constructed) because the canvas
+  // routing convention is owned by the client; the server has no
+  // first-class notion of canvas URLs. Empty → the PR body omits
+  // the link section gracefully.
+  string violation_url = 4;
 }
 
 // DispatchApplyFixRequest dispatches the canvas Apply Fix
@@ -1306,9 +1321,12 @@ message ApplyFixViaAgentRequest {
 // share request-construction code on the client and
 // param-marshaling code on the server.
 message DispatchApplyFixRequest {
-  string violation_id = 1;
-  FixPlan fix_plan    = 2;
-  string branch_name  = 3;
+  string violation_id  = 1;
+  FixPlan fix_plan     = 2;
+  string branch_name   = 3;
+  // See ApplyFixViaAgentRequest.violation_url docstring — same
+  // contract on this RPC.
+  string violation_url = 4;
 }
 
 // DispatchApplyFixResponse carries the dispatched run's
