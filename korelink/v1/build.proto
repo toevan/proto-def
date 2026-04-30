@@ -807,6 +807,28 @@ message GetViolationDetailReply {
   // the wire for clients that want the per-rule breakdown (e.g.,
   // listing which rules INTRODUCED).
   ValidationOutcome validation_outcome = 22;
+
+  // fix_status surfaces whether an Apply Fix dispatch is
+  // already in flight for this violation. Server reads
+  // pr_violation_fix_branch fresh on every detail call (NOT
+  // cached) so the field reflects current state without
+  // requiring client-side cache invalidation. Empty +
+  // pr_url/pr_number unset on NOT_STARTED.
+  //
+  // Clients use this to gate the Apply Fix CTA — render
+  // "Apply Fix" on NOT_STARTED, "View PR ↗" (linked to
+  // pr_url) on PR_OPEN. Older clients that don't read this
+  // field continue to render the legacy Apply Fix CTA;
+  // they'll dispatch a no-op re-apply (the runner's
+  // idempotency table dedups), but the UX is degraded
+  // rather than broken.
+  ViolationFixStatus fix_status = 23;
+  // pr_url is GitHub's html_url for the open PR. Set when
+  // fix_status == PR_OPEN; empty otherwise.
+  string pr_url = 24;
+  // pr_number is the PR's GitHub-side number. Set when
+  // fix_status == PR_OPEN; zero otherwise.
+  int32 pr_number = 25;
 }
 
 // StreamViolationDetailRequest is the input shape for
@@ -952,6 +974,19 @@ message ViolationDetailHeader {
   // can render the actionable trigger text immediately, before any
   // AI work completes.
   string violation_reason = 12;
+  // fix_status mirrors [GetViolationDetailReply.fix_status]
+  // — whether an Apply Fix dispatch is already in flight for
+  // this violation. Streamed in the HEADER (cheap to compute —
+  // one indexed lookup against pr_violation_fix_branch) so the
+  // client renders the right CTA from the very first frame
+  // without waiting for the AI plan to land in the FOOTER.
+  ViolationFixStatus fix_status = 13;
+  // pr_url is GitHub's html_url for the open PR. Set when
+  // fix_status == PR_OPEN; empty otherwise.
+  string pr_url = 14;
+  // pr_number is the PR's GitHub-side number. Set when
+  // fix_status == PR_OPEN; zero otherwise.
+  int32 pr_number = 15;
 }
 
 // ValidationStatusEntry pairs one violation_id with its
@@ -1094,6 +1129,39 @@ enum FixValidationStatus {
 // validate). Derivation rule lives on
 // [GetViolationDetailReply.validation_outcome] so the per-rule map
 // and the collapsed outcome can't drift.
+// ViolationFixStatus reports whether an Apply Fix dispatch
+// has been kicked off for this violation, and if so, where it
+// currently stands. Server-side authoritative — derived from
+// `pr_violation_fix_branch` (the runner's idempotency table)
+// fresh on every detail read, never cached. The canvas client
+// gates the Apply Fix CTA off this field:
+//
+//   - NOT_STARTED → render "Apply Fix" button
+//   - PR_OPEN     → render "View PR ↗" (linked to pr_url)
+//
+// Future tiers (MERGED / CLOSED) require GitHub PR-state
+// integration (webhook or lazy poll) and aren't shipped yet.
+// Clients ignoring the field render the legacy Apply Fix CTA;
+// clients that read it gate appropriately.
+//
+// Stable wire surface: append new values, never renumber.
+enum ViolationFixStatus {
+  VIOLATION_FIX_STATUS_UNSPECIFIED = 0;
+  // No row exists in the runner's idempotency table —
+  // no Apply Fix has been dispatched against this violation.
+  // The standard "Apply Fix" CTA is the right user action.
+  VIOLATION_FIX_STATUS_NOT_STARTED = 1;
+  // A row exists with a populated pr_number — the runner
+  // opened (or updated) a PR. The client renders a "View PR"
+  // CTA linked to pr_url instead of inviting the user to
+  // re-dispatch. Read pr_number / pr_url for navigation.
+  VIOLATION_FIX_STATUS_PR_OPEN = 2;
+  // Reserved for future extension when PR-state webhook /
+  // polling lands:
+  //   VIOLATION_FIX_STATUS_MERGED = 3;
+  //   VIOLATION_FIX_STATUS_CLOSED = 4;
+}
+
 enum ValidationOutcome {
   VALIDATION_OUTCOME_UNSPECIFIED = 0;
   // At least one rule was deterministically checked and resolved by
