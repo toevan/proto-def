@@ -829,6 +829,14 @@ message GetViolationDetailReply {
   // pr_number is the PR's GitHub-side number. Set when
   // fix_status == PR_OPEN; zero otherwise.
   int32 pr_number = 25;
+
+  // change_set is the structured Fix ChangeSet plan (PR 10a). Emitted
+  // alongside fix_plan during the canvas-detail dual-output rollout —
+  // older clients consume fix_plan, newer clients (PR 10b Flutter
+  // ChangeSetView) consume change_set. Empty when canvas_detail
+  // didn't run the new pipeline (rule not addressable, generation
+  // failed, etc.) or when running an older server build.
+  ChangeSet change_set = 26;
 }
 
 // StreamViolationDetailRequest is the input shape for
@@ -892,6 +900,12 @@ message ViolationDetailUpdate {
     ViolationDetailFooter footer = 4;
     ViolationDetailError error = 5;
     ViolationDetailProgress progress = 6;
+    // change_set is the structured Fix ChangeSet (PR 10a). Streamed
+    // alongside the legacy hunk/footer payloads during the dual-output
+    // rollout. Newer clients render this via ChangeSetView (PR 10b);
+    // older clients ignore the unknown variant and fall back to the
+    // hunk/footer rendering path.
+    ChangeSet change_set = 7;
   }
 }
 
@@ -1380,6 +1394,19 @@ message ApplyFixViaAgentRequest {
   // first-class notion of canvas URLs. Empty → the PR body omits
   // the link section gracefully.
   string violation_url = 4;
+
+  // change_set is the new Fix ChangeSet hint (PR 10a). When set
+  // and dispatching to the fix_violation agent (PR 10c), the
+  // pipeline skips Stage 3 (LLM plan-pass) and uses this hint as
+  // the validated plan. Stage 4 validators still run against the
+  // hint — a malformed/stale ChangeSet rejects safely.
+  //
+  // Set when the canvas client has the user-reviewed ChangeSet
+  // (newer client consuming GetViolationDetailReply.change_set).
+  // Older clients leave this empty and pass fix_plan instead;
+  // PR 10c's dispatchApplyFix translates the hint shape based on
+  // which field is populated.
+  ChangeSet change_set = 5;
 }
 
 // DispatchApplyFixRequest dispatches the canvas Apply Fix
@@ -1395,6 +1422,11 @@ message DispatchApplyFixRequest {
   // See ApplyFixViaAgentRequest.violation_url docstring — same
   // contract on this RPC.
   string violation_url = 4;
+  // change_set is the new Fix ChangeSet hint (PR 10a). Same
+  // contract as ApplyFixViaAgentRequest.change_set — when set,
+  // PR 10c's dispatch path routes to the fix_violation agent
+  // and feeds the hint into the Stage 3 short-circuit.
+  ChangeSet change_set = 5;
 }
 
 // DispatchApplyFixResponse carries the dispatched run's
@@ -1506,4 +1538,347 @@ message ClearCanvasChatHistoryRequest {
 
 message ClearCanvasChatHistoryReply {
   bool success = 1;
+}
+
+// ── Fix ChangeSet Architecture (PR 10a) ──
+//
+// The ChangeSet is the structured plan the canvas violation-fix
+// pipeline (docs/architecture/KoreLink_Fix_ChangeSet_Architecture.md)
+// produces in Stage 3 (plan) and consumes in Stages 4–7 (validate_plan
+// → generate → validate_diffs → apply). It supersedes the flat
+// FixHunk-list shape on FixPlan with a richer typed-Operations
+// vocabulary that downstream stages can validate (cluster coverage,
+// caller coverage, layer integrity) and dispatch (per-op executor
+// per language).
+//
+// Wire equivalent of internal/fix/changeset.ChangeSet. Phase 10 of
+// the architecture's rollout: canvas_detail emits both FixPlan and
+// ChangeSet during the migration; Flutter switches its diff display
+// to ChangeSet; the apply path (DispatchApplyFix) accepts the hint
+// as a ChangeSet so the user-reviewed plan is exactly what the
+// pipeline executes.
+//
+// FixPlan stays on the wire during the transition for backwards
+// compatibility — older clients still consume it. PR 10d removes
+// FixPlan once Flutter cuts over.
+message ChangeSet {
+  // id is a stable identifier derived from cluster_id + ordered op
+  // ids (sha256-hashed). Re-plans that produce the same operations
+  // on the same cluster yield the same id — useful for cache
+  // dedup + audit trail.
+  string id = 1;
+
+  // cluster_id names the equivalence class (set of related
+  // violations) this ChangeSet addresses.
+  string cluster_id = 2;
+
+  // operations[] is the ordered op list. Order is significant:
+  // a RenameSymbolOp's UpdateCallSitesOp must follow it. v1 closed
+  // vocabulary lives in the RefactorOp oneof.
+  repeated RefactorOp operations = 3;
+
+  // affected_files names every distinct file the operations touch,
+  // de-duplicated. Each entry maps file → role → contributing op
+  // ids so the canvas client can render a per-file panel grouped
+  // by role + the PR description renderer can attribute changes.
+  repeated AffectedFile affected_files = 4;
+
+  // rationale is the structured explanation: WHAT the plan does,
+  // WHY it addresses the cluster, and which alternatives the
+  // planner considered + rejected.
+  PlanRationale rationale = 5;
+
+  // coverage is the structured proof that the plan addresses every
+  // cluster member + caller + layer invariant. Stage 4's plan
+  // validators populate this; downstream stages can trust the
+  // coverage claims without re-walking the cluster/scope.
+  CoverageProof coverage = 6;
+
+  // layer_decisions records per-file layer assignments + the
+  // auto-approval state at decision time. One entry per
+  // affected_file when the planner made a layer choice; absent
+  // when no layer movement is involved (most rename + replace
+  // ops).
+  repeated LayerDecision layer_decisions = 7;
+
+  // llm_trace points at the LLM call(s) that produced this
+  // ChangeSet — plan-pass run id + per-op generate-pass run ids.
+  // Lets the audit subsystem reconstruct the exact prompts
+  // without dragging the prompt payload through the wire.
+  LLMTraceRef llm_trace = 8;
+
+  // created_at is the server-side construction time. Stamped at
+  // Stage 3 emission; never updated after.
+  google.protobuf.Timestamp created_at = 9;
+
+  // status tracks the lifecycle position. PROPOSED → VALIDATED →
+  // GENERATING → APPLIED is the happy path; AWAITING_CONFIRMATION,
+  // PARTIAL_APPLIED, REJECTED are alternate terminals.
+  PlanStatus status = 10;
+}
+
+// RefactorOp is the typed sum-type for v1's closed Operations
+// vocabulary. The five op kinds cover: in-place renames, literal
+// replacements, derived caller updates, cross-file moves, and
+// extract-to-module restructurings. Adding a new op kind requires
+// the per-language executor + plan validator to land first
+// (extensibility checklist in §4.7 of the architecture doc).
+message RefactorOp {
+  oneof op {
+    RenameSymbolOp rename_symbol = 1;
+    ReplaceLiteralOp replace_literal = 2;
+    UpdateCallSitesOp update_call_sites = 3;
+    MoveSymbolOp move_symbol = 4;
+    ExtractToModuleOp extract_to_module = 5;
+  }
+}
+
+// RenameSymbolOp renames a symbol at its definition site. Spawns
+// an explicit UpdateCallSitesOp the planner must emit so caller
+// updates appear in the coverage proof.
+message RenameSymbolOp {
+  string id = 1;
+  string symbol_id = 2;
+  string old_name = 3;
+  string new_name = 4;
+  string file_path = 5;
+  string reason = 6;
+}
+
+// ReplaceLiteralOp replaces a literal value at a precise range.
+// Strict-mode mechanical text replacement.
+message ReplaceLiteralOp {
+  string id = 1;
+  string file_path = 2;
+  Range range = 3;
+  string old_literal = 4;
+  string new_literal = 5;
+  string justification = 6;
+}
+
+// UpdateCallSitesOp is the derived op spawned by RenameSymbolOp /
+// MoveSymbolOp / ExtractToModuleOp. Updates every call site of the
+// renamed/moved symbol. derived_from points at the parent op id;
+// plan validators reject UpdateCallSitesOps without a parent.
+message UpdateCallSitesOp {
+  string id = 1;
+  string derived_from = 2;
+  repeated CallSiteRef sites = 3;
+  string old_name = 4;
+  string new_name = 5;
+  UpdateStrategy strategy = 6;
+}
+
+// MoveSymbolOp moves a symbol from its source file to a target
+// file without changing its name. Spawns UpdateCallSitesOps to
+// rewrite caller import paths. LLM-supervised execution (PR 12).
+message MoveSymbolOp {
+  string id = 1;
+  string symbol_id = 2;
+  string source_file_path = 3;
+  string target_file_path = 4;
+  ArchLayer target_layer = 5;
+  bool preserve_callers = 6;
+  string layer_justification = 7;
+}
+
+// ExtractToModuleOp extracts one or more symbols to a target
+// module. Stronger architectural decision than MoveSymbol —
+// proposes a new file or appends to an existing module file.
+// Requires user confirmation when the project uses
+// DefaultLayerPolicy (§9.4.3). LLM-supervised execution (PR 12).
+message ExtractToModuleOp {
+  string id = 1;
+  repeated string source_symbols = 2;
+  string target_file_path = 3;
+  ArchLayer target_layer = 4;
+  string target_package_name = 5;
+  bool new_file = 6;
+  string naming_convention = 7;
+  string layer_justification = 8;
+}
+
+// CallSiteRef identifies a precise call site within a caller file.
+// Used by UpdateCallSitesOp to enumerate every site the op
+// addresses.
+message CallSiteRef {
+  string symbol_id = 1;
+  string file_path = 2;
+  int32 line = 3;
+  int32 column = 4;
+  string called_symbol = 5;
+}
+
+// Range is a 1-indexed line+column pair (start, end). End is
+// exclusive — a single-character range at line 5 col 10 is
+// {start_line=5, start_col=10, end_line=5, end_col=11}.
+message Range {
+  int32 start_line = 1;
+  int32 start_col = 2;
+  int32 end_line = 3;
+  int32 end_col = 4;
+}
+
+// UpdateStrategy controls how UpdateCallSitesOp executes. The
+// default is LLM-supervised but a per-org override allows strict
+// mode for cost-sensitive deployments.
+enum UpdateStrategy {
+  UPDATE_STRATEGY_UNSPECIFIED = 0;
+  UPDATE_STRATEGY_STRICT = 1;
+  UPDATE_STRATEGY_LLM_SUPERVISED = 2;
+}
+
+// AffectedFile names a file the ChangeSet writes to. The
+// op_ids list lets the PR description renderer attribute each
+// change to its op; the role drives per-file UI framing
+// (PRIMARY focal diff vs. CONSUMER supporting edit vs. NEW
+// file create).
+message AffectedFile {
+  string file_path = 1;
+  AffectedFileRole role = 2;
+  repeated string op_ids = 3;
+  ArchLayer layer = 4;
+}
+
+// AffectedFileRole classifies a file's role in the ChangeSet.
+enum AffectedFileRole {
+  AFFECTED_FILE_ROLE_UNSPECIFIED = 0;
+  AFFECTED_FILE_ROLE_PRIMARY = 1;
+  AFFECTED_FILE_ROLE_CONSUMER = 2;
+  AFFECTED_FILE_ROLE_NEW = 3;
+  AFFECTED_FILE_ROLE_MIGRATION = 4;
+  AFFECTED_FILE_ROLE_DELETED = 5;
+}
+
+// PlanRationale is the structured explanation of WHY the
+// ChangeSet addresses the cluster the way it does. Free-form
+// prose is avoided in favour of named fields so the canvas
+// client renders consistently and Stage 4 validators can
+// check structurally that all required fields are populated.
+message PlanRationale {
+  string summary = 1;
+  repeated string reasoning = 2;
+  repeated AlternativeConsidered alternatives_considered = 3;
+  string layer_impact = 4;
+}
+
+// AlternativeConsidered records an op kind the planner
+// considered and rejected, with reason. Empty list means the
+// chosen plan was the obvious answer.
+message AlternativeConsidered {
+  // op_kind is the rejected op kind as a string (one of
+  // "rename_symbol", "replace_literal", "update_call_sites",
+  // "move_symbol", "extract_to_module"). String wire encoding
+  // (rather than a typed enum) keeps forward-compat trivial
+  // when v2 vocabulary expands.
+  string op_kind = 1;
+  string reason = 2;
+}
+
+// CoverageProof is the artifact every successful plan/diff
+// carries. Records explicitly that every cluster member is
+// addressed by some op, every caller in scope is addressed,
+// and every affected file holds its layer invariants.
+message CoverageProof {
+  // cluster_members_addressed lists violation ids that some
+  // op in the ChangeSet targets.
+  repeated string cluster_members_addressed = 1;
+
+  // callers_addressed lists symbol ids of callers whose call
+  // sites are addressed by some UpdateCallSitesOp.
+  repeated string callers_addressed = 2;
+
+  // layer_invariants_held records per-file layer integrity.
+  // One entry per affected file.
+  repeated LayerCheck layer_invariants_held = 3;
+
+  // unaddressed lists gaps the validators detected. Empty on
+  // a fully-covered plan; non-empty on a partial-apply (§16.7).
+  repeated CoverageGap unaddressed = 4;
+}
+
+// LayerCheck is a per-file post-diff layer integrity claim.
+message LayerCheck {
+  string file_path = 1;
+  // pre_layer is the file's layer classification before the fix.
+  string pre_layer = 2;
+  // post_layer is the file's layer classification after applying
+  // the fix. Equal to pre_layer for files that don't move; the
+  // field is captured anyway so unintended layer drift is
+  // observable in the proof.
+  string post_layer = 3;
+  // held is true when the post-fix file's layer + dependency
+  // edges satisfy the project's LayerPolicy.
+  bool held = 4;
+}
+
+// CoverageGap is a structured re-prompt suggestion for the
+// LLM (§5.2 re-plan loop) AND the surface for partial-apply
+// reporting (§16.7). The kind enum mirrors the Go GapKind enum
+// (string-encoded for forward-compat with future kinds).
+message CoverageGap {
+  // kind is one of "missing_member", "missing_caller",
+  // "malformed_op", "layer_violation", "colliding_identifier",
+  // "target_file_conflict", "budget_exceeded", "plan_unresolvable",
+  // "diff_not_implementing_op", "syntactic_invalid",
+  // "coverage_regression".
+  string kind = 1;
+  string detail = 2;
+  string hint = 3;
+  string op_id = 4;
+}
+
+// LayerDecision records a single per-file layer assignment
+// the planner made (or kept). One entry per AffectedFile when
+// the planner made a layer choice; absent when no layer
+// movement is involved.
+message LayerDecision {
+  string file_path = 1;
+  ArchLayer layer = 2;
+  string op_id = 3;
+  string justification = 4;
+  bool auto_approved = 5;
+  // auto_approve_config_snapshot records the auto-approval
+  // config that was in effect at decision time, for audit
+  // trail. Empty when AutoApproved is true with the default
+  // config.
+  string auto_approve_config_snapshot = 6;
+}
+
+// LLMTraceRef points back to the LLM call(s) that produced
+// this ChangeSet. Lets the audit subsystem reconstruct prompts
+// without dragging the prompt payload through this struct.
+message LLMTraceRef {
+  string plan_pass_run_id = 1;
+  repeated string generate_pass_run_ids = 2;
+  int32 replan_count = 3;
+}
+
+// PlanStatus tracks where in its lifecycle a ChangeSet
+// currently sits. Persisted to agent_runs.metadata; rendered
+// by the canvas client.
+enum PlanStatus {
+  PLAN_STATUS_UNSPECIFIED = 0;
+  PLAN_STATUS_PROPOSED = 1;
+  PLAN_STATUS_VALIDATED = 2;
+  PLAN_STATUS_AWAITING_CONFIRMATION = 3;
+  PLAN_STATUS_GENERATING = 4;
+  PLAN_STATUS_APPLIED = 5;
+  PLAN_STATUS_PARTIAL_APPLIED = 6;
+  PLAN_STATUS_REJECTED = 7;
+}
+
+// ArchLayer is the architectural-layer classification used by
+// LayerPolicy + LayerCheck. Mirrors messages.ArchLayer in Go;
+// the wire enum exists so the canvas client can render layer
+// chips without a string-to-enum conversion.
+enum ArchLayer {
+  ARCH_LAYER_UNSPECIFIED = 0;
+  ARCH_LAYER_PRESENTATION = 1;
+  ARCH_LAYER_DOMAIN = 2;
+  ARCH_LAYER_DATA = 3;
+  ARCH_LAYER_API = 4;
+  ARCH_LAYER_INFRA = 5;
+  ARCH_LAYER_SHARED = 6;
+  ARCH_LAYER_UNKNOWN = 7;
 }
