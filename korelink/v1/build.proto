@@ -50,20 +50,18 @@ service BuildService {
 
   // StreamViolationDetail is the progressive-render variant of
   // GetViolationDetail. The server emits a sequence of partial
-  // updates as the AI plan generates + validates: header (cheap
-  // identity fields, ~150ms), then each plan hunk as it parses
-  // out of the LLM's streaming JSON, then per-rule validation
-  // results, then the footer (confidence/scope/effort estimate/
-  // resolves[]). Lets the client render the sheet container
-  // immediately and progressively fill in plan hunks as they
-  // arrive — perceived latency drops from 30s → ~3s to first
-  // visible plan content.
+  // updates as Stage 3 plans the fix: header (cheap identity
+  // fields, ~150ms), per-rule validation results as they resolve,
+  // the typed Fix ChangeSet, then the footer
+  // (confidence/scope/effort estimate/resolves[]). Lets the client
+  // render the sheet container immediately and reveal the plan
+  // preview the moment Stage 3 lands — perceived latency drops
+  // from 30s → ~3s to first visible header.
   //
   // Cache-hit short-circuit: when the violation_id (or signature)
-  // is in Redis, the server emits one HEADER + the cached plan
-  // hunks + validation + FOOTER as a single non-streaming burst.
-  // Client renders identically; the streaming RPC is correct for
-  // both paths.
+  // is in Redis, the server emits HEADER + VALIDATION + CHANGE_SET
+  // + FOOTER as a single non-streaming burst. Client renders
+  // identically; the streaming RPC is correct for both paths.
   //
   // The unary GetViolationDetail RPC remains supported for
   // clients that haven't adopted streaming yet — both RPCs share
@@ -92,22 +90,22 @@ service BuildService {
   // ApplyFixViaAgent dispatches the canvas-detail Apply Fix action
   // through the agentloop fix_apply agent (KA-242) and streams the
   // agent's progress back to the caller. The agent owns the full
-  // lifecycle: branch off origin/main, splice each hunk, re-run
-  // validators via tools, push, open the PR, and emit an
-  // [AgentProgressUpdate] per step. The agent uses the [fix_plan]
-  // field as a hint and is free to adapt if the workspace has
-  // drifted since the plan was generated.
+  // lifecycle: branch off origin/main, execute the planned ops,
+  // re-run validators via tools, push, open the PR, and emit an
+  // [AgentProgressUpdate] per step. The agent uses the
+  // [change_set] field as a hint and is free to adapt if the
+  // workspace has drifted since the plan was generated.
   //
   // The stream emits [AgentProgressUpdate] frames as the agent
-  // transitions phases (apply_hunk start/end, run_validators
-  // result, branch pushed, PR opened). The terminal frame carries
+  // transitions phases (op-apply start/end, run_validators result,
+  // branch pushed, PR opened). The terminal frame carries
   // `completed = true` along with `status = AGENT_RUN_STATUS_COMPLETED`
   // (success — PR URL and metadata available via [GetAgentRun] or
   // [ListAgentRuns]) or `status = AGENT_RUN_STATUS_FAILED` (failure
   // — `message` carries the operator-visible reason).
   //
   // Idempotency: if the agent has already opened a PR for the
-  // (violation_id, fix_plan signature) within the dedup window,
+  // (violation_id, change_set signature) within the dedup window,
   // the existing run's progress replays through this stream and no
   // duplicate PR is opened.
   rpc ApplyFixViaAgent(ApplyFixViaAgentRequest) returns (stream AgentProgressUpdate);
@@ -120,7 +118,7 @@ service BuildService {
   // any other in-flight runs the panel is tracking).
   //
   // Request shape mirrors [ApplyFixViaAgentRequest] verbatim
-  // (same violation_id + optional fix_plan + optional
+  // (same violation_id + optional change_set + optional
   // branch_name); the agent's dispatch path is identical —
   // only the observation path differs. Existing
   // [ApplyFixViaAgent] callers keep streaming; new clients
@@ -621,9 +619,9 @@ message GetViolationDetailRequest {
   string violation_id = 1;
 
   // force_regenerate, when true, makes the server bypass the Redis
-  // cache entry for this violation_id and re-run the FixPlan
-  // generation pipeline (file fetch + package context + LLM call +
-  // validation). The fresh result is then written into Redis, so
+  // cache entry for this violation_id and re-run the Stage 3
+  // ChangeSet plan-pass (file fetch + scope resolution + LLM call
+  // + validation). The fresh result is then written into Redis, so
   // subsequent reads observe the new plan. Used by the client's
   // "Try a different fix" / "Retry" CTA on the stream-error banner
   // — the user has explicitly indicated the prior result was
@@ -690,22 +688,10 @@ message GetViolationDetailReply {
   // violations.
   string violation_reason = 19;
 
-  // fix_plan carries the AI-generated change set that resolves the
-  // constraint(s). Phase 2d replaced the prior single-string
-  // suggested_fix with a structured plan so multi-file fixes (a
-  // primary edit + helper-file create + import edit) can be conveyed
-  // honestly.
-  //
-  // For a line-scoped fix, fix_plan has exactly one PRIMARY hunk —
-  // hunks[0].replacement is what the prior suggested_fix string
-  // would have been. For multi-file fixes, additional hunks
-  // describe the supporting changes (new files, edits to
-  // dependencies). Clients apply hunks atomically: all or nothing.
-  //
-  // Empty (fix_plan unset / hunks empty) when no fix was generated
-  // (rule not addressable by AI, generation failed, confidence
-  // below threshold).
-  FixPlan fix_plan = 12;
+  // (field 12 retired in PR 10d-F — legacy FixPlan shape replaced
+  // by [change_set] below.)
+  reserved 12;
+  reserved "fix_plan";
 
   // estimated_fix_minutes is the rough effort estimate to apply the
   // suggested fix. 0 when not estimable.
@@ -830,12 +816,12 @@ message GetViolationDetailReply {
   // fix_status == PR_OPEN; zero otherwise.
   int32 pr_number = 25;
 
-  // change_set is the structured Fix ChangeSet plan (PR 10a). Emitted
-  // alongside fix_plan during the canvas-detail dual-output rollout —
-  // older clients consume fix_plan, newer clients (PR 10b Flutter
-  // ChangeSetView) consume change_set. Empty when canvas_detail
-  // didn't run the new pipeline (rule not addressable, generation
-  // failed, etc.) or when running an older server build.
+  // change_set is the typed Fix ChangeSet plan that resolves the
+  // constraint(s) — the unit of human review and the contract
+  // between Stages 3–7 of the pipeline. Empty when Stage 3 didn't
+  // produce a plan (rule not addressable, plan-pass error, gaps
+  // unresolvable). Canvas client renders the no-preview UI in that
+  // case.
   ChangeSet change_set = 26;
 }
 
@@ -870,41 +856,45 @@ message StreamViolationDetailRequest {
 // Wire-order contract:
 //
 //   1. HEADER — exactly one, FIRST.
-//   2. PROGRESS — zero or more, between HEADER and HUNK. Streamed
-//      from the agentic-fix-loop's tool-call activity (the AI's
-//      "thinking" / "reading file X" / "searching for symbol Y"
-//      reasoning) so the client can render visible progress
-//      under the spinner instead of dead time. Clients SHOULD
-//      treat absence of PROGRESS messages as fine (older deploys
-//      and cache-hit bursts skip them) — never block on receipt.
-//   3. HUNK — zero or more, in plan order (hunks[0] is PRIMARY).
-//   4. VALIDATION — zero or more, one per rule_id in resolves[].
+//   2. PROGRESS — zero or more, between HEADER and VALIDATION.
+//      Streamed from the agentic-fix-loop's tool-call activity
+//      (the AI's "thinking" / "reading file X" / "searching for
+//      symbol Y" reasoning) so the client can render visible
+//      progress under the spinner instead of dead time. Clients
+//      SHOULD treat absence of PROGRESS messages as fine (older
+//      deploys and cache-hit bursts skip them) — never block on
+//      receipt.
+//   3. VALIDATION — zero or more, one per rule_id in resolves[].
+//   4. CHANGE_SET — at most one, after VALIDATION and before
+//      FOOTER. Carries the typed Fix ChangeSet from Stage 3.
+//      Omitted entirely when Stage 3 produced no plan (degraded
+//      path — canvas client renders no-preview UI).
 //   5. FOOTER — exactly one, LAST. After this message the server
 //      closes the stream.
 //
 // On error mid-stream: the server emits ERROR and closes. Clients
-// should keep whatever HEADER + PROGRESS + HUNK + VALIDATION
+// should keep whatever HEADER + PROGRESS + VALIDATION + CHANGE_SET
 // messages they've already received and render the sheet in
 // degraded state.
 //
-// On cache hit: the server emits HEADER + N HUNK + N VALIDATION +
-// FOOTER in a single non-streaming burst (no PROGRESS messages
-// because there's no agentic compute to narrate). Clients render
-// identically — the streaming wire shape is correct for both
-// warm-cache and cold-compute paths.
+// On cache hit: the server emits HEADER + N VALIDATION +
+// CHANGE_SET + FOOTER in a single non-streaming burst (no PROGRESS
+// messages because there's no agentic compute to narrate). Clients
+// render identically — the streaming wire shape is correct for
+// both warm-cache and cold-compute paths.
+//
+// (Field 2 reserved — legacy `FixHunk hunk` payload retired in PR 10d-F.)
 message ViolationDetailUpdate {
+  reserved 2;
+  reserved "hunk";
   oneof payload {
     ViolationDetailHeader header = 1;
-    FixHunk hunk = 2;
     ValidationStatusEntry validation = 3;
     ViolationDetailFooter footer = 4;
     ViolationDetailError error = 5;
     ViolationDetailProgress progress = 6;
-    // change_set is the structured Fix ChangeSet (PR 10a). Streamed
-    // alongside the legacy hunk/footer payloads during the dual-output
-    // rollout. Newer clients render this via ChangeSetView (PR 10b);
-    // older clients ignore the unknown variant and fall back to the
-    // hunk/footer rendering path.
+    // change_set is the typed Fix ChangeSet from Stage 3. Newer
+    // clients render this via ChangeSetView (PR 10b).
     ChangeSet change_set = 7;
   }
 }
@@ -967,7 +957,7 @@ message ViolationDetailProgress {
 //
 // Field set is the strict subset of [GetViolationDetailReply]
 // that doesn't depend on the AI plan. The remaining fields
-// (fix_plan, validation_status, deterministically_validated,
+// (change_set, validation_status, deterministically_validated,
 // confidence, estimated_fix_minutes, fix_scope, resolves) arrive
 // in subsequent stream messages.
 message ViolationDetailHeader {
@@ -1013,7 +1003,7 @@ message ValidationStatusEntry {
 }
 
 // ViolationDetailFooter is the wrap-up message — sent LAST after
-// all hunks + validation. Carries the metadata that depends on
+// validation + change_set. Carries the metadata that depends on
 // the full plan (confidence/scope/effort estimate) plus the
 // deterministically_validated bit and the resolves[] list.
 //
@@ -1038,15 +1028,11 @@ message ViolationDetailFooter {
   // multi-violation summary line ("This fix addresses 3 rules: X,
   // Y, Z") in one pass.
   map<string, string> resolves_names = 7;
-  // fix_plan_summary is the LLM-generated 1-2 sentence "what does
-  // this fix do" explainer. Mirrors [FixPlan.summary] from the
-  // unary RPC. Streamed in the FOOTER (after all hunks) because
-  // the value is only known once the full envelope completes
-  // parsing — Feed-stage hunks arrive before the model finishes
-  // emitting the trailing summary token. Empty on pattern-matched
-  // fixes (deterministic catalog has no narrative) and when the
-  // model-side soft-fill placeholder fires.
-  string fix_plan_summary = 8;
+  // (Field 8 reserved — legacy `string fix_plan_summary` retired in
+  // PR 10d-F. The Stage 3 ChangeSet's PlanRationale.Summary is the
+  // single source of plan-scoped explainer prose now.)
+  reserved 8;
+  reserved "fix_plan_summary";
   // validation_outcome mirrors [GetViolationDetailReply.validation_outcome]
   // — the tri-state collapse of the per-rule validation_status map
   // (validated / failed / could-not-validate). Streamed in the
@@ -1074,7 +1060,7 @@ message ViolationDetailFooter {
 message ViolationDetailError {
   // code is a short machine-readable error category. Currently:
   //   "transient_ai" — upstream AI failure (timeout, retry-exhausted, 5xx).
-  //   "schema_invalid" — model emitted JSON that didn't match the FixPlan schema.
+  //   "schema_invalid" — model emitted JSON that didn't match the ChangeSet schema.
   //   "not_json" — model emitted non-JSON content (model regression signal).
   //   "internal" — server-side error not attributable to AI.
   string code = 1;
@@ -1212,167 +1198,29 @@ enum FixScope {
   FIX_SCOPE_BROADER = 4;
 }
 
-// FixPlan is the structured change set the violation-detail RPC returns.
-// One plan is the unit of application — clients apply ALL hunks together
-// or skip the whole fix. Phase 2d replaced the prior single-string
-// suggested_fix surface with this shape so multi-file fixes can be
-// conveyed honestly: a fix that adds a `defer breachNotifier.notify(...)`
-// line is meaningless without the file that defines `breachNotifier`,
-// so both must travel together as one plan.
-message FixPlan {
-  // hunks[0] is always the PRIMARY hunk — the change to the file the
-  // violation was recorded on. Subsequent hunks describe dependency
-  // edits, new files, or migrations the primary requires. Order is
-  // preserved server-side; clients render them in this order.
-  repeated FixHunk hunks = 1;
-
-  // affected_files lists every distinct file_path the plan touches,
-  // de-duplicated and sorted. Lets the client render
-  // "Affects N files" without re-walking the hunks slice.
-  repeated string affected_files = 2;
-
-  // requires lists symbols the primary hunk references that must
-  // exist after the plan is applied — either provided by a sibling
-  // hunk (provided_by_hunk index points into hunks[]) or
-  // pre-existing in the codebase (provided_by_hunk = -1). Server
-  // verifies this list against the modified workspace before
-  // returning, so clients can trust that "missing dependency"
-  // indicates a real gap, not just a missing hunk.
-  repeated FixDependency requires = 3;
-
-  // summary is a 1-2 sentence plain-English explanation of WHAT
-  // the plan does and WHY it resolves the violation. Generated by
-  // the LLM as part of the plan envelope; required by the prompt
-  // contract. Always present on AI-generated plans; empty on
-  // pattern-matched fixes (deterministic catalog hits don't need
-  // explanatory prose — the rule's existing explanation covers it).
-  //
-  // Example: "Replaced the hardcoded API key with a call to
-  // os.Getenv('STRIPE_SECRET_KEY') so the value is loaded from
-  // runtime config instead of being committed to source. Resolves
-  // the secret-detection rule by removing the credential from
-  // version-controlled code."
-  //
-  // Distinct from per-hunk `rationale` (which is hunk-scoped and
-  // explains WHY a specific dependency hunk is needed). The
-  // summary is plan-scoped and answers "what should I expect this
-  // change to do?" before the user reads any diff.
-  string summary = 4;
-}
-
-// FixHunk is one file-level change in a FixPlan.
-//
-// For PRIMARY and DEPENDENCY_EDIT hunks: line_start / line_end are
-// 1-based inclusive line ranges identifying the region being replaced
-// (same semantics as canvas.NodeViolation's line/end_line); original
-// is the pre-fix content of those lines, replacement is the new
-// content.
-//
-// For DEPENDENCY_CREATE hunks: line_start = line_end = 0 (sentinel
-// for "no existing range"); original is empty; replacement is the
-// full content of the new file.
-//
-// For MIGRATION hunks: same shape as DEPENDENCY_CREATE (typically a
-// new SQL/YAML file), but the role tells the client this hunk
-// requires an out-of-band step (DB migration run, redeploy, etc.)
-// rather than just a code commit.
-message FixHunk {
-  string file_path = 1;
-  int32  line_start = 2;
-  int32  line_end = 3;
-  string original = 4;
-  string replacement = 5;
-  FixHunkRole role = 6;
-  // rationale is a short author-style explanation of why this hunk
-  // is in the plan. Populated for EVERY hunk including PRIMARY
-  // (changed contract — earlier versions left PRIMARY blank because
-  // the assumption was the rule's `explanation` covered it; in
-  // practice users wanted per-diff context to understand exactly
-  // what the AI changed). Required by the prompt contract; clients
-  // can rely on non-empty rationale on every hunk in
-  // AI-generated plans.
-  //
-  // Examples:
-  //   PRIMARY:            "Replaced hardcoded secret with os.Getenv lookup."
-  //   DEPENDENCY_CREATE:  "Adds breach notifier referenced by primary."
-  //   DEPENDENCY_EDIT:    "Adds the new helper to the package's exports."
-  //
-  // Pattern-matched fixes (no LLM call) emit single-PRIMARY plans
-  // with empty rationale — the deterministic catalog doesn't carry
-  // narrative.
-  string rationale = 7;
-}
-
-// FixHunkRole identifies what kind of change a hunk represents. The
-// client renders different framing per role: PRIMARY is the focal
-// diff, DEPENDENCY_* are supporting changes, MIGRATION carries a
-// "schema change" badge so the user knows the fix isn't complete
-// until a separate migration step runs.
-enum FixHunkRole {
-  FIX_HUNK_ROLE_UNSPECIFIED = 0;
-  FIX_HUNK_ROLE_PRIMARY = 1;
-  FIX_HUNK_ROLE_DEPENDENCY_EDIT = 2;
-  FIX_HUNK_ROLE_DEPENDENCY_CREATE = 3;
-  FIX_HUNK_ROLE_MIGRATION = 4;
-}
-
-// FixDependency describes one symbol the primary hunk references and
-// where it comes from. Lets the client warn explicitly when the AI
-// proposes a fix that references a function or type the codebase
-// doesn't actually define — currently a silent "fix that won't
-// compile" failure mode in single-string fix outputs.
-message FixDependency {
-  // The symbol name as it appears in the primary hunk (function name,
-  // type name, variable name, import path, env var key).
-  string symbol = 1;
-
-  // What kind of symbol it is — drives the client's rendering and
-  // the server's verification approach (function declarations vs.
-  // imports vs. env vars all check differently).
-  FixDependencyKind kind = 2;
-
-  // Index into the FixPlan.hunks slice of the hunk that provides
-  // this symbol. -1 when the symbol is expected to already exist in
-  // the codebase (no supporting hunk needed).
-  int32 provided_by_hunk = 3;
-}
-
-enum FixDependencyKind {
-  FIX_DEPENDENCY_KIND_UNSPECIFIED = 0;
-  FIX_DEPENDENCY_KIND_FUNCTION = 1;
-  FIX_DEPENDENCY_KIND_TYPE = 2;
-  FIX_DEPENDENCY_KIND_VARIABLE = 3;
-  FIX_DEPENDENCY_KIND_IMPORT = 4;
-  FIX_DEPENDENCY_KIND_ENV_VAR = 5;
-}
-
 // ── Apply Fix (Phase 2e) ──
+//
+// (Legacy `FixPlan`, `FixHunk`, `FixDependency` messages and
+// `FixHunkRole` / `FixDependencyKind` enums retired in PR 10d-F —
+// the typed Fix [ChangeSet] / refactor.RefactorOp vocabulary
+// supersedes them. Stage 3 produces ChangeSets directly; the
+// `ViolationDetail.change_set` field carries them on the wire.)
 
 // ApplyFixViaAgentRequest dispatches the canvas Apply Fix CTA
 // through the agentloop fix_apply agent (KA-242). The agent owns
-// the full lifecycle (branch → splice → validators → push → PR
-// open) and streams progress via [AgentProgressUpdate]. The
-// server resolves the FixPlan from cache when [fix_plan] is unset.
+// the full lifecycle (branch → execute ops → validators → push →
+// PR open) and streams progress via [AgentProgressUpdate]. The
+// server resolves the ChangeSet from cache when [change_set] is
+// unset.
+//
+// (Field 2 reserved — legacy `FixPlan fix_plan` retired in PR 10d-F.)
 message ApplyFixViaAgentRequest {
-  // The violation the agent should fix. Server resolves
-  // org_id/repo_id and the seed FixPlan from this id.
-  string violation_id = 1;
+  reserved 2;
+  reserved "fix_plan";
 
-  // Optional FixPlan hint. When set, the agent uses this plan as
-  // its starting point; when unset, the agent fetches the cached
-  // plan via the same path GetViolationDetail uses.
-  //
-  // Why allow client-supplied: the canvas client already holds the
-  // plan (it just rendered the diff to the user). Passing the same
-  // bytes saves the agent a cache lookup and pins the plan the
-  // user actually saw — a workspace drift between "user clicked
-  // Apply" and "agent re-fetches from cache" otherwise risks
-  // applying a slightly different plan than the one previewed.
-  //
-  // The agent is still free to adapt the plan if the workspace
-  // has drifted (e.g. line numbers shifted under merge); this
-  // field is a HINT, not an authoritative payload.
-  FixPlan fix_plan = 2;
+  // The violation the agent should fix. Server resolves
+  // org_id/repo_id and the seed ChangeSet from this id.
+  string violation_id = 1;
 
   // Optional branch name. When unset, the agent generates one of
   // the form `korelink/fix-violation-<short_id>` so concurrent
@@ -1395,17 +1243,15 @@ message ApplyFixViaAgentRequest {
   // the link section gracefully.
   string violation_url = 4;
 
-  // change_set is the new Fix ChangeSet hint (PR 10a). When set
-  // and dispatching to the fix_violation agent (PR 10c), the
+  // change_set is the typed Fix ChangeSet hint. When set, the
   // pipeline skips Stage 3 (LLM plan-pass) and uses this hint as
   // the validated plan. Stage 4 validators still run against the
-  // hint — a malformed/stale ChangeSet rejects safely.
+  // hint — a malformed/stale ChangeSet rejects safely. When unset,
+  // the agent runs Stage 3 over the violation to produce a fresh
+  // plan.
   //
-  // Set when the canvas client has the user-reviewed ChangeSet
-  // (newer client consuming GetViolationDetailReply.change_set).
-  // Older clients leave this empty and pass fix_plan instead;
-  // PR 10c's dispatchApplyFix translates the hint shape based on
-  // which field is populated.
+  // Set by the canvas client when it has the user-reviewed
+  // ChangeSet (consumed from `GetViolationDetailReply.change_set`).
   ChangeSet change_set = 5;
 }
 
@@ -1416,16 +1262,18 @@ message ApplyFixViaAgentRequest {
 // share request-construction code on the client and
 // param-marshaling code on the server.
 message DispatchApplyFixRequest {
+  reserved 2;
+  reserved "fix_plan";
+
   string violation_id  = 1;
-  FixPlan fix_plan     = 2;
   string branch_name   = 3;
   // See ApplyFixViaAgentRequest.violation_url docstring — same
   // contract on this RPC.
   string violation_url = 4;
-  // change_set is the new Fix ChangeSet hint (PR 10a). Same
-  // contract as ApplyFixViaAgentRequest.change_set — when set,
-  // PR 10c's dispatch path routes to the fix_violation agent
-  // and feeds the hint into the Stage 3 short-circuit.
+  // change_set is the typed Fix ChangeSet hint. Same contract as
+  // [ApplyFixViaAgentRequest.change_set] — when set, the dispatch
+  // path routes to the fix_violation agent and feeds the hint into
+  // the Stage 3 short-circuit.
   ChangeSet change_set = 5;
 }
 
@@ -1540,27 +1388,22 @@ message ClearCanvasChatHistoryReply {
   bool success = 1;
 }
 
-// ── Fix ChangeSet Architecture (PR 10a) ──
+// ── Fix ChangeSet Architecture ──
 //
 // The ChangeSet is the structured plan the canvas violation-fix
 // pipeline (docs/architecture/KoreLink_Fix_ChangeSet_Architecture.md)
 // produces in Stage 3 (plan) and consumes in Stages 4–7 (validate_plan
-// → generate → validate_diffs → apply). It supersedes the flat
-// FixHunk-list shape on FixPlan with a richer typed-Operations
+// → generate → validate_diffs → apply). It carries a typed-Operations
 // vocabulary that downstream stages can validate (cluster coverage,
 // caller coverage, layer integrity) and dispatch (per-op executor
 // per language).
 //
-// Wire equivalent of internal/fix/changeset.ChangeSet. Phase 10 of
-// the architecture's rollout: canvas_detail emits both FixPlan and
-// ChangeSet during the migration; Flutter switches its diff display
-// to ChangeSet; the apply path (DispatchApplyFix) accepts the hint
-// as a ChangeSet so the user-reviewed plan is exactly what the
-// pipeline executes.
-//
-// FixPlan stays on the wire during the transition for backwards
-// compatibility — older clients still consume it. PR 10d removes
-// FixPlan once Flutter cuts over.
+// Wire equivalent of internal/fix/changeset.ChangeSet. Sole plan
+// shape on the wire post-PR-10d-F — the legacy FixPlan/FixHunk
+// shape was retired in the same cutover (Stage 3 emits ChangeSets
+// directly into ViolationDetail.change_set; the Apply path
+// consumes the ChangeSet hint via ApplyFixViaAgentRequest /
+// DispatchApplyFixRequest).
 message ChangeSet {
   // id is a stable identifier derived from cluster_id + ordered op
   // ids (sha256-hashed). Re-plans that produce the same operations
