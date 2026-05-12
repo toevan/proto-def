@@ -837,6 +837,35 @@ message GetViolationDetailReply {
   // didn't run the new pipeline (rule not addressable, generation
   // failed, etc.) or when running an older server build.
   ChangeSet change_set = 26;
+
+  // change_set_decline_reason explains WHY change_set is unset.
+  // Empty when change_set is non-empty (a fix was produced) or when
+  // the nil-ness is uninteresting (Stage 3 unwired, detail RPC
+  // didn't run Stage 3, etc.). Closed vocabulary — clients
+  // pattern-match these strings:
+  //
+  //   - ""                    — default. Render the standard
+  //                              "no automated fix" UI.
+  //   - "line_scoped_declined" — the Stage 3 fast-path LLM was
+  //                              given the file + violation context
+  //                              and explicitly emitted a structural
+  //                              no-op. The LLM read the actual
+  //                              offending text and determined no
+  //                              automatic fix applies — typically a
+  //                              detector over-firing (URL path
+  //                              constants whose variable name
+  //                              contains "password", boilerplate
+  //                              matched by a wildcard rule, etc.).
+  //                              Clients render this distinctly
+  //                              ("detector likely over-firing —
+  //                              review the rule") instead of a
+  //                              generic "no fix" message so users
+  //                              know where the actionable signal
+  //                              lives.
+  //
+  // Adding a new value is a coordinated change: server constant +
+  // client render branch + dashboard alert.
+  string change_set_decline_reason = 27;
 }
 
 // StreamViolationDetailRequest is the input shape for
@@ -1056,6 +1085,16 @@ message ViolationDetailFooter {
   // events. See the field godoc on the unary reply for the full
   // routing contract.
   ValidationOutcome validation_outcome = 9;
+
+  // change_set_decline_reason mirrors
+  // [GetViolationDetailReply.change_set_decline_reason] — explains WHY
+  // the stream emitted no [ChangeSet] payload. Streamed in the FOOTER
+  // because the decline signal is only known after Stage 3 completes
+  // (the FOOTER's timing slot). Empty in the common case (a ChangeSet
+  // was emitted, or Stage 3 didn't run); when set, clients render a
+  // distinct empty-changeset UI per the closed vocabulary on the
+  // unary reply.
+  string change_set_decline_reason = 10;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
