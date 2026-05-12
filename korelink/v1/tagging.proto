@@ -1,0 +1,128 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// ============================================
+// TaggingService — Deterministic Data-Classification Catalog
+// ============================================
+// The catalog is a versioned, language-agnostic vocabulary of data
+// classes (PII, PHI, cardholder data, credentials, etc.). Per-language
+// indexers emit FieldDescriptors describing each symbol's shape; the
+// TaggingService matches descriptors against the catalog and returns
+// CatalogTag annotations that get written to the graph and consumed
+// downstream by constraint rules via data_tag_query.
+//
+// See docs/architecture/PRD_DATA_CLASSIFICATION_CATALOG.md.
+
+// ── FieldDescriptor ──
+//
+// Language-neutral description of a single field, parameter, or
+// top-level symbol that may carry classified data. Emitted by every
+// language adapter (Dart, Go, TypeScript, Python, Java); the
+// TaggingService consumes a stream of these and does not look at the
+// underlying AST.
+message FieldDescriptor {
+  // Stable symbol identifier (repo-relative path + symbol path).
+  string symbol_id = 1;
+
+  // The field/parameter's own name.
+  string name = 2;
+
+  // Declared type as text. Statically-typed languages populate this
+  // from the type system (e.g. "string", "User", "List<Email>");
+  // dynamic languages may leave it empty.
+  string type = 3;
+
+  // Annotations / decorators attached to the field declaration.
+  // Java @PII, TS @Sensitive(), Python class-var Annotated[...], etc.
+  repeated string annotations = 4;
+
+  // Enclosing class/struct/interface name. Empty for top-level
+  // functions or module-level globals.
+  string containing_class = 5;
+
+  // File coordinates for audit and override targeting.
+  string file_path = 6;
+  int32 line = 7;
+
+  // Language token matching the indexer's per-language router
+  // ("dart", "go", "typescript", "python", "java", ...).
+  string language = 8;
+
+  // Optional sample values harvested at index time. Populated for
+  // config files (YAML/JSON/.env), test fixtures, and hardcoded
+  // string assignments. Empty for opaque runtime fields. Used by
+  // value_format matchers (e.g. SSN regex).
+  repeated string sample_values = 9;
+}
+
+// ── CatalogTag ──
+//
+// Emitted by the TaggingService for every (symbol, category) pair
+// whose matcher set crossed the category's confidence threshold.
+// Written as a graph property on the symbol node; rule evaluators
+// query via data_tag_query.
+message CatalogTag {
+  string symbol_id = 1;
+
+  // Hierarchical category ID (e.g. "pii.contact.email",
+  // "phi.medical_record.mrn"). Stable across catalog versions via
+  // the catalog's compat_aliases table.
+  string category_id = 2;
+
+  // Resolved confidence: "definite" | "high" | "medium" | "low".
+  // Blueprints declare a min_confidence in their data_tag_query.
+  string confidence = 3;
+
+  // The matcher kinds that fired ("field_name", "field_type",
+  // "annotation", "value_format", "enclosing_class_name"). Audit
+  // trail surfaced by the pii-tag-audit blueprint and the
+  // ExplainViolation RPC (sibling PRD).
+  repeated string matched_via = 4;
+
+  // The catalog version that produced this tag. Pinned at adoption
+  // time on the blueprint; mismatch between adoption and tag
+  // version signals a re-indexing need.
+  string catalog_version = 5;
+
+  // Source of the tag: catalog match, override file, or type
+  // propagation. Lets the audit blueprint partition false-positive
+  // suppressions cleanly.
+  TagSource source = 6;
+}
+
+enum TagSource {
+  TAG_SOURCE_UNSPECIFIED = 0;
+  // Direct catalog matcher match.
+  TAG_SOURCE_CATALOG = 1;
+  // Inherited from a referenced type that carries the tag.
+  TAG_SOURCE_TYPE_PROPAGATION = 2;
+  // Force-added by .korelink/tags.yaml.
+  TAG_SOURCE_OVERRIDE_ADD = 3;
+}
+
+// ── OverrideEntry ──
+//
+// Per-symbol catalog adjustment loaded from .korelink/tags.yaml at
+// repo root. Resolved AFTER catalog matching and type propagation,
+// so overrides have last word. Every entry MUST carry a reason —
+// surfaced in audit logs and the audit blueprint's INFO violations.
+message OverrideEntry {
+  string symbol_id = 1;
+
+  // Glob-matched category IDs to remove from the symbol's tag set.
+  // "pii.*" suppresses every PII category; "phi.medical_record"
+  // suppresses one. Applied before `add`.
+  repeated string suppress = 2;
+
+  // Category IDs to force-tag regardless of catalog match. Emitted
+  // with source = TAG_SOURCE_OVERRIDE_ADD so audits can distinguish
+  // catalog-derived from human-curated tags.
+  repeated string add = 3;
+
+  // Required human-readable reason. Override entries without a
+  // reason are rejected at load time.
+  string reason = 4;
+}
