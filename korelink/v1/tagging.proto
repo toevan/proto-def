@@ -56,6 +56,22 @@ message FieldDescriptor {
   // string assignments. Empty for opaque runtime fields. Used by
   // value_format matchers (e.g. SSN regex).
   repeated string sample_values = 9;
+
+  // is_static reports whether the field is class-level state
+  // rather than per-instance (Dart/Java/TS `static`, Python
+  // `ClassVar[T]`). Consumed by the catalog matcher's
+  // `requires_data_field` precision filter to silence PII
+  // false positives on constants classes — e.g.
+  // `static const String emailLabel = 'USER_EMAIL_KEY'`.
+  // Go is exempt (struct fields are always instance-scoped).
+  bool is_static = 10;
+
+  // is_const reports whether the field is immutable after
+  // initialization (Dart `const`/`final`, TS `readonly`,
+  // Java `final`, Python `Final[T]`). Tracked alongside
+  // is_static for field-anchored violation surfacing; not
+  // consumed by the matcher today.
+  bool is_const = 11;
 }
 
 // ── CatalogTag ──
