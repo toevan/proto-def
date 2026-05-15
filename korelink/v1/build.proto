@@ -865,6 +865,55 @@ message GetViolationDetailReply {
   // case.
   ChangeSet change_set = 26;
 
+  // symbol_id is the deterministic indexer-emitted SymbolID
+  // (`<filePath>:<kind>:<qualifier>`, e.g.
+  // `lib/auth/user_model.dart:field:UserModel.email`) of the symbol
+  // whose catalog tag triggered this violation. Populated for
+  // catalog-driven rules where the offending source is a tagged
+  // field or tagged class (data_flow, data_tag_query,
+  // data_tag_layer_violation, data_tag_audit, data_tag_missing_auth,
+  // breach_notification_handler, data_deletion_compliance,
+  // integrity_verification, data_authentication,
+  // transmission_integrity). Empty for non-catalog rules
+  // (forbidden_import, naming_convention, IaC, etc.) where
+  // suppressing a tag isn't a meaningful operation.
+  //
+  // The canvas "Suppress this tag" action uses this value as the
+  // `symbol:` key in `.korelink/tags.yaml`. The per-repo override
+  // mechanism matches on the full SymbolID (not the display name)
+  // so the same value MUST round-trip from the indexer's emitted
+  // [FieldDescriptor.SymbolID] through here for the override to take
+  // effect on the next index.
+  //
+  // Clients hide the suppress affordance when this field is empty.
+  string symbol_id = 28;
+
+  // category_id is the catalog category identifier (e.g.
+  // `pii.contact.email`, `phi.medical_record.mrn`,
+  // `credentials.password`) that the tagged source matched.
+  // Populated by every constraint whose Cypher template projects
+  // an `evidenceCategoryID` column — same set as `symbol_id` above.
+  // Empty when no category match was recorded (non-catalog rules
+  // or evidence-projection failure).
+  //
+  // The canvas "Suppress this tag" action drops this directly into
+  // the snippet's `suppress: [...]` list:
+  //
+  //   ```yaml
+  //   - symbol: <symbol_id>
+  //     suppress: [<category_id>]
+  //     reason: # ← fill in
+  //   ```
+  //
+  // Single-value field on purpose — option 1 of the design tradeoff:
+  // a violation may match multiple categories (e.g. one field tagged
+  // both `pii.contact.email` and `pii.contact.email_address` via
+  // catalog alias), but the snippet uses one representative and the
+  // developer can manually widen the list if needed. Truer to the
+  // common false-positive case; the multi-category path is rare
+  // enough that the manual fallback is fine.
+  string category_id = 29;
+
   // change_set_decline_reason explains WHY change_set is unset.
   // Empty when change_set is non-empty (a fix was produced) or when
   // the nil-ness is uninteresting (Stage 3 unwired, detail RPC
@@ -1061,6 +1110,16 @@ message ViolationDetailHeader {
   // pr_number is the PR's GitHub-side number. Set when
   // fix_status == PR_OPEN; zero otherwise.
   int32 pr_number = 15;
+
+  // symbol_id + category_id mirror [GetViolationDetailReply.symbol_id]
+  // / [GetViolationDetailReply.category_id]. Both are identity fields
+  // computed synchronously from the evidence row (no AI work
+  // required), so they ship in the HEADER frame — the canvas can
+  // render the "Suppress this tag" action from the first frame
+  // rather than waiting for the FOOTER. See the unary reply's field
+  // docs for the full semantic + non-catalog-empty behavior.
+  string symbol_id = 16;
+  string category_id = 17;
 }
 
 // ValidationStatusEntry pairs one violation_id with its
