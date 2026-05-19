@@ -1684,6 +1684,7 @@ message RefactorOp {
     MergeIntoExistingOp merge_into_existing = 6;
     ReplaceLinesOp replace_lines = 7;
     CreateFileOp create_file = 8;
+    AddInterfaceImplementationOp add_interface_implementation = 9;
   }
 }
 
@@ -1847,6 +1848,83 @@ message CreateFileOp {
   string file_path = 2;
   string content = 3;
   string rationale = 4;
+}
+
+// AddInterfaceImplementationOp declares that a class in file_path
+// should implement (or conform to) a named interface. Pairs the
+// SEMANTIC declaration with the concrete byte-level edits that
+// materialise it: typically an implements-clause modification on
+// the class declaration line plus one or more method-stub insertions.
+//
+// Distinct from a sequence of [ReplaceLinesOp] entries because the
+// typed op carries the intent (class + interface) the canvas client,
+// PR description renderer, and plan validators reason about
+// declaratively. Validators can answer "did the post-fix file
+// actually implement the interface" without parsing arbitrary
+// line edits; the canvas client renders "Adds Deletable to
+// FooHandler" instead of summarising N opaque hunks.
+//
+// Emitted by the Phase 5b DataDeletionComplianceStrategy when the
+// graph resolves a sibling deletion interface for a handler class
+// that doesn't yet declare it. Replaces the pre-15g raw_edit shape
+// (which carried the same edits as untyped ReplaceLinesOps).
+//
+// # Per-language materialisation
+//
+// edits[] carries the language-specific byte changes. Most
+// languages need 1-2 edits:
+//
+//   - Dart / TypeScript / Java / Python: 2 edits (implements-clause
+//     modification + method stub insertion).
+//   - Go: 1 edit (interface conformance is structural — only the
+//     method stub needs to land; no implements clause).
+//
+// The strategy's per-language ComposeFix functions render the edits;
+// the applier splices them via the same primitives ReplaceLinesOp
+// uses. Strict-mode mechanical execution.
+message AddInterfaceImplementationOp {
+  string id = 1;
+  // file_path is the repo-relative path of the class declaration
+  // the op targets.
+  string file_path = 2;
+  // class_name is the target class — the violation's source class.
+  // Used by the canvas client + PR description renderer for the
+  // operator-visible "Adds X to ClassName" prose; validators use
+  // it to verify the post-fix file declares the interface.
+  string class_name = 3;
+  // interface_name is the interface the class should implement.
+  // Used in the same display + validation paths.
+  string interface_name = 4;
+  // edits[] is the materialisation: 1-2 line-range replacements
+  // the applier splices. Same shape as ReplaceLinesOp's fields
+  // (start_line / end_line / original / replacement / rationale)
+  // but bundled into the typed op so the strategy + applier +
+  // validator share one source of truth.
+  repeated AddInterfaceImplementationEdit edits = 5;
+  // rationale is the op-level operator-facing prose for the PR
+  // description / canvas detail panel. Required — the typed op
+  // is the canonical place for the narrative; per-edit rationales
+  // are optional.
+  string rationale = 6;
+}
+
+// AddInterfaceImplementationEdit is one materialised byte-level
+// change inside an [AddInterfaceImplementationOp]. Shape mirrors
+// [ReplaceLinesOp] without the file_path field (which lives on
+// the parent op — every edit targets the same file).
+message AddInterfaceImplementationEdit {
+  // 1-based inclusive start line. Both start_line and end_line
+  // must be >= 1.
+  int32 start_line = 1;
+  int32 end_line = 2;
+  // original is optional context the applier verifies before
+  // writing (drift guard). Empty original means the strategy
+  // didn't capture pre-state.
+  string original = 3;
+  string replacement = 4;
+  // rationale is the per-edit operator prose. Optional — the
+  // parent op's rationale is the primary narrative.
+  string rationale = 5;
 }
 
 // CallSiteRef identifies a precise call site within a caller file.
