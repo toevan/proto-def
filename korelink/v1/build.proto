@@ -1612,6 +1612,7 @@ message RefactorOp {
     UpdateCallSitesOp update_call_sites = 3;
     MoveSymbolOp move_symbol = 4;
     ExtractToModuleOp extract_to_module = 5;
+    MergeIntoExistingOp merge_into_existing = 6;
   }
 }
 
@@ -1678,6 +1679,50 @@ message ExtractToModuleOp {
   bool new_file = 6;
   string naming_convention = 7;
   string layer_justification = 8;
+}
+
+// MergePosition is the closed vocabulary of insertion-position
+// values [MergeIntoExistingOp.merge_position] accepts. Mirrors the
+// in-process refactor.MergePosition enum and the agentplan
+// MergePosition* constants verbatim — values flow across the wire
+// as the same strings the planner output uses.
+//
+// Why a typed enum (vs. a free-form string): pre-hardening-12 the
+// validator hardcoded raw string literals. A typed enum on both
+// the wire shape and the in-process model surfaces drift at
+// build time rather than silently breaking the wire-shape when
+// one side renames a constant.
+//
+// APPEND is the only position the Phase 4/5a deterministic
+// strategies emit today, and the only one the Phase 6 applier
+// supports — but the vocabulary stays open for future expansion
+// without rebuilding the op shape.
+enum MergePosition {
+  MERGE_POSITION_UNSPECIFIED = 0;
+  MERGE_POSITION_APPEND = 1;
+  MERGE_POSITION_BEFORE_FIRST_CLASS = 2;
+  MERGE_POSITION_AFTER_IMPORTS = 3;
+}
+
+// MergeIntoExistingOp folds a symbol's source file content into an
+// existing destination file at a specified position. Distinct from
+// MoveSymbolOp (which moves to a NEW path and preserves the source
+// file in renamed form) and ExtractToModuleOp (which proposes a
+// NEW target module). MergeIntoExisting writes the source bytes
+// into the destination, DELETES the source file, then spawns
+// UpdateCallSitesOps to rewrite caller import paths.
+//
+// Emitted by the Phase 4/5a deterministic structural strategies
+// when the destination path already contains a file the source
+// content can safely append to. Layer-aware execution (PR 12).
+message MergeIntoExistingOp {
+  string id = 1;
+  string symbol_id = 2;
+  string source_file_path = 3;
+  string target_file_path = 4;
+  MergePosition merge_position = 5;
+  bool preserve_callers = 6;
+  string layer_justification = 7;
 }
 
 // CallSiteRef identifies a precise call site within a caller file.
