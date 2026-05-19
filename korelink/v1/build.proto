@@ -1171,6 +1171,15 @@ message ViolationDetailHeader {
   // docs for the full semantic + non-catalog-empty behavior.
   string symbol_id = 16;
   string category_id = 17;
+
+  // display_line_note mirrors
+  // [GetViolationDetailReply.display_line_note] — Phase 1b precision
+  // signal for the (file_path, line) coordinate. Streamed in the
+  // HEADER because it's a cheap, identity-style field hydrated from
+  // Evidence[0].Note synchronously — no AI work required. The canvas
+  // renders it as a tooltip on the violation's "view in editor" link
+  // from the first frame.
+  string display_line_note = 18;
 }
 
 // ValidationStatusEntry pairs one violation_id with its
@@ -1232,6 +1241,15 @@ message ViolationDetailFooter {
   // distinct empty-changeset UI per the closed vocabulary on the
   // unary reply.
   string change_set_decline_reason = 10;
+
+  // manual_refactor_reason mirrors
+  // [GetViolationDetailReply.manual_refactor_reason] — operator-facing
+  // prose from the deterministic structural planner when it refused
+  // to emit a Plan. Streamed in the FOOTER because the planner runs
+  // as part of Stage 3 (same timing slot as change_set_decline_reason).
+  // When non-empty AND ChangeSet is unset, clients suppress the Apply
+  // Fix CTA — there's nothing to apply.
+  string manual_refactor_reason = 11;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
