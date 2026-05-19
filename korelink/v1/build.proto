@@ -1682,6 +1682,8 @@ message RefactorOp {
     MoveSymbolOp move_symbol = 4;
     ExtractToModuleOp extract_to_module = 5;
     MergeIntoExistingOp merge_into_existing = 6;
+    ReplaceLinesOp replace_lines = 7;
+    CreateFileOp create_file = 8;
   }
 }
 
@@ -1792,6 +1794,59 @@ message MergeIntoExistingOp {
   MergePosition merge_position = 5;
   bool preserve_callers = 6;
   string layer_justification = 7;
+}
+
+// ReplaceLinesOp wholesale-replaces a 1-indexed inclusive line range
+// in an existing file. Generalises the legacy agentplan Hunk shape
+// (line_start + line_end + replacement) into a typed RefactorOp.
+//
+// Distinct from ReplaceLiteralOp (precise (line,col) range +
+// literal search-and-replace): ReplaceLinesOp is heredoc-style
+// "set lines X..Y to this content," matching what the LLM produces
+// most naturally for content-level fixes.
+//
+// Per-file role (PRIMARY focal edit vs CONSUMER supporting edit)
+// lives on the surrounding AffectedFile entry, NOT on the op itself —
+// the op shape is the same regardless of whether the file being
+// edited is the offending file or a supporting consumer. Strict-mode
+// mechanical execution (no LLM call needed).
+message ReplaceLinesOp {
+  string id = 1;
+  string file_path = 2;
+  // 1-based inclusive start line. Both start_line and end_line must
+  // be >= 1 (zero is reserved as the "no line known" sentinel
+  // across the wire format and is rejected at the parser boundary).
+  int32 start_line = 3;
+  int32 end_line = 4;
+  // original is optional context the applier verifies before
+  // writing — when populated, the applier asserts the current file
+  // content at start_line..end_line matches original verbatim and
+  // refuses to apply if not (drift guard). Empty original means
+  // the planner didn't capture pre-state; applier proceeds without
+  // the verification.
+  string original = 5;
+  string replacement = 6;
+  // rationale is the operator-facing prose for the PR description /
+  // canvas detail panel. Required for the per-file PRIMARY edit;
+  // optional for consumer edits (the rationale on the primary op
+  // covers them).
+  string rationale = 7;
+}
+
+// CreateFileOp creates a new file with full content. Generalises the
+// legacy agentplan DEPENDENCY_CREATE and MIGRATION hunk shapes
+// (line_start/line_end = 0, full file in replacement) into a typed
+// RefactorOp.
+//
+// Migration vs new-module distinction lives on the surrounding
+// AffectedFile.Role (MIGRATION vs NEW), not the op itself — the op
+// shape is "create this file with this content" regardless of the
+// architectural intent. Strict-mode mechanical execution.
+message CreateFileOp {
+  string id = 1;
+  string file_path = 2;
+  string content = 3;
+  string rationale = 4;
 }
 
 // CallSiteRef identifies a precise call site within a caller file.
