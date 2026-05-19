@@ -942,6 +942,57 @@ message GetViolationDetailReply {
   // Adding a new value is a coordinated change: server constant +
   // client render branch + dashboard alert.
   string change_set_decline_reason = 27;
+
+  // manual_refactor_reason is the operator-facing prose explaining
+  // why the deterministic structural-fix planner refused to emit a
+  // Plan for this violation. Populated by the canvas service's
+  // tryStructuralRouter when the structural Router returns a
+  // Proposal{ManualRefactorReason: non-empty} — typically because
+  // the destination file already declares a symbol with the moved
+  // symbol's name (auto-merge would corrupt the file) or the
+  // destination path is unclassifiable into the project's layer
+  // policy.
+  //
+  // Empty in three cases:
+  //   - The Router emitted a deterministic Plan (change_set
+  //     and/or the legacy fix surface populated).
+  //   - The Router fell through to the LLM path (no structural fix
+  //     was attempted for this rule + violation shape).
+  //   - The structural Router isn't wired (degraded container or
+  //     pre-Phase-4.5 deployment).
+  //
+  // Clients render this verbatim (no truncation) as the "manual
+  // refactor required" message. When BOTH manual_refactor_reason
+  // is non-empty AND change_set is unset, suppress the Apply Fix
+  // CTA — there's nothing to apply.
+  //
+  // Distinct from change_set_decline_reason (which is a closed
+  // vocabulary of decline-codes for Stage 3's LLM fast-path):
+  // manual_refactor_reason carries free-form prose composed by the
+  // deterministic structural planner per violation.
+  string manual_refactor_reason = 30;
+
+  // display_line_note is optional human-readable precision context
+  // for the (file_path, line) display coordinate above. Hydrated
+  // from the primary EvidenceLocation's Note field. Phase 1b's
+  // re-anchoring pipeline emits two known values today:
+  //
+  //   - "anchored at import statement" — full precision (the
+  //     evidence line points at the precise `import 'foo';`
+  //     statement).
+  //   - "anchored at source class declaration (import-line lookup
+  //     missed)" — Phase 1a fallback fired (less precise; still
+  //     actionable).
+  //
+  // Empty when no precision context was recorded (non-Phase-1b
+  // rules, or evidence-projection bypassed). Clients render as a
+  // tooltip / subtitle on the violation's "view in editor" link so
+  // operators investigating "why does the line look off" can read
+  // the precision signal without dropping into JSON-API surfaces.
+  //
+  // Per-instance prose, not a closed vocabulary — clients render
+  // verbatim rather than pattern-matching the strings.
+  string display_line_note = 31;
 }
 
 // StreamViolationDetailRequest is the input shape for
@@ -1765,6 +1816,24 @@ message AffectedFile {
   AffectedFileRole role = 2;
   repeated string op_ids = 3;
   ArchLayer layer = 4;
+
+  // is_test_file is true when file_path matches the api-server's
+  // test-file classifier (utils.IsTestFile) — directory placement
+  // (test/, tests/, testing/ anywhere in the path) OR a language-
+  // specific test-file suffix across Go, Dart, TypeScript,
+  // JavaScript, Python, and Java.
+  //
+  // Server-side classification (NOT client-side) so the vocabulary
+  // stays under api-server control and Flutter / web / future clients
+  // all see the same answer. Matches the in-process posture: the
+  // classifier already lives at pkg/utils.IsTestFile and is consumed
+  // by flow-analysis tag scanner + canvas graph builder.
+  //
+  // Drives the canvas client's "Move updates 12 importers (4 are
+  // test files)" impact-summary chip — the operator's mental model
+  // of "is this fix safe to apply" depends on whether the importer
+  // edits are touching production callers or test stubs.
+  bool is_test_file = 5;
 }
 
 // AffectedFileRole classifies a file's role in the ChangeSet.
