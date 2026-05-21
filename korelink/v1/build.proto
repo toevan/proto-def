@@ -370,40 +370,6 @@ message NodeViolation {
   // Server populates with the evidence-row UUID; clients treat as opaque.
   string violation_id = 19;
 
-  // navigation_file_path / navigation_line are the AUTHORITATIVE
-  // "where the user jumps when they click this violation" coordinate
-  // — distinct from `file_path` / `line` (the display / evidence
-  // location where the rule fires) AND from `target_file` /
-  // `target_line` (the relationship target, used to render the
-  // LOCATION → Target row in the detail panel).
-  //
-  // For single-location violations (secret-detection, hardcoded
-  // value, etc.) the three coincide — the rule fires at the
-  // offending literal and the fix replaces it in-place.
-  //
-  // For relationship violations (breach_notification_handler, layer
-  // violations, etc.) the rule fires at one site (`file_path`) but
-  // the fix lands on the target symbol's definition (`target_file`).
-  // The navigation_* fields capture this resolution authoritatively
-  // so clients don't re-derive the rule.
-  //
-  // Server computation (single source of truth):
-  //   - When `target_file` is non-empty AND `target_line > 0`:
-  //     navigation_file_path = target_file, navigation_line = target_line
-  //   - Otherwise: navigation_file_path = file_path, navigation_line = line
-  //
-  // Clients reading these fields jump directly to where the fix
-  // lands — no client-side cascade across `change_set.affected_files
-  // → target_file → file_path` (every client implementing that
-  // cascade independently risks drift; centralising it on the wire
-  // makes the rule auditable in one place).
-  //
-  // Empty file_path / zero line are valid (the violation has no
-  // actionable coordinate — file-level structural rule). The
-  // client's "Jump to code" button is disabled in that case.
-  string navigation_file_path = 20;
-  int32 navigation_line = 21;
-
   // Phase 2b fields — reserved to lock the wire layout. Do not reuse these
   // numbers; they map 1:1 to the client's violation detail sheet:
   //   14 string current_code          — extracted offending snippet
@@ -413,7 +379,18 @@ message NodeViolation {
   // These ride on a future lazy GetViolationDetail(violation_id) RPC rather
   // than this list response, so a canvas load does not trigger per-violation
   // AI fix generation.
-  reserved 14, 15, 16, 17;
+  //
+  //   20 string navigation_file_path  — removed. A violation's
+  //   21 int32  navigation_line          navigation coordinate IS its
+  //      display coordinate (`file_path` / `line`). The relationship
+  //      target (`target_file` / `target_line`) is detail-panel
+  //      context — the LOCATION → Target row — never a click
+  //      destination: every constraint's fix lands at the rule-fire
+  //      site, not on the target symbol's definition. The retired
+  //      server-side "prefer target" resolver pre-dated the
+  //      single-location migration of breach_notification_handler,
+  //      its only ever justification.
+  reserved 14, 15, 16, 17, 20, 21;
 }
 
 // FileViolation represents a violation on a file with no architectural node.
@@ -437,14 +414,11 @@ message FileViolation {
   string docs_url = 18;
   string violation_id = 19;
 
-  // navigation_file_path / navigation_line mirror the same fields
-  // on [NodeViolation] — authoritative click-target coordinates,
-  // resolved server-side as `target_file (if non-empty + target_line>0)
-  // → file_path`. See NodeViolation for the full rationale.
-  string navigation_file_path = 20;
-  int32 navigation_line = 21;
-
-  reserved 14, 15, 16, 17;
+  // 20 / 21 (navigation_file_path / navigation_line) removed — see
+  // NodeViolation's reserved block. A violation's navigation
+  // coordinate is its display coordinate (`file_path` / `line`);
+  // there is no separate navigation channel.
+  reserved 14, 15, 16, 17, 20, 21;
 }
 
 message GraphMetrics {
