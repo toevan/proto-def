@@ -176,6 +176,16 @@ message CanvasNode {
   map<string, string> style = 8;
   string file_path = 9;                   // source file path for click-to-navigate
   NodeMetrics metrics = 10;               // computed metrics for the detail panel
+  // Owning sub-module identity in a multi-module monorepo. Stamped
+  // by the server's nearest-ancestor manifest walk (PR 5-foundation,
+  // see internal/modules.Owner); empty for boundary nodes, orphan
+  // files outside any manifest, and single-project repos. Drives
+  // the per-module badge + accent-border tint on the client. Also
+  // mirrored to `style["module"]` during the typed-field rollout
+  // for backwards-compat with clients that predate this field;
+  // a follow-up PR will retire the style-map mirror once all
+  // deployed clients prefer the typed surface.
+  string module = 11;
 }
 
 // NodeMetrics carries structured detail data for the node info panel.
