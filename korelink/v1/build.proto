@@ -39,6 +39,26 @@ service BuildService {
   // Source code viewer — serves file content for selected canvas nodes
   rpc GetFileContent(GetFileContentRequest) returns (GetFileContentReply);
 
+  // GetFileViolations — every CURRENT-state violation whose display
+  // coordinate (file_path / line as resolved by `current_repo_evidence`
+  // view's COALESCE) lands in the requested file. Used by the code-view
+  // editor's line-hover popup: the client makes one round trip when a
+  // file opens, caches the per-line map locally, and renders the popup
+  // off the local map on subsequent hovers (no network on hover).
+  //
+  // Wire shape is the existing FileViolation message — same proto type
+  // the canvas uses for file-level violations, so client-side detail
+  // sheets render identically whether they were opened from the canvas
+  // or from the hover popup. Cheap to compute (single indexed lookup on
+  // `current_repo_evidence` view + per-rule metadata enrichment from
+  // the in-process blueprint catalog cache); no AI calls.
+  //
+  // Description / severity / docs are echoed from the in-process
+  // blueprint catalog cache — clients can opt to skip them and look
+  // them up locally if they already cached the rule catalog. Returning
+  // them here keeps the popup self-contained for clients that don't.
+  rpc GetFileViolations(GetFileViolationsRequest) returns (GetFileViolationsReply);
+
   // Violation detail — lazy-loaded "Learn more" payload for a single
   // violation. Returns the offending code snippet, an AI-generated fix
   // suggestion, and effort/confidence metadata. Called by the client when
@@ -633,6 +653,24 @@ message GetFileContentReply {
   string content = 1;
   string language = 2;         // detected language for syntax highlighting
   repeated int32 violation_lines = 3;
+}
+
+// ── File Violations (hover popup) ──
+
+// GetFileViolationsRequest scopes the lookup to a single (repo, file).
+// file_path is the DISPLAY path the client renders — same key the canvas
+// uses for FileViolation.file_path on a prior GetRepositoryGraph reply.
+// The server filters `current_repo_evidence.display_file_path = file_path`
+// so the popup hits on exactly the violations the canvas surfaces for that
+// file; querying on the raw `evidence_records.file_path` would silently
+// miss the LDP rule's import-line-anchored violations (PR-B2.6).
+message GetFileViolationsRequest {
+  string repo_id = 1;
+  string file_path = 2;
+}
+
+message GetFileViolationsReply {
+  repeated FileViolation violations = 1;
 }
 
 // ── Violation Detail (lazy) ──
