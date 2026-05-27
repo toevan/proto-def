@@ -977,6 +977,36 @@ message GetViolationDetailReply {
   // Per-instance prose, not a closed vocabulary — clients render
   // verbatim rather than pattern-matching the strings.
   string display_line_note = 31;
+
+  // matched_example is the curated [MatchedExample] the constraint
+  // engine bound to this violation via [ResolveMatchedExample]
+  // (PR B's server-side resolver). Unset when the rule has no
+  // authored examples OR no example's `applies_when` matcher
+  // resolved against this violation's edge shape. Clients MUST
+  // handle unset by falling back to the generic `explanation`
+  // field above. PR C — per-rule evidence + examples.
+  //
+  // Cheap to compute (one cache hit on the blueprint's examples
+  // array keyed by id); hydrated synchronously alongside the
+  // identity fields so the canvas violation detail panel renders
+  // the curated bad/good pair from the first frame, with no AI
+  // wait.
+  MatchedExample matched_example = 32;
+
+  // evidence_sites is the per-violation list of code coordinates
+  // distinct from the matched symbol's own line. Mirrors
+  // [internal/constraint.Violation.Evidence]; the existing
+  // `evidence_records.evidence` JSONB column persists this list,
+  // populated by every rule whose Cypher projects evidence
+  // coordinates (layer_dependency_policy, forbidden_import,
+  // breach_notification_handler, etc.). Empty for symbol-scoped
+  // rules whose declaration line IS the actionable line
+  // (naming_convention, missing_annotation). PR C — surfaces
+  // the existing column through the gRPC boundary.
+  //
+  // Wire-order contract: the FIRST entry is the "view in editor"
+  // jump target. Clients render every populated entry in order.
+  repeated EvidenceLocation evidence_sites = 33;
 }
 
 // StreamViolationDetailRequest is the input shape for
@@ -1105,6 +1135,147 @@ message ViolationDetailProgress {
 
 // ViolationDetailHeader carries the cheap identity fields echoed
 // from the evidence row plus the offending code snippet. Sent
+// EvidenceLocation is a code coordinate that helps the user
+// investigate a violation, distinct from the violation's
+// canonical (rule, source_file, target_file, target_symbol)
+// identity tuple. Mirrors the in-process
+// [internal/constraint.EvidenceLocation] Go type field-for-field
+// so the wire shape is uniform across server/client.
+//
+// PR C — per-rule evidence + examples. Surfaces the existing
+// `evidence_records.evidence` JSONB blob through the gRPC
+// boundary; the column has been populated since migration 000071
+// (PR — pre-PR-C) but had no proto surface until now.
+//
+// Empty / unset locations decode as the zero value on the
+// client — `kind` empty means "unspecified" (renders as a
+// generic location pointer). Clients render every populated
+// site in order; the FIRST entry's coordinate is the "view in
+// editor" jump target (see Violation.PrimaryEvidence in the
+// Go API).
+message EvidenceLocation {
+  // kind classifies the location's rule-specific role: e.g.
+  // "import_statement", "cross_layer_call", "pii_source",
+  // "cycle_edge". Closed vocabulary defined by
+  // [internal/constraint.EvidenceKind]. Empty for legacy /
+  // unspecified rules; clients render a generic pointer in that
+  // case.
+  string kind = 1;
+  // file_path is the repo-relative path of the location.
+  string file_path = 2;
+  // start_line is the 1-based line where the evidence begins.
+  // 0 = "no line known" sentinel; clients render the file
+  // pointer without a specific line.
+  int32 start_line = 3;
+  // end_line is the inclusive end line for multi-line evidence.
+  // 0 = single-line; clients treat the same as start_line.
+  int32 end_line = 4;
+  // symbol is the optional symbol NAME at the location (e.g.
+  // "UserRepository.fetchPII"). Populated by graph-based rules
+  // so the UI can render "Evidence: <symbol> at <file>:<line>"
+  // without a separate symbol lookup.
+  string symbol = 5;
+  // symbol_id is the deterministic graph.Symbol.id at the
+  // location, of the form `<filePath>:<kind>:<qualifier>`.
+  // Distinct from `symbol` (display name): symbol_id is the key
+  // the per-repo `.korelink/tags.yaml` override file matches
+  // against for the "Suppress this tag" action.
+  string symbol_id = 6;
+  // category_id is the catalog category id (e.g.
+  // "pii.contact.email") the tagged source matched. Populated
+  // by catalog-driven rules whose Cypher projects
+  // `evidenceCategoryID`. Empty for non-catalog rules.
+  string category_id = 7;
+  // note is optional human-readable context, typically a single
+  // short clause explaining why this location matters for this
+  // specific rule (e.g. "PII source — flows into <class>").
+  // Per-instance prose, not a closed vocabulary — clients render
+  // verbatim.
+  string note = 8;
+}
+
+// ConstraintExampleMatcher is the binding shape that lets a
+// [MatchedExample] declare which fired violations it applies to.
+// Mirrors [internal/workspace/blueprint.ConstraintExampleMatcher]
+// field-for-field.
+//
+// PR C — per-rule evidence + examples. The server resolves the
+// example by walking each rule's authored examples and picking
+// the most-specific match (sublayer-qualified beats layer-only);
+// clients consume the resolved result via [MatchedExample] and
+// don't typically read the matcher itself — but it's surfaced on
+// the wire so future client features (e.g. "why did this example
+// match?") can render the binding rationale.
+message ConstraintExampleMatcher {
+  // edge_pattern is `"<sourceLayer>><targetLayer>"` — the same
+  // shape as `allowed_edges` entries minus the optional sublayer
+  // qualifier. May also include an inline sublayer suffix
+  // (`"<src>><tgt>.<sub>"`) for compact authoring.
+  string edge_pattern = 1;
+  // target_sublayer further qualifies the match: when non-empty,
+  // the example fires only when the violation's target symbol's
+  // `sublayer` equals this value.
+  string target_sublayer = 2;
+}
+
+// MatchedExample is the curated do/don't pedagogy the constraint
+// engine bound to this specific violation via
+// [internal/constraint.ResolveMatchedExample]. The canvas
+// violation detail panel renders it INSTEAD of the rule's
+// generic description.
+//
+// Mirrors [internal/workspace/blueprint.ConstraintExample] +
+// [internal/workspace/blueprint.ConstraintExampleMatcher]
+// field-for-field. The server hydrates this from the blueprint's
+// `rules.examples[]` cache by joining
+// `evidence_records.matched_example_id` against the rule's
+// authored example IDs.
+//
+// PR C — per-rule evidence + examples. Empty (unset) when the
+// rule has no authored examples OR no example's `applies_when`
+// matcher resolved against this violation's edge shape. Clients
+// MUST handle the unset case by falling back to the generic
+// `explanation` field on the unary/streaming reply.
+message MatchedExample {
+  // id is the stable identifier of the example within the rule.
+  string id = 1;
+  // kind is "violation" (the example fires for violations of
+  // this rule) or "exception" (documents a permitted pattern —
+  // exceptions never bind to fired violations; servers MUST NOT
+  // surface kind="exception" examples here).
+  string kind = 2;
+  // language disambiguates the source language of the code
+  // snippets — drives client-side syntax highlighting. May be
+  // empty (clients default to the blueprint's
+  // `languages[0]` then).
+  string language = 3;
+  // title is the short headline rendered above the bad/good
+  // pair (e.g. "Use cases must depend on repository INTERFACES,
+  // not implementations").
+  string title = 4;
+  // applies_when is the matcher the engine resolved this
+  // example against. Surfaced on the wire so future client UIs
+  // can display "this example matched because ..." prose.
+  ConstraintExampleMatcher applies_when = 5;
+  // rationale is short prose explaining the architectural
+  // motivation for the rule. Renders above the code blocks on
+  // the violation panel.
+  string rationale = 6;
+  // bad is the source-code snippet showing the forbidden
+  // pattern. Always populated for kind="violation"; clients
+  // render in a red-highlighted code block.
+  string bad = 7;
+  // good is the source-code snippet showing the permitted
+  // pattern. Always populated; clients render in a green-
+  // highlighted code block.
+  string good = 8;
+  // fix_steps is an optional ordered checklist of steps to
+  // convert the `bad` shape into the `good` shape. Renders as
+  // a numbered list under the code blocks. Empty when the fix
+  // is obvious from reading the snippets.
+  repeated string fix_steps = 9;
+}
+
 // FIRST on the stream so the client can render the sheet
 // container immediately (~150ms after the RPC starts) — well
 // before any AI work completes.
@@ -1164,6 +1335,22 @@ message ViolationDetailHeader {
   // renders it as a tooltip on the violation's "view in editor" link
   // from the first frame.
   string display_line_note = 18;
+
+  // matched_example mirrors [GetViolationDetailReply.matched_example]
+  // — the curated bad/good example bound to this violation. Streamed
+  // in the HEADER (no AI dependency: hydrated synchronously from the
+  // blueprint cache by matched_example_id) so the canvas renders
+  // curated pedagogy from the first frame instead of the generic
+  // rule description. PR C — per-rule evidence + examples.
+  MatchedExample matched_example = 19;
+
+  // evidence_sites mirrors [GetViolationDetailReply.evidence_sites]
+  // — per-violation code coordinates surfaced from the existing
+  // `evidence_records.evidence` JSONB column. Streamed in the HEADER
+  // because it's identity-style data — no AI work required. Clients
+  // render the list of jump-to-line links from the first frame.
+  // PR C — surfaces the existing column through gRPC.
+  repeated EvidenceLocation evidence_sites = 20;
 }
 
 // ValidationStatusEntry pairs one violation_id with its
