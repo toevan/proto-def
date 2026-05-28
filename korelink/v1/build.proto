@@ -421,6 +421,19 @@ message NodeViolation {
   //      single-location migration of breach_notification_handler,
   //      its only ever justification.
   reserved 14, 15, 16, 17, 20, 21;
+
+  // matched_example is the curated do/don't pedagogy the constraint
+  // engine bound to this violation via [ResolveMatchedExample]. Same
+  // shape as FileViolation.matched_example — populated by the canvas-
+  // graph mapper so the edge-label popover's "Show details" toggle
+  // (PR-B2.10) can render the bad/good code + fix steps inline,
+  // matching the code-view line-hover popup.
+  //
+  // Empty when the rule has no authored examples OR no example's
+  // applies_when matcher resolved against this violation's edge
+  // shape. Clients fall back to the generic rule_name + explanation
+  // in that case (no Details disclosure surfaces).
+  MatchedExample matched_example = 22;
 }
 
 // FileViolation represents a violation on a file with no architectural node.
