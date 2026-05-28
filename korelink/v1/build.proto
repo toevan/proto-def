@@ -449,6 +449,24 @@ message FileViolation {
   // coordinate is its display coordinate (`file_path` / `line`);
   // there is no separate navigation channel.
   reserved 14, 15, 16, 17, 20, 21;
+
+  // matched_example is the curated do/don't pedagogy the constraint
+  // engine bound to this violation via [ResolveMatchedExample].
+  // Drives the code-view editor's line-hover popup so the user sees
+  // a bad/good code pair + fix-steps checklist inline — no need to
+  // open the full violation detail sheet for the curated example.
+  //
+  // Selectively populated:
+  //   - GetFileViolations: populated (PR-B2.8 hover popup needs it).
+  //   - GetRepositoryGraph: left unset to keep canvas-load wire size
+  //     lean (a 100-violation repo would balloon by hundreds of KB
+  //     if every file-level violation carried its full example).
+  //
+  // Empty when the rule has no authored examples OR no example's
+  // applies_when matcher resolved against this violation's edge
+  // shape. Clients MUST fall back to the generic `explanation` and
+  // `rule_name` fields in that case.
+  MatchedExample matched_example = 22;
 }
 
 message GraphMetrics {
