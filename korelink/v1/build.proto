@@ -434,6 +434,26 @@ message NodeViolation {
   // shape. Clients fall back to the generic rule_name + explanation
   // in that case (no Details disclosure surfaces).
   MatchedExample matched_example = 22;
+
+  // adoption_id is the UUID of the `blueprint_adoptions` row the
+  // evidence_records row points at — the (repo|project, blueprint)
+  // tuple the rule fired under. Required by the
+  // BlueprintService.AddAdoptionRuleExclude RPC so the canvas-details
+  // "Add to exceptions" admin action can target the correct row
+  // without an extra resolver round-trip.
+  //
+  // Always populated by GetRepositoryGraph: every violation that
+  // surfaces here originated from an evidence row, which by definition
+  // carries an adoption_id. Empty strings indicate a server bug, not a
+  // valid state — clients can fail-fast on empty.
+  string adoption_id = 23;
+
+  // blueprint_id is the UUID of the blueprint the adoption was made
+  // from. Sibling to [adoption_id], denormalized onto the violation so
+  // surfaces that label by blueprint identity (audit traces, telemetry
+  // events, "Add to exceptions" admin actions) don't need a second
+  // lookup to resolve from adoption_id → blueprint_id.
+  string blueprint_id = 24;
 }
 
 // FileViolation represents a violation on a file with no architectural node.
@@ -480,6 +500,17 @@ message FileViolation {
   // shape. Clients MUST fall back to the generic `explanation` and
   // `rule_name` fields in that case.
   MatchedExample matched_example = 22;
+
+  // adoption_id mirrors NodeViolation.adoption_id — see field docs
+  // there. The (repo|project, blueprint) tuple this evidence row
+  // originated from. Required by AddAdoptionRuleExclude so the
+  // code-view file-violation panel's admin "Add to exceptions" CTA
+  // can dispatch the RPC without an extra resolver hop.
+  string adoption_id = 23;
+
+  // blueprint_id mirrors NodeViolation.blueprint_id — see field docs
+  // there.
+  string blueprint_id = 24;
 }
 
 message GraphMetrics {
