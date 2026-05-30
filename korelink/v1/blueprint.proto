@@ -49,6 +49,12 @@ service BlueprintService {
   rpc CheckBlueprintUpdates(CheckUpdatesRequest) returns (CheckUpdatesResponse);
   rpc GetBlueprintAnalytics(GetAnalyticsRequest) returns (BlueprintAnalytics);
   rpc UpdateAdoptionParams(UpdateAdoptionParamsRequest) returns (BlueprintAssignResponse);
+  // AddAdoptionRuleExclude appends a single exclude entry to a rule's
+  // param_overrides on an adoption. Atomic on the server: reads the current
+  // overrides, merges the new entry with append + dedupe semantics
+  // (see internal/constraint/params_merge.go), writes back. Admin-gated.
+  // Designed for the canvas-details "Add to exceptions" admin action.
+  rpc AddAdoptionRuleExclude(AddAdoptionRuleExcludeRequest) returns (AddAdoptionRuleExcludeResponse);
   rpc ListBlueprintAdopters(ListBlueprintAdoptersRequest) returns (ListBlueprintAdoptersResponse);
   rpc ListOrgAdoptedBlueprints(ListOrgAdoptedBlueprintsRequest) returns (ListOrgAdoptedBlueprintsResponse);
   rpc SetAdoptionStatus(SetAdoptionStatusRequest) returns (SetAdoptionStatusResponse);
@@ -408,6 +414,33 @@ message BlueprintAssignResponse {
 message UpdateAdoptionParamsRequest {
   string adoption_id = 1;
   string param_overrides_json = 2;       // per-rule param overrides JSON
+}
+
+// AddAdoptionRuleExcludeRequest carries a single matcher entry to append
+// to a rule's `exclude` list on an adoption's param_overrides. The server
+// reads the current overrides, merges the new entry with append + dedup
+// semantics (identity tuple = type+pattern+language), and persists. When
+// an entry with the same identity already exists, the server's
+// override-wins semantics merges the metadata (notably `reason`).
+message AddAdoptionRuleExcludeRequest {
+  string adoption_id = 1;   // blueprint_adoptions.id (UUID)
+  string rule_id     = 2;   // e.g. "handler-lives-in-handler-file"
+  ParamOverrideMatcher exclude = 3;  // matcher entry to append
+}
+
+// ParamOverrideMatcher mirrors constraint.MatchRule's JSON shape — the
+// shape the constraint engine reads at evaluation time. Predicate is
+// (type, pattern, language); reason is metadata surfaced in audit
+// traces and violation panels.
+message ParamOverrideMatcher {
+  string type     = 1;   // "name_equals" | "name_suffix" | "directory" | "extends" | "implements" | "annotation"
+  string pattern  = 2;   // pattern value matched by `type`
+  string language = 3;   // optional — when set, matcher fires only for symbols of this language
+  string reason   = 4;   // optional human-readable rationale for the exempt
+}
+
+message AddAdoptionRuleExcludeResponse {
+  AssignmentResult result = 1;  // the updated adoption (same shape as UpdateAdoptionParams)
 }
 
 message BlueprintRemoveRequest {
