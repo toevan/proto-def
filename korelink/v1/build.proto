@@ -303,6 +303,20 @@ message GetRepositoryGraphReply {
   repeated CanvasCluster clusters = 6;     // layer groupings for visual clustering
   repeated SuggestedAction suggested_actions = 7; // contextual quick actions for the chat panel
   repeated FileViolation file_violations = 8;     // file-level violations not attached to any node
+
+  // Human-readable name of the repository (e.g. "korelink/api-server"
+  // or "payment-service") — sourced from repositories.name on the
+  // server. The client uses this in the canvas breadcrumb, the
+  // exception-cart subtitle, and anywhere else the repo identity
+  // surfaces to the user.
+  //
+  // Required to fix the pre-existing UX bug where the client bound
+  // its `repoName` to `repoId` because nothing else carried the
+  // friendly name (see canvas_remote_datasource.dart's prior
+  // `repoName: repoId` placeholder). Empty when the server can't
+  // resolve the repo (rare; would mean the row was deleted between
+  // the auth check and the graph build).
+  string repo_name = 9;
 }
 
 // SuggestedAction is a contextual quick action derived from the repo's
