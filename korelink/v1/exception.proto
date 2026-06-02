@@ -95,9 +95,27 @@ enum ApprovalStepStatus {
 
 message CreateExceptionRequest {
   string org_id = 1;
-  string violation_id = 2;              // which violation to create exception for
+  // ID of the `pr_violations` row this exception covers. Use for
+  // PR Gate-rooted exception requests. Exactly one of
+  // [violation_id] / [evidence_id] MUST be set; the server rejects
+  // requests that set both or neither.
+  string violation_id = 2;
   string justification = 3;
   int32 duration_days = 4;              // 30, 60, or 90
+
+  // ID of the `evidence_records` row this exception covers. Use for
+  // canvas-rooted exception requests (the canvas "Add to exceptions"
+  // cart). The server resolves org / repo / rule / blueprint /
+  // severity from the evidence row, so callers don't need to thread
+  // those independently. Mutually exclusive with [violation_id] —
+  // exactly one of the two MUST be set.
+  //
+  // Canvas-rooted exceptions land in the same `exceptions` table
+  // with `pr_number` left NULL (the violation isn't PR-scoped). The
+  // approval chain is computed from `risk_level` exactly the same
+  // way as PR-rooted exceptions, so the downstream workflow is
+  // unified.
+  string evidence_id = 5;
 }
 message CreateExceptionResponse { ExceptionRequest exception = 1; }
 
