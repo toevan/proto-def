@@ -236,7 +236,31 @@ message OnboardRepoResult {
   string error = 4;                     // set on failure
 }
 
-message GetRepoRequest { string repo_id = 1; }
+message GetRepoRequest {
+  // Internal UUID — historical lookup path. Exactly one of
+  // [repo_id] / [repo_handle] MUST be set; the server rejects
+  // requests that set both or neither.
+  string repo_id = 1;
+
+  // Human-readable repository handle (the repo's `name` column,
+  // e.g. `api-server`). Used by URL-driven client routes so the
+  // address bar carries a friendly name instead of a UUID.
+  //
+  // Resolved server-side against `(org_id, name)` where org_id
+  // comes from the request. A partial unique index on
+  // (org_id, name) WHERE deleted_at IS NULL backstops the lookup;
+  // a handle that doesn't resolve within the org returns NotFound.
+  //
+  // Mutually exclusive with [repo_id].
+  string repo_handle = 2;
+
+  // Required when looking up by [repo_handle] — the handle is
+  // scoped within an org, so the server needs to know which one.
+  // Ignored when [repo_id] is set (UUID lookup is global; the
+  // handler enforces org ownership against the caller's context
+  // either way).
+  string org_id = 3;
+}
 message GetRepoResponse {
   Repo repo = 1;
   repeated IndexRun index_runs = 2;                  // recent indexing runs
