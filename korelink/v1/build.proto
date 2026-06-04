@@ -1080,13 +1080,24 @@ message GetViolationDetailReply {
   ManualRefactorGuidance manual_refactor_guidance = 34;
 
   // constraint_definition_json is the blueprint rule that flagged this
-  // violation, serialized as pretty JSON ({id, name, type, description,
-  // params, docs_url}). Lets the client show the EXACT constraint/rule
-  // from the blueprint (a code / JSON view) in the fix panel rather than
-  // just the rule name + docs link. Empty when the rule metadata isn't
-  // resolvable. Examples are surfaced separately (matched_example), not
-  // inlined here, to keep the payload compact.
+  // violation, so the client can show the EXACT constraint/rule from the
+  // blueprint (a code / JSON view) in the fix panel rather than just the
+  // rule name + docs link. When the adopted blueprint's source spec is
+  // available this is the VERBATIM constraint_rules[] entry sliced from
+  // it (matching the authored source line-for-line, including examples);
+  // otherwise it's a compact reconstruction ({id, name, type,
+  // description, params, docs_url}). Empty when the rule metadata isn't
+  // resolvable. Pair with constraint_definition_start_line for gutter
+  // numbering.
   string constraint_definition_json = 35;
+
+  // constraint_definition_start_line is the 1-based line in the adopted
+  // blueprint source where constraint_definition_json begins. The client
+  // numbers the rule's gutter from here so it shows the rule's real
+  // blueprint line numbers (e.g. 768) instead of counting from 1. Zero
+  // when constraint_definition_json is the reconstructed form (no
+  // verbatim source slice) — the client then numbers from line 1.
+  int32 constraint_definition_start_line = 36;
 
   // display_line_note is optional human-readable precision context
   // for the (file_path, line) display coordinate above. Hydrated
@@ -1562,6 +1573,10 @@ message ViolationDetailFooter {
   // constraint_definition_json mirrors
   // [GetViolationDetailReply.constraint_definition_json].
   string constraint_definition_json = 13;
+
+  // constraint_definition_start_line mirrors
+  // [GetViolationDetailReply.constraint_definition_start_line].
+  int32 constraint_definition_start_line = 14;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
