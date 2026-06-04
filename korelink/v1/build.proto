@@ -1079,6 +1079,15 @@ message GetViolationDetailReply {
   // fall back to the prose string. See [ManualRefactorGuidance].
   ManualRefactorGuidance manual_refactor_guidance = 34;
 
+  // constraint_definition_json is the blueprint rule that flagged this
+  // violation, serialized as pretty JSON ({id, name, type, description,
+  // params, docs_url}). Lets the client show the EXACT constraint/rule
+  // from the blueprint (a code / JSON view) in the fix panel rather than
+  // just the rule name + docs link. Empty when the rule metadata isn't
+  // resolvable. Examples are surfaced separately (matched_example), not
+  // inlined here, to keep the payload compact.
+  string constraint_definition_json = 35;
+
   // display_line_note is optional human-readable precision context
   // for the (file_path, line) display coordinate above. Hydrated
   // from the primary EvidenceLocation's Note field. Phase 1b's
@@ -1549,6 +1558,10 @@ message ViolationDetailFooter {
   // [GetViolationDetailReply.manual_refactor_guidance] — the structured
   // form, streamed in the FOOTER alongside manual_refactor_reason.
   ManualRefactorGuidance manual_refactor_guidance = 12;
+
+  // constraint_definition_json mirrors
+  // [GetViolationDetailReply.constraint_definition_json].
+  string constraint_definition_json = 13;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
