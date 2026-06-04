@@ -1070,6 +1070,15 @@ message GetViolationDetailReply {
   // deterministic structural planner per violation.
   string manual_refactor_reason = 30;
 
+  // manual_refactor_guidance is the STRUCTURED form of
+  // manual_refactor_reason: the discrete facts the fix-shape classifier
+  // already computes (source/target symbols, layers + ranks, a
+  // reason_code, and an ordered remedy list) so clients can render a
+  // structured card instead of one prose blob. Present whenever
+  // manual_refactor_reason is non-empty; clients SHOULD prefer it and
+  // fall back to the prose string. See [ManualRefactorGuidance].
+  ManualRefactorGuidance manual_refactor_guidance = 34;
+
   // display_line_note is optional human-readable precision context
   // for the (file_path, line) display coordinate above. Hydrated
   // from the primary EvidenceLocation's Note field. Phase 1b's
@@ -1535,6 +1544,11 @@ message ViolationDetailFooter {
   // When non-empty AND ChangeSet is unset, clients suppress the Apply
   // Fix CTA — there's nothing to apply.
   string manual_refactor_reason = 11;
+
+  // manual_refactor_guidance mirrors
+  // [GetViolationDetailReply.manual_refactor_guidance] — the structured
+  // form, streamed in the FOOTER alongside manual_refactor_reason.
+  ManualRefactorGuidance manual_refactor_guidance = 12;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
@@ -1638,6 +1652,65 @@ enum FixValidationStatus {
 // clients that read it gate appropriately.
 //
 // Stable wire surface: append new values, never renumber.
+
+// ManualRefactorReasonCode is the closed classification driving the
+// client's manual-refactor render branch. Append new values, never
+// renumber; a new value is a coordinated server-constant + client-
+// render change.
+enum ManualRefactorReasonCode {
+  MANUAL_REFACTOR_REASON_CODE_UNSPECIFIED = 0;
+  // Source layer outranks target — a reverse-direction edge (e.g.
+  // shared → data). Refactor the source to decouple.
+  MANUAL_REFACTOR_REASON_CODE_REVERSE_LAYER_DEPENDENCY = 1;
+  // Source symbol lives outside any declared layer; likely misplaced.
+  MANUAL_REFACTOR_REASON_CODE_SOURCE_MISPLACED = 2;
+  // Target symbol lives outside any declared layer; likely misplaced.
+  MANUAL_REFACTOR_REASON_CODE_TARGET_MISPLACED = 3;
+  // Same-rank intra-layer edge the policy forbids; split the coupling.
+  MANUAL_REFACTOR_REASON_CODE_FORBIDDEN_INTRA_LAYER = 4;
+  // Peer modules with no directional ordering (sibling-cluster).
+  MANUAL_REFACTOR_REASON_CODE_SIBLING_CLUSTER = 5;
+  // The blueprint doesn't declare enough topology to classify direction.
+  MANUAL_REFACTOR_REASON_CODE_UNDECLARED_TOPOLOGY = 6;
+}
+
+// ManualRefactorRemedy is one suggested way to resolve a manual-refactor
+// violation. The client renders these as an ordered (numbered) list.
+message ManualRefactorRemedy {
+  // title is a short imperative label (e.g. "Introduce an interface in
+  // the shared layer").
+  string title = 1;
+  // detail is an optional one-sentence elaboration.
+  string detail = 2;
+}
+
+// ManualRefactorGuidance is the STRUCTURED form of the manual-refactor
+// message: the discrete facts the fix-shape classifier already computes,
+// so the client can render a structured card (source → target, layers +
+// ranks, a numbered remedy list) instead of one prose blob. The legacy
+// `manual_refactor_reason` string remains the rendered-verbatim fallback
+// for clients that don't read this message.
+message ManualRefactorGuidance {
+  // reason_code is the closed classification driving the render branch.
+  ManualRefactorReasonCode reason_code = 1;
+  // summary is a one-line lede (the headline of the card).
+  string summary = 2;
+  // source_symbol / target_symbol are the violating edge's endpoints
+  // (display names, e.g. "InvitationUserInfo" → "Handler").
+  string source_symbol = 3;
+  string target_symbol = 4;
+  // source_layer / target_layer are the declared layer names; *_rank are
+  // their declared ranks. ranks are meaningful only for layer-policy
+  // shapes — has_ranks distinguishes a real "rank 0" from "no rank data".
+  string source_layer = 5;
+  string target_layer = 6;
+  int32 source_rank = 7;
+  int32 target_rank = 8;
+  bool has_ranks = 9;
+  // remedies is the ordered list of suggested resolutions; may be empty.
+  repeated ManualRefactorRemedy remedies = 10;
+}
+
 enum ViolationFixStatus {
   VIOLATION_FIX_STATUS_UNSPECIFIED = 0;
   // No row exists in the runner's idempotency table —
