@@ -1099,6 +1099,12 @@ message GetViolationDetailReply {
   // verbatim source slice) — the client then numbers from line 1.
   int32 constraint_definition_start_line = 36;
 
+  // blueprint_name is the display name of the blueprint that owns the
+  // violated rule (e.g. "Modular Monolith Go"), so the client's
+  // "Blueprint constraint" section can name the owning blueprint. Empty
+  // when the evidence row didn't carry it.
+  string blueprint_name = 37;
+
   // display_line_note is optional human-readable precision context
   // for the (file_path, line) display coordinate above. Hydrated
   // from the primary EvidenceLocation's Note field. Phase 1b's
@@ -1577,6 +1583,9 @@ message ViolationDetailFooter {
   // constraint_definition_start_line mirrors
   // [GetViolationDetailReply.constraint_definition_start_line].
   int32 constraint_definition_start_line = 14;
+
+  // blueprint_name mirrors [GetViolationDetailReply.blueprint_name].
+  string blueprint_name = 15;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
