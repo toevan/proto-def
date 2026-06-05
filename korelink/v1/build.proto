@@ -2417,6 +2417,23 @@ message AlternativeConsidered {
   string reason = 2;
 }
 
+// CoverageStatus records whether a ChangeSet's caller/layer
+// coverage was actually COMPUTED — so the client never asserts
+// "all covered" for a fix whose blast radius was never analyzed.
+// UNSPECIFIED maps to UNVERIFIED (fail-safe: old data / unset never
+// renders a green "covered" claim).
+enum CoverageStatus {
+  COVERAGE_STATUS_UNSPECIFIED = 0;
+  // UNVERIFIED — no caller/layer enumeration ran for this ChangeSet,
+  // so its caller/layer coverage is UNKNOWN. The client renders a
+  // neutral "coverage not verified", never a green "all covered".
+  COVERAGE_STATUS_UNVERIFIED = 1;
+  // VERIFIED — a caller/layer enumeration ran and found no gaps.
+  COVERAGE_STATUS_VERIFIED = 2;
+  // PARTIAL — enumeration ran and found gaps (unaddressed non-empty).
+  COVERAGE_STATUS_PARTIAL = 3;
+}
+
 // CoverageProof is the artifact every successful plan/diff
 // carries. Records explicitly that every cluster member is
 // addressed by some op, every caller in scope is addressed,
@@ -2437,6 +2454,12 @@ message CoverageProof {
   // unaddressed lists gaps the validators detected. Empty on
   // a fully-covered plan; non-empty on a partial-apply (§16.7).
   repeated CoverageGap unaddressed = 4;
+
+  // status records whether caller/layer coverage was actually
+  // computed. The client gates its green "all covered" claim on
+  // status == VERIFIED (+ no unaddressed gaps); UNVERIFIED renders
+  // neutral. Never assert coverage the ChangeSet did not compute.
+  CoverageStatus status = 5;
 }
 
 // LayerCheck is a per-file post-diff layer integrity claim.
