@@ -2130,6 +2130,27 @@ message MoveSymbolOp {
   ArchLayer target_layer = 5;
   bool preserve_callers = 6;
   string layer_justification = 7;
+
+  // Symbol-SLICE move fields. When slice_move is true the applier
+  // relocates only moved_spans (the symbol's declaration + its receiver
+  // methods) out of the source file — which keeps its other declarations —
+  // and synthesizes the target's imports. When false (the default / legacy
+  // shape), the applier does a whole-file rename. These MUST round-trip the
+  // wire: a dropped slice_move silently degrades to the destructive
+  // whole-file rename that deletes the source.
+  bool slice_move = 8;
+  repeated SpanData moved_spans = 9;
+  // external_qualifiers are the package short-names the moved symbol uses,
+  // carried for observability (the applier re-derives selection from the
+  // source bytes).
+  repeated string external_qualifiers = 10;
+}
+
+// SpanData is a 1-based, inclusive source line range, used by MoveSymbolOp
+// to carry the spans a symbol-slice move relocates.
+message SpanData {
+  int32 start = 1;
+  int32 end = 2;
 }
 
 // ExtractToModuleOp extracts one or more symbols to a target
