@@ -1229,7 +1229,28 @@ message ViolationDetailUpdate {
     // change_set is the typed Fix ChangeSet from Stage 3. Newer
     // clients render this via ChangeSetView (PR 10b).
     ChangeSet change_set = 7;
+    // preview is a NON-TERMINAL early frame: the fix-shape classifier's
+    // manual-refactor guidance, emitted BEFORE Stage 3 runs so the client
+    // shows actionable guidance instantly while the LLM attempts a real fix.
+    // The terminal FOOTER then either carries a change_set (client replaces
+    // the preview card with the diff) or the same manual guidance (the LLM
+    // couldn't fix it; client keeps the card, drops the spinner). Clients
+    // that ignore this frame simply wait for the FOOTER (pre-progressive
+    // behavior).
+    ViolationDetailPreview preview = 8;
   }
+}
+
+// ViolationDetailPreview carries the fix-shape classifier's manual-refactor
+// guidance for the progressive (instant-then-upgrade) Tier-2 UX. See the
+// `preview` field on [ViolationDetailUpdate]. Mirrors the FOOTER's manual
+// fields; the client renders the same manual-refactor card, plus a
+// "generating a fix…" affordance until the FOOTER arrives.
+message ViolationDetailPreview {
+  // manual_refactor_reason mirrors [ViolationDetailFooter.manual_refactor_reason].
+  string manual_refactor_reason = 1;
+  // manual_refactor_guidance mirrors [ViolationDetailFooter.manual_refactor_guidance].
+  ManualRefactorGuidance manual_refactor_guidance = 2;
 }
 
 // ViolationDetailProgress carries one observable from the
