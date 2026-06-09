@@ -2061,6 +2061,44 @@ message ChangeSet {
   // GENERATING → APPLIED is the happy path; AWAITING_CONFIRMATION,
   // PARTIAL_APPLIED, REJECTED are alternate terminals.
   PlanStatus status = 10;
+
+  // file_diffs is the server-computed before→after preview for every
+  // affected file — the deterministic, CONTENT-ANCHORED diff the canvas
+  // renders (red/green hunks). Computed at detail time from the live file
+  // content by replaying the operations in memory, so each hunk's line
+  // numbers are DERIVED from where the change actually lands (correct even
+  // when the planner's start_line/end_line drifted) and the preview is
+  // byte-identical to what Apply produces. Empty when no file could be
+  // rendered (e.g. the source drifted out from under the plan).
+  repeated FileDiff file_diffs = 11;
+}
+
+// FileDiff is the per-file before→after change a ChangeSet produces — the
+// preview the canvas Affected Files panel renders. Not authored by the
+// planner; computed server-side from the live file content.
+message FileDiff {
+  // file_path is the repo-relative path of the affected file.
+  string file_path = 1;
+
+  // op_id points at the operation that produced this file's change.
+  string op_id = 2;
+
+  // role classifies the file: PRIMARY (the op's anchor), CONSUMER (a
+  // caller/importer updated by a derived edit), NEW (created), DELETED.
+  string role = 3;
+
+  // hunks are the ordered contiguous changes within the file.
+  repeated DiffHunk hunks = 4;
+}
+
+// DiffHunk is one contiguous change within a file. Lines are 1-indexed and
+// end_line is EXCLUSIVE. old_content/new_content are the literal bytes the
+// canvas renders as removed (red) / added (green).
+message DiffHunk {
+  int32 start_line = 1;
+  int32 end_line = 2;
+  string old_content = 3;
+  string new_content = 4;
 }
 
 // RefactorOp is the typed sum-type for v1's closed Operations
