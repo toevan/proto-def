@@ -1709,6 +1709,12 @@ enum ManualRefactorReasonCode {
   MANUAL_REFACTOR_REASON_CODE_SIBLING_CLUSTER = 5;
   // The blueprint doesn't declare enough topology to classify direction.
   MANUAL_REFACTOR_REASON_CODE_UNDECLARED_TOPOLOGY = 6;
+  // A cross-layer dependency the blueprint's allowlist forbids. Layer rank
+  // does NOT decide this (api→data is canonical-by-rank yet forbidden); the
+  // allowlist is the authority. The fix is to route the source's access to
+  // the target through the layers the allowlist permits between them (e.g.
+  // api → service → data), or to decouple when no allowed path exists.
+  MANUAL_REFACTOR_REASON_CODE_FORBIDDEN_LAYER_DEPENDENCY = 7;
 }
 
 // ManualRefactorRemedy is one suggested way to resolve a manual-refactor
