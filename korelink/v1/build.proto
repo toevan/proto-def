@@ -1883,6 +1883,16 @@ message ApplyFixViaAgentRequest {
   // Set by the canvas client when it has the user-reviewed
   // ChangeSet (consumed from `GetViolationDetailReply.change_set`).
   ChangeSet change_set = 5;
+
+  // viewed_pr_number is the GitHub PR number the canvas is currently
+  // VIEWING when Apply Fix is clicked. >0 ⇒ viewing PR #N: Apply Fix
+  // commits the fix to THAT PR's head branch (Flow 1). 0/unset ⇒ viewing
+  // main: Apply Fix opens a NEW PR off the default branch (Flow 2). This
+  // is the highest-priority routing input — it overrides the scanning
+  // evidence pr_number and the idempotency tiers. If the viewed PR's head
+  // can't be pushed (a fork we lack write access to), the server degrades
+  // to Flow 2 (a new PR).
+  int32 viewed_pr_number = 6;
 }
 
 // DispatchApplyFixRequest dispatches the canvas Apply Fix
@@ -1905,6 +1915,12 @@ message DispatchApplyFixRequest {
   // path routes to the fix_violation agent and feeds the hint into
   // the Stage 3 short-circuit.
   ChangeSet change_set = 5;
+
+  // viewed_pr_number — see [ApplyFixViaAgentRequest.viewed_pr_number].
+  // Same contract: >0 commits to that PR's head (Flow 1); 0/unset opens
+  // a new PR off main (Flow 2). Kept field-identical so the two requests
+  // share client construction + server param-marshaling.
+  int32 viewed_pr_number = 6;
 }
 
 // DispatchApplyFixResponse carries the dispatched run's
