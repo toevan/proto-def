@@ -1940,6 +1940,35 @@ message DispatchApplyFixResponse {
   // dispatch RPCs (project-scope DispatchProjectFixViolations,
   // PR E) can share the response shape.
   AgentType agent_type = 2;
+
+  // Terminal outcome of the run, populated when the dispatch RPC ran the
+  // run SYNCHRONOUSLY and it is already terminal at return (the canvas
+  // changesetfix path: the run completes inside DispatchApplyFix, ~seconds).
+  // Lets the client settle the Apply-Fix button DIRECTLY from the unary
+  // response — the authoritative completion signal — instead of depending
+  // on a post-hoc StreamAgentRunProgress seed/frame that can be lost to the
+  // subscribe-after-completion race (the live broker frame fired before the
+  // client subscribed; the seed can miss; a transport drop closes the stream
+  // empty). Mirrors the terminal fields of [AgentProgressUpdate].
+  //
+  // `completed == false` (the default, and what an OLDER server returns)
+  // means the run is NOT yet terminal at return → the client falls back to
+  // subscribing to StreamAgentRunProgress, exactly as before. So this is a
+  // purely additive, backward-compatible enrichment.
+  bool completed = 3;
+  // The run's terminal status (COMPLETED / FAILED / CANCELLED). Meaningful
+  // only when completed == true.
+  AgentRunStatus status = 4;
+  // GitHub html_url + number of the PR the run opened. Set on a terminal
+  // success that opened a PR; empty/zero otherwise (incl. the
+  // "completed without opening a PR" half-state). Extracted from the run's
+  // metadata identically to the stream/seed path.
+  string pr_url = 5;
+  int32 pr_number = 6;
+  // Operator-readable terminal message — the run summary on success, the
+  // error message on failure. Clients classify failure kind from this (same
+  // as the seed-replayed terminal frame, which also carries no typed code).
+  string message = 7;
 }
 
 // ── What-If Simulation ──
