@@ -21,9 +21,30 @@ service NotificationService {
   rpc GetUnreadCount(GetUnreadCountRequest) returns (GetUnreadCountResponse);
   rpc MarkNotificationRead(MarkNotificationReadRequest) returns (MarkNotificationReadResponse);
   rpc MarkAllNotificationsRead(MarkAllNotificationsReadRequest) returns (MarkAllNotificationsReadResponse);
-  // Server-stream of new notifications for the org as they're created. The
-  // client increments the unread badge + (canvas) reacts on each frame.
-  rpc StreamNotifications(StreamNotificationsRequest) returns (stream Notification);
+  // Server-stream of new notifications for the org as they're created, wrapped
+  // in a frame envelope so the server can interleave droppable heartbeats that
+  // keep the connection alive past reverse-proxy idle timeouts (nginx default
+  // proxy_read_timeout is 60s). The client increments the unread badge +
+  // (canvas) reacts on each NOTIFICATION frame and ignores HEARTBEAT frames.
+  rpc StreamNotifications(StreamNotificationsRequest) returns (stream NotificationStreamFrame);
+}
+
+// NotificationStreamFrame is one frame on the StreamNotifications wire: either a
+// real notification or a droppable heartbeat. Modeled on the Stage-3
+// ViolationDetailUpdate envelope — an idle stream MUST still emit a frame inside
+// the smallest reverse-proxy idle window or the connection is dropped.
+message NotificationStreamFrame {
+  oneof payload {
+    Notification notification = 1;
+    NotificationHeartbeat heartbeat = 2;
+  }
+}
+
+// NotificationHeartbeat is a keepalive frame the client drops on receipt. It
+// carries no notification payload; its only job is to put a byte on the wire so
+// proxies don't time the idle stream out.
+message NotificationHeartbeat {
+  google.protobuf.Timestamp sent_at = 1;
 }
 
 message Notification {
@@ -35,7 +56,7 @@ message Notification {
   // violation|blueprint|agent|exception|system|report.
   string category = 4;
   // Machine discriminator the canvas dispatches reactivity on:
-  // pr_closed|pr_merged|index_started|index_completed.
+  // pr_closed|pr_merged|index_started|index_completed|index_failed.
   string event_type = 5;
   string title = 6;
   string body = 7;
