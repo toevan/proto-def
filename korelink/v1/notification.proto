@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+
+// NotificationService powers the in-app notification center (the top-bar bell +
+// slide-in panel) AND the canvas's live reactivity. One stream — the bell
+// renders every notification; the canvas also subscribes and reacts to the
+// actionable ones (pr_closed/pr_merged → flip the "View Opened PR" button +
+// refetch the violation; index_completed → refetch violations so the resolved
+// one disappears).
+//
+// The authenticated user is taken from the request context (auth interceptor),
+// NOT from the request body — requests carry only org_id (+ filters). The
+// service returns org-wide notifications plus those addressed to the caller.
+service NotificationService {
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc GetUnreadCount(GetUnreadCountRequest) returns (GetUnreadCountResponse);
+  rpc MarkNotificationRead(MarkNotificationReadRequest) returns (MarkNotificationReadResponse);
+  rpc MarkAllNotificationsRead(MarkAllNotificationsReadRequest) returns (MarkAllNotificationsReadResponse);
+  // Server-stream of new notifications for the org as they're created. The
+  // client increments the unread badge + (canvas) reacts on each frame.
+  rpc StreamNotifications(StreamNotificationsRequest) returns (stream Notification);
+}
+
+message Notification {
+  string id = 1;
+  string org_id = 2;
+  // Empty = org-wide (visible to every user in the org).
+  string user_id = 3;
+  // Human grouping the bell/panel renders by:
+  // violation|blueprint|agent|exception|system|report.
+  string category = 4;
+  // Machine discriminator the canvas dispatches reactivity on:
+  // pr_closed|pr_merged|index_started|index_completed.
+  string event_type = 5;
+  string title = 6;
+  string body = 7;
+  // Empty = not repo-scoped; the canvas reacts only to events for the repo it
+  // is viewing.
+  string repo_id = 8;
+  // Client deep-link route (optional).
+  string route = 9;
+  // Typed payload as a JSON object string (violation_id, pr_number, pr_state,
+  // commit_sha, …). The client parses what it needs per event_type.
+  string metadata_json = 10;
+  bool read = 11;
+  google.protobuf.Timestamp read_at = 12;
+  google.protobuf.Timestamp created_at = 13;
+}
+
+message ListNotificationsRequest {
+  string org_id = 1;
+  // Optional category filter (empty = all).
+  string category_filter = 2;
+  bool unread_only = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  int32 unread_count = 2;
+}
+
+message GetUnreadCountRequest {
+  string org_id = 1;
+}
+
+message GetUnreadCountResponse {
+  int32 unread_count = 1;
+}
+
+message MarkNotificationReadRequest {
+  string org_id = 1;
+  string notification_id = 2;
+}
+
+message MarkNotificationReadResponse {
+  Notification notification = 1;
+  // Recomputed after the mark so the client can update the badge atomically.
+  int32 unread_count = 2;
+}
+
+message MarkAllNotificationsReadRequest {
+  string org_id = 1;
+}
+
+message MarkAllNotificationsReadResponse {
+  int32 marked = 1;
+  int32 unread_count = 2;
+}
+
+message StreamNotificationsRequest {
+  string org_id = 1;
+}
