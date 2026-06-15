@@ -310,6 +310,20 @@ message PRGateConfig {
   // (boolean column added in migration 000064 alongside the
   // auto_fix_policy column drop).
   bool auto_fix_post_suggestions = 15;
+
+  // Per-rule-FAMILY enforcement override (Phase 4b): rule family
+  // (constraint type, e.g. "layer_dependency_policy") → action
+  // ("block" | "warn" | "off"). This is the ORG/gate axis layered
+  // ON TOP of the blueprint's per-constraint enforcement (severity +
+  // required/recommended/optional, already applied during constraint
+  // evaluation) — NOT a replacement for it. It is further clamped by
+  // the gate's soundness floor: a family the gate cannot detect in
+  // PR-head code is never allowed to block, regardless of this map.
+  //
+  // Empty = no override (every family defaults to block, then floored).
+  // Unrecognized actions are ignored server-side (treated as default).
+  // Storage: pr_gate_configs.family_enforcement (JSONB).
+  map<string, string> family_enforcement = 16;
 }
 
 message PRCheckSummary {
