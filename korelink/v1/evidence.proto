@@ -21,6 +21,12 @@ service EvidenceService {
   // Compliance reports
   rpc GenerateDPIA(GenerateDPIARequest) returns (GenerateDPIAResponse);
   rpc GenerateControlMapping(GenerateControlMappingRequest) returns (GenerateControlMappingResponse);
+
+  // GDPR Art. 17 right-to-erasure. Org-admin only. Redacts a data subject's
+  // personal data (their recorded GitHub login) across the evidence + PR-gate
+  // stores and writes an audit-log record. The immutable evidence ledger holds
+  // no personal data and is not affected.
+  rpc EraseDataSubject(EraseDataSubjectRequest) returns (EraseDataSubjectResponse);
 }
 
 // ── Core Types ──
@@ -206,4 +212,22 @@ message GenerateControlMappingRequest {
 message GenerateControlMappingResponse {
   string json_content = 1;              // JSON report (single or array of reports)
   string framework = 2;                 // framework name (empty if all)
+}
+
+// ── GDPR Right to Erasure (Art. 17) ──
+
+message EraseDataSubjectRequest {
+  string org_id = 1;
+  // The data subject's GitHub login as recorded in `author` across the evidence
+  // and PR-gate stores. There is no mapping from this login to a KoreLink user
+  // account — it is the only identifier held for the developer.
+  string github_login = 2;
+}
+
+message EraseDataSubjectResponse {
+  string github_login = 1;
+  int64 evidence_records_redacted = 2;  // evidence_records rows whose author was nulled
+  int64 pr_checks_redacted = 3;         // pr_checks rows whose author was tombstoned
+  int64 export_jobs_redacted = 4;       // evidence_export_jobs rows whose author filter was nulled
+  int64 ledger_runs_redacted = 5;       // 0 today — the immutable ledger holds no PII
 }
