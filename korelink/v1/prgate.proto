@@ -22,6 +22,18 @@ service PRGateService {
   rpc UpdatePRGateConfig(UpdatePRGateConfigRequest) returns (UpdatePRGateConfigResponse);
   rpc GetPRCheckSummary(GetPRCheckSummaryRequest) returns (GetPRCheckSummaryResponse);
 
+  // Premium pre-merge deep-check per-repo opt-in (T5/Phase 5b). The deep-check
+  // indexes a PR's merged state into an isolated graph and blocks on the
+  // base-graph-only compliance families the cheap PR-head gate cannot soundly
+  // check pre-merge ("KoreLink Deep Check" check-run). The toggle is PER-REPO
+  // (the index cost is per-repo) and gated to Enterprise/Platform plans.
+  //
+  // Auth: Get is org-member (read); Set is admin/owner (it turns on an
+  // expensive enforcement feature). The repo's org is resolved server-side
+  // from repo_id and the membership/role check is scoped to it.
+  rpc GetRepoDeepCheckEnabled(GetRepoDeepCheckEnabledRequest) returns (GetRepoDeepCheckEnabledResponse);
+  rpc SetRepoDeepCheckEnabled(SetRepoDeepCheckEnabledRequest) returns (SetRepoDeepCheckEnabledResponse);
+
   // KA-244 step 4 — admin operator-unblock for the auto-fix
   // convergence loop. Clears
   // pr_violation_fix_branch.loop_capped_at, allowing fix_apply
@@ -404,6 +416,26 @@ message UpdatePRGateConfigResponse { PRGateConfig config = 1; }
 
 message GetPRCheckSummaryRequest { string org_id = 1; }
 message GetPRCheckSummaryResponse { PRCheckSummary summary = 1; }
+
+// ── Premium deep-check per-repo opt-in (T5/Phase 5b) ──
+
+message GetRepoDeepCheckEnabledRequest { string repo_id = 1; }
+message GetRepoDeepCheckEnabledResponse {
+  bool enabled = 1; // the per-repo opt-in
+  // plan_entitled reports whether the repo's org plan unlocks the deep-check
+  // (Enterprise/Platform). When false the toggle is inert even if enabled — the
+  // UI can disable the control + show an upgrade hint.
+  bool plan_entitled = 2;
+}
+
+message SetRepoDeepCheckEnabledRequest {
+  string repo_id = 1;
+  bool enabled = 2;
+}
+// SetRepoDeepCheckEnabledResponse echoes the persisted toggle. Enabling on a
+// non-entitled plan fails with FailedPrecondition (the org must upgrade);
+// disabling is always allowed.
+message SetRepoDeepCheckEnabledResponse { bool enabled = 1; }
 
 // ── Auto-fix Loop Cap (KA-244 step 4) ──
 
