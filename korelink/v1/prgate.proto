@@ -192,6 +192,16 @@ message EnrichedViolation {
   // until the first dispatch resolved a PR. Drives the
   // "View PR" affordance in the detail sheet.
   string auto_fix_pr_url = 28;
+
+  // The owning rule's GENERIC explanation (the blueprint rule's
+  // description, e.g. "Enforces that UI layers depend only on
+  // permitted layers…"). Distinct from `description` (the
+  // per-occurrence message): this is the same text the canvas
+  // violation-detail panel's EXPLANATION section shows, so the
+  // PR-Gate card can render real "what's wrong" detail in its
+  // collapsed view. Resolved read-time from blueprint metadata;
+  // empty when the rule/blueprint can't be resolved.
+  string explanation = 29;
 }
 
 // AutoFixLifecycleState mirrors
