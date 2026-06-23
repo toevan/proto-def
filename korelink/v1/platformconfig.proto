@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// ===================================================================
+// PlatformConfigService — platform-admin runtime config
+// ===================================================================
+//
+// DB-backed, admin-editable operational config knobs (LSP/indexer, AI,
+// Stage 3, agentloop, Evidence) that propagate to every process WITHOUT a
+// restart. Platform-global (not org-scoped); all RPCs require the platform
+// admin role. A knob's tier records how live a change is: A = applies
+// immediately, B = applies via a reconfigure seam, C = applies on restart.
+service PlatformConfigService {
+  // ListConfig returns every catalogued knob with its live value, default,
+  // tier, and whether it is currently overridden.
+  rpc ListConfig(ListConfigRequest) returns (ListConfigResponse);
+
+  // UpdateConfig validates and persists a new value for one knob, then
+  // propagates it. Returns the updated knob view.
+  rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
+
+  // ResetConfig removes a knob's override so it reverts to the env/struct
+  // default, then propagates. Returns the (now default) knob view.
+  rpc ResetConfig(ResetConfigRequest) returns (ResetConfigResponse);
+}
+
+// ConfigKnob is the admin-facing description of one managed knob.
+message ConfigKnob {
+  string key = 1;            // flat dotted key, e.g. "stage3.max_replans"
+  string category = 2;       // indexer | ai | stage3 | agentloop | evidence
+  string tier = 3;           // "A" | "B" | "C"
+  string value_type = 4;     // int | int32 | int64 | bool | string | float | duration_sec
+  string description = 5;
+  string value = 6;          // JSON-encoded effective value
+  string default_value = 7;  // JSON-encoded env/struct default (Reset target)
+  bool overridden = 8;       // effective value differs from the default
+  int64 version = 9;         // override row version (0 when not overridden)
+}
+
+message ListConfigRequest {}
+
+message ListConfigResponse {
+  repeated ConfigKnob knobs = 1;
+}
+
+message UpdateConfigRequest {
+  string key = 1;
+  string value = 2;          // JSON-encoded value for the knob's type
+}
+
+message UpdateConfigResponse {
+  ConfigKnob knob = 1;
+}
+
+message ResetConfigRequest {
+  string key = 1;
+}
+
+message ResetConfigResponse {
+  ConfigKnob knob = 1;
+}
