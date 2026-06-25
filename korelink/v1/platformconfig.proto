@@ -27,11 +27,16 @@ service PlatformConfigService {
   rpc ResetConfig(ResetConfigRequest) returns (ResetConfigResponse);
 
   // GetConfigConvergence reports, per live process, which config revision it has
-  // applied — so an admin can confirm an edit propagated to every process (or
-  // see which lag). Each process self-reports to a shared store with a heartbeat
-  // TTL; a fully-dead process simply stops appearing (consensus among live
-  // reporters, no configured expected count).
+  // applied (plus per-process apply/failure counts) — so an admin can confirm an
+  // edit propagated to every process, see which lag, and read aggregate activity.
+  // Each process self-reports to a shared store with a heartbeat TTL; a fully-dead
+  // process simply stops appearing (consensus among live reporters, no configured
+  // expected count).
   rpc GetConfigConvergence(GetConfigConvergenceRequest) returns (GetConfigConvergenceResponse);
+
+  // ListConfigAudit returns the config change history (newest first, across all
+  // knobs) for the admin dashboard: which knob changed, old→new, by whom, when.
+  rpc ListConfigAudit(ListConfigAuditRequest) returns (ListConfigAuditResponse);
 }
 
 // ConfigKnob is the admin-facing description of one managed knob.
@@ -70,14 +75,21 @@ message ResetConfigResponse {
   ConfigKnob knob = 1;
 }
 
-// ProcessConfigStatus is one live process's applied-config state.
+// ProcessConfigStatus is one live process's applied-config state + activity.
 message ProcessConfigStatus {
   string instance_id = 1;        // stable per-process id, "host:pid"
   string role = 2;               // server | agent-worker | prgate-worker | repo-worker | webhook-worker | unknown
   string host = 3;
   int32 pid = 4;
   string revision = 5;           // short hash of the applied override fingerprint
-  int64 applied_at_unix_ms = 6;  // when this process last applied/reported (epoch ms)
+  int64 applied_at_unix_ms = 6;  // when this process last reported (heartbeat; epoch ms)
+  // Activity counters since this process started (metrics section).
+  int64 applied_count = 7;
+  int64 refresh_failures = 8;
+  int64 publish_failures = 9;
+  int64 invariant_rejections = 10;
+  int64 started_at_unix_ms = 11;          // process start (uptime)
+  int64 revision_applied_at_unix_ms = 12; // when this process adopted its CURRENT revision (propagation lag)
 }
 
 message GetConfigConvergenceRequest {}
@@ -87,4 +99,27 @@ message GetConfigConvergenceResponse {
   bool converged = 2;                          // all reporting processes share one revision
   string current_revision = 3;                 // the answering server's own applied revision
   int32 reporting_count = 4;                   // number of live reporters
+  // Aggregate activity across live reporters (metrics section).
+  int64 total_applied = 5;
+  int64 total_failures = 6;                     // refresh + publish + invariant rejections, summed
+  int64 convergence_spread_ms = 7;             // max-min revision-applied time among reporters on current_revision (0 if <2 or diverged)
+}
+
+message ListConfigAuditRequest {
+  int32 limit = 1;   // page size (server applies a sane default + cap)
+  int32 offset = 2;  // page offset, newest-first
+}
+
+// ConfigAuditEntry is one recorded config change (from platform_config_audit).
+message ConfigAuditEntry {
+  string key = 1;
+  string old_value = 2;            // JSON; empty when first-set (was null)
+  string new_value = 3;            // JSON-encoded new value
+  string changed_by = 4;           // changer's email
+  int64 changed_at_unix_ms = 5;
+}
+
+message ListConfigAuditResponse {
+  repeated ConfigAuditEntry entries = 1;
+  bool has_more = 2;               // another older page exists
 }
