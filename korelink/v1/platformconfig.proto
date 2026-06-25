@@ -77,10 +77,10 @@ message ResetConfigResponse {
 
 // ProcessConfigStatus is one live process's applied-config state + activity.
 message ProcessConfigStatus {
-  string instance_id = 1;        // stable per-process id, "host:pid"
-  string role = 2;               // server | agent-worker | prgate-worker | repo-worker | webhook-worker | unknown
+  string instance_id = 1;        // restart-stable identity, "host:role"
+  string role = 2;               // server | worker-agent | worker-prgate | worker-repo | worker-webhook | unknown
   string host = 3;
-  int32 pid = 4;
+  int32 pid = 4;                 // current OS pid; diagnostic only, not part of the identity
   string revision = 5;           // short hash of the applied override fingerprint
   int64 applied_at_unix_ms = 6;  // when this process last reported (heartbeat; epoch ms)
   // Activity counters since this process started (metrics section).
