@@ -89,7 +89,7 @@ message ProcessConfigStatus {
   int64 publish_failures = 9;
   int64 invariant_rejections = 10;
   int64 started_at_unix_ms = 11;          // process start (uptime)
-  int64 revision_applied_at_unix_ms = 12; // when this process adopted its CURRENT revision (propagation lag)
+  int64 revision_applied_at_unix_ms = 12; // when this process LIVE-adopted its current revision; 0 = adopted on boot only (no edit since start)
 }
 
 message GetConfigConvergenceRequest {}
@@ -99,10 +99,13 @@ message GetConfigConvergenceResponse {
   bool converged = 2;                          // all reporting processes share one revision
   string current_revision = 3;                 // the answering server's own applied revision
   int32 reporting_count = 4;                   // number of live reporters
-  // Aggregate activity across live reporters (metrics section).
+  // Aggregate activity across live reporters (metrics section). Scope note:
+  // total_applied/total_failures sum over ALL reporters (fleet-wide lifetime),
+  // while convergence_spread_ms is scoped to reporters that live-adopted
+  // current_revision — different denominators by design.
   int64 total_applied = 5;
-  int64 total_failures = 6;                     // refresh + publish + invariant rejections, summed
-  int64 convergence_spread_ms = 7;             // max-min revision-applied time among reporters on current_revision (0 if <2 or diverged)
+  int64 total_failures = 6;                     // refresh + publish + invariant rejections, summed across all reporters
+  int64 convergence_spread_ms = 7;             // gap between earliest & latest LIVE adoption of current_revision; 0 when <2 reporters have live-adopted it (e.g. a freshly restarted fleet with no edit yet)
 }
 
 message ListConfigAuditRequest {
@@ -113,7 +116,11 @@ message ListConfigAuditRequest {
 // ConfigAuditEntry is one recorded config change (from platform_config_audit).
 message ConfigAuditEntry {
   string key = 1;
-  string old_value = 2;            // JSON; empty when first-set (was null)
+  // JSON-encoded prior value. Empty string means "no prior value" (the knob was
+  // first-set, so old_value was SQL NULL). Unambiguous: a present jsonb value
+  // always serializes to ≥1 byte (e.g. `0`, `""`, `null`), so "" can only come
+  // from a NULL column, never from a real prior value.
+  string old_value = 2;
   string new_value = 3;            // JSON-encoded new value
   string changed_by = 4;           // changer's email
   int64 changed_at_unix_ms = 5;
