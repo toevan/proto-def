@@ -25,6 +25,13 @@ service PlatformConfigService {
   // ResetConfig removes a knob's override so it reverts to the env/struct
   // default, then propagates. Returns the (now default) knob view.
   rpc ResetConfig(ResetConfigRequest) returns (ResetConfigResponse);
+
+  // GetConfigConvergence reports, per live process, which config revision it has
+  // applied — so an admin can confirm an edit propagated to every process (or
+  // see which lag). Each process self-reports to a shared store with a heartbeat
+  // TTL; a fully-dead process simply stops appearing (consensus among live
+  // reporters, no configured expected count).
+  rpc GetConfigConvergence(GetConfigConvergenceRequest) returns (GetConfigConvergenceResponse);
 }
 
 // ConfigKnob is the admin-facing description of one managed knob.
@@ -61,4 +68,23 @@ message ResetConfigRequest {
 
 message ResetConfigResponse {
   ConfigKnob knob = 1;
+}
+
+// ProcessConfigStatus is one live process's applied-config state.
+message ProcessConfigStatus {
+  string instance_id = 1;        // stable per-process id, "host:pid"
+  string role = 2;               // server | agent-worker | prgate-worker | repo-worker | webhook-worker | unknown
+  string host = 3;
+  int32 pid = 4;
+  string revision = 5;           // short hash of the applied override fingerprint
+  int64 applied_at_unix_ms = 6;  // when this process last applied/reported (epoch ms)
+}
+
+message GetConfigConvergenceRequest {}
+
+message GetConfigConvergenceResponse {
+  repeated ProcessConfigStatus processes = 1; // one row per live (non-expired) reporter
+  bool converged = 2;                          // all reporting processes share one revision
+  string current_revision = 3;                 // the answering server's own applied revision
+  int32 reporting_count = 4;                   // number of live reporters
 }
