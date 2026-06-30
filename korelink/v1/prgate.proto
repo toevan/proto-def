@@ -20,6 +20,15 @@ service PRGateService {
   rpc GetViolation(GetViolationRequest) returns (GetViolationResponse);
   rpc GetPRGateConfig(GetPRGateConfigRequest) returns (GetPRGateConfigResponse);
   rpc UpdatePRGateConfig(UpdatePRGateConfigRequest) returns (UpdatePRGateConfigResponse);
+
+  // Re-evaluate (re-gate) a repo's OPEN PRs — used after a blueprint
+  // adoption/unadoption changes the constraint set. Enqueues a fresh
+  // deferred-full PR check per selected PR; empty pr_numbers = ALL open PRs.
+  // No base-advance dedup is applied (the constraint set changed, so an
+  // unchanged head/base can still flip the verdict). Auth: org member — the
+  // repo's org is resolved server-side from repo_id (no org_id on the wire).
+  rpc RegatePullRequests(RegatePullRequestsRequest) returns (RegatePullRequestsResponse);
+
   rpc GetPRCheckSummary(GetPRCheckSummaryRequest) returns (GetPRCheckSummaryResponse);
 
   // Premium pre-merge deep-check per-repo opt-in (T5/Phase 5b). The deep-check
@@ -254,6 +263,26 @@ message ExceptionBrief {
   int32 days_remaining = 3;
 }
 
+// ReevaluatePRsMode controls whether/how a repo's OPEN PRs are re-evaluated
+// after a blueprint adoption/unadoption changes its constraint set. (The gate
+// always reads the CURRENT adopted blueprints live on each run; this only
+// governs WHEN open PRs get re-checked — adoption itself does not re-gate them.)
+enum ReevaluatePRsMode {
+  REEVALUATE_PRS_MODE_UNSPECIFIED = 0;  // treated as ASK (the default)
+  REEVALUATE_PRS_MODE_OFF = 1;          // never auto re-evaluate open PRs
+  REEVALUATE_PRS_MODE_ASK = 2;          // prompt the adopter to pick PRs (default)
+  REEVALUATE_PRS_MODE_AUTO = 3;         // silently re-gate all open PRs
+}
+
+message RegatePullRequestsRequest {
+  string repo_id = 1;             // required — the repo whose open PRs to re-gate
+  repeated int32 pr_numbers = 2;  // empty = ALL open PRs for the repo
+}
+
+message RegatePullRequestsResponse {
+  int32 dispatched_count = 1;  // number of PR checks enqueued
+}
+
 message PRGateConfig {
   string org_id = 1;
   bool block_on_error = 2;                       // default: true
@@ -346,6 +375,13 @@ message PRGateConfig {
   // Unrecognized actions are ignored server-side (treated as default).
   // Storage: pr_gate_configs.family_enforcement (JSONB).
   map<string, string> family_enforcement = 16;
+
+  // When to re-evaluate a repo's OPEN PRs after a blueprint adoption/unadoption
+  // changes the constraint set (OFF/ASK/AUTO — see ReevaluatePRsMode). The
+  // client reads this after a successful adopt/unadopt: OFF = do nothing,
+  // ASK = show the re-evaluate dialog, AUTO = call RegatePullRequests for all
+  // open PRs. Default ASK (UNSPECIFIED is treated as ASK).
+  ReevaluatePRsMode reevaluate_prs_on_blueprint_change = 17;
 }
 
 message PRCheckSummary {
