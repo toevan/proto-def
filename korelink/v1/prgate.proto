@@ -103,6 +103,7 @@ message PullRequest {
   string org_id = 2;
   string repo_id = 3;
   string repo_name = 4;
+  string repo_description = 25;          // repo's GitHub "About" text (empty when none)
   int32 pr_number = 5;
   string title = 6;
   string author = 7;

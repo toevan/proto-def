@@ -45,6 +45,7 @@ message Repo {
   string github_id = 4;
   string name = 5;                       // "payment-service"
   string full_name = 6;                  // "acme-corp/payment-service"
+  string description = 24;               // repo's GitHub "About" text (empty when none)
   string default_branch = 7;            // "main"
   string primary_language = 8;          // "go"
   repeated string languages = 9;        // all detected languages
