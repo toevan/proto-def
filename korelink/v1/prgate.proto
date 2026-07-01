@@ -128,11 +128,13 @@ message PullRequest {
 
 enum PRStatus {
   PR_STATUS_UNSPECIFIED = 0;
-  PR_STATUS_PENDING = 1;                 // check in progress
+  PR_STATUS_PENDING = 1;                 // awaiting first evaluation (no verdict yet)
   PR_STATUS_PASSED = 2;                  // all blueprints pass
   PR_STATUS_WARNING = 3;                 // only WARNING-severity violations
   PR_STATUS_BLOCKED = 4;                 // ERROR or CRITICAL violations
   PR_STATUS_ERROR = 5;                   // check failed (infra error, not violation)
+  PR_STATUS_QUEUED = 6;                  // a (re-)check has been enqueued, worker not yet started
+  PR_STATUS_IN_PROGRESS = 7;             // the check worker is actively evaluating the PR
 }
 
 message EnrichedViolation {
