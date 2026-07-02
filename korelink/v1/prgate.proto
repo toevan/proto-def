@@ -42,6 +42,12 @@ service PRGateService {
   // from repo_id and the membership/role check is scoped to it.
   rpc GetRepoDeepCheckEnabled(GetRepoDeepCheckEnabledRequest) returns (GetRepoDeepCheckEnabledResponse);
   rpc SetRepoDeepCheckEnabled(SetRepoDeepCheckEnabledRequest) returns (SetRepoDeepCheckEnabledResponse);
+  // Triggers an on-demand PR-branch CANVAS index (index-only: no verdict, no
+  // check-run, no plan gate) so any member can view a PR's branch graph.
+  // Idempotent: already-serving or already-building returns that state without
+  // enqueueing. FailedPrecondition when PR-branch canvas serving is disabled
+  // platform-wide (deep_check.persist_scopes off).
+  rpc TriggerPRCanvasIndex(TriggerPRCanvasIndexRequest) returns (TriggerPRCanvasIndexResponse);
 
   // KA-244 step 4 — admin operator-unblock for the auto-fix
   // convergence loop. Clears
@@ -566,4 +572,16 @@ message ViolationLifecycleEvent {
   // when re-opening a stream after a disconnect (apply only
   // events strictly newer than the last-seen).
   google.protobuf.Timestamp emitted_at = 7;
+}
+message TriggerPRCanvasIndexRequest {
+  string repo_id = 1;
+  int64 pr_number = 2;
+}
+
+message TriggerPRCanvasIndexResponse {
+  // accepted: a new canvas index run was enqueued by THIS call.
+  bool accepted = 1;
+  // state after the call: "serving" (graph already available — reload it),
+  // "building" (a run is in flight — poll the graph until it serves).
+  string state = 2;
 }
