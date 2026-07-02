@@ -723,6 +723,12 @@ message GetFileContentRequest {
   string repo_id = 2;
   string file_path = 3;
   string ref = 4;              // branch/commit ref, defaults to HEAD
+  // When set, content is served from the PR's SERVING deep-check scope: the
+  // server resolves the scope's embedded test-merge SHA and fetches at that
+  // commit — the exact merged state the PR-branch graph was indexed from
+  // (covers files that exist only on the PR branch). FailedPrecondition when
+  // no scope is serving, mirroring the graph read's PR contract.
+  string pr_number = 5;
 }
 
 message GetFileContentReply {
