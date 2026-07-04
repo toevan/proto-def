@@ -1394,6 +1394,41 @@ message ConstraintExampleMatcher {
   string target_sublayer = 2;
 }
 
+// MatchedEdgeRef is the Constraint Schema v2 structured identity of the
+// dependency edge a violation's matched example is attached to — the
+// replacement for the parallel-encoded `ConstraintExampleMatcher.edge_pattern`
+// string (PRD §6-Q2). v2 resolves the fired violation's
+// `(source.layer, target.layer, target.sublayer)` against the compiled
+// `EdgePolicy` (denied_edges first, then allowed-edge carve-outs — §3.5),
+// yielding the addressable edge the pedagogy hangs off of. A structured ref —
+// not a display string — so the client never re-parses `"from>to.sub"` and the
+// server never re-derives it (the drift v2 removes).
+//
+// Additive at this stage (P2e, built dark): populated by the v2 evaluator only,
+// which nothing production calls yet. The `applies_when` /
+// `ConstraintExampleMatcher.edge_pattern` string stays live until the P4 flip
+// and is deleted in P5. For `role_contract` violations the edge has no layer
+// shape — `edge_id` carries the contract entry id (§3.6) and `from`/`to` are
+// empty.
+message MatchedEdgeRef {
+  // edge_id is the addressable id of the matched edge (v2 `allowed_edges` /
+  // `denied_edges` entry id), or — for role_contract — the contract entry id.
+  string edge_id = 1;
+  // from / to are the edge's source and target layer ids (empty for
+  // role_contract, which has no layer edge shape).
+  string from = 2;
+  string to = 3;
+  // target_sublayer qualifies `to` when the matched edge is sublayer-scoped
+  // (e.g. `domain>data.models` → target_sublayer "models"); empty otherwise.
+  string target_sublayer = 4;
+  // role is the edge's declared architectural role, carried for pedagogy
+  // headings (empty when the authored edge declared none).
+  string role = 5;
+  // denied is true when the matched edge came from `denied_edges` (an
+  // annotated notable-denial) rather than an allowed-edge exception carve-out.
+  bool denied = 6;
+}
+
 // MatchedExample is the curated do/don't pedagogy the constraint
 // engine bound to this specific violation via
 // [internal/constraint.ResolveMatchedExample]. The canvas
@@ -1450,6 +1485,13 @@ message MatchedExample {
   // a numbered list under the code blocks. Empty when the fix
   // is obvious from reading the snippets.
   repeated string fix_steps = 9;
+  // matched_edge is the Constraint Schema v2 structured identity of the edge
+  // this example is attached to (PRD §6-Q2) — the typed replacement for
+  // `applies_when.edge_pattern`. Additive/dark in P2e: populated only by the v2
+  // evaluator (unwired in production until the P4 flip); `applies_when`
+  // (tag 5) remains the live v1 matcher until P5 deletes it. Unset for v1
+  // resolution and for examples with no addressable edge.
+  MatchedEdgeRef matched_edge = 10;
 }
 
 // FIRST on the stream so the client can render the sheet
