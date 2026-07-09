@@ -16,6 +16,15 @@ service PRGateService {
   rpc GetPullRequest(GetPullRequestRequest) returns (GetPullRequestResponse);
   rpc RecheckPullRequest(RecheckRequest) returns (RecheckResponse);
   rpc StreamCheckProgress(StreamCheckProgressRequest) returns (stream PRCheckProgressUpdate);
+  // Stream progress for MULTIPLE PR checks over a single connection — the batch
+  // twin of StreamCheckProgress, mirroring RepoService.StreamBatchIndexProgress.
+  // Fans in the per-check Redis progress channels (prgate:check_progress:<id>)
+  // so a client can track a whole "Re-run checks" batch in ONE subscription and
+  // compute an aggregate "N of M checks" view client-side (no server counter).
+  // Cross-process safe: checks run in worker-prgate, this stream is served by
+  // api-server, and the two are bridged by the check-progress Redis bus (unlike
+  // the in-process single StreamCheckProgress, which is dead in multi-binary prod).
+  rpc StreamBatchCheckProgress(StreamBatchCheckProgressRequest) returns (stream PRCheckProgressUpdate);
   rpc ListViolations(ListViolationsRequest) returns (ListViolationsResponse);
   rpc GetViolation(GetViolationRequest) returns (GetViolationResponse);
   rpc GetPRGateConfig(GetPRGateConfigRequest) returns (GetPRGateConfigResponse);
@@ -439,6 +448,10 @@ message RecheckResponse {
 
 message StreamCheckProgressRequest {
   string check_job_id = 1;
+}
+
+message StreamBatchCheckProgressRequest {
+  repeated string check_job_ids = 1;    // track multiple PR checks over a single stream
 }
 
 message PRCheckProgressUpdate {
