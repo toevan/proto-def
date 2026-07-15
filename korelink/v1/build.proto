@@ -152,6 +152,19 @@ service BuildService {
   // circuits without opening a duplicate PR.
   rpc DispatchApplyFix(DispatchApplyFixRequest) returns (DispatchApplyFixResponse);
 
+  // BatchDispatchApplyFix is the PR-gate "Fix all" entry: one DETACHED
+  // fix_violation run over MANY violations. The server clusters the
+  // eligible violations into fix families (Pass C edge-direction
+  // grouping), plans each cluster, merges the plans, and ships ONE
+  // commit onto the PR's head branch — instead of the client fanning
+  // out N synchronous per-violation dispatches (N clones + racing
+  // pushes on one branch). Unlike DispatchApplyFix, no ChangeSet hint
+  // is required — the server plans; the response returns immediately
+  // with the run id (stream progress via StreamAgentRunProgress) plus
+  // the violations that were REFUSED up front (build artifacts,
+  // fix-loop-capped, unknown ids) with per-violation reasons.
+  rpc BatchDispatchApplyFix(BatchDispatchApplyFixRequest) returns (BatchDispatchApplyFixResponse);
+
   // What-If simulation — evaluate impact of hypothetical architectural changes
   rpc EvaluateWhatIf(EvaluateWhatIfRequest) returns (EvaluateWhatIfReply);
 
@@ -1968,6 +1981,34 @@ message ApplyFixViaAgentRequest {
 // Field shape is intentionally identical so the two RPCs can
 // share request-construction code on the client and
 // param-marshaling code on the server.
+message BatchDispatchApplyFixRequest {
+  // repo_id scopes the batch; every violation must belong to it.
+  string repo_id = 1;
+  // pr_number: the PR whose head branch receives the single fix
+  // commit (Flow 1). Required — the batch entry is a PR-gate surface.
+  int32 pr_number = 2;
+  // violation_ids: the violations to fix. The server filters
+  // ineligible entries into the response's skipped list rather than
+  // failing the batch.
+  repeated string violation_ids = 3;
+}
+
+message BatchDispatchApplyFixResponse {
+  // run_id of the DETACHED fix run (status queued at response time).
+  // Stream progress via StreamAgentRunProgress.
+  string run_id = 1;
+  // skipped: violations refused at the dispatch boundary, with
+  // per-violation reasons. dispatched_count = len(violation_ids) -
+  // len(skipped).
+  repeated BatchSkippedViolation skipped = 2;
+  int32 dispatched_count = 3;
+}
+
+message BatchSkippedViolation {
+  string violation_id = 1;
+  string reason       = 2;
+}
+
 message DispatchApplyFixRequest {
   reserved 2;
   reserved "fix_plan";
