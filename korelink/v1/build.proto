@@ -1996,6 +1996,11 @@ message BatchDispatchApplyFixRequest {
 message BatchDispatchApplyFixResponse {
   // run_id of the DETACHED fix run (status queued at response time).
   // Stream progress via StreamAgentRunProgress.
+  //
+  // EMPTY when dispatched_count == 0: every requested violation was
+  // refused at the boundary, nothing was dispatched, and there is no
+  // run to stream — branch on dispatched_count FIRST and render the
+  // skipped list instead of subscribing.
   string run_id = 1;
   // skipped: violations refused at the dispatch boundary, with
   // per-violation reasons. dispatched_count = len(violation_ids) -
