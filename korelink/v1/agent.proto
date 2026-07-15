@@ -272,6 +272,43 @@ message AgentProgressUpdate {
   // fields are the load-bearing path for live UX.
   string pr_url = 9;
   int32 pr_number = 10;
+
+  // Server-side moment this frame was produced. Load-bearing for the
+  // console-log observability UI: client receive-time is WRONG for
+  // DB-seeded frames (a late subscriber replays the run's current
+  // state, possibly minutes old) and skews under transport delay.
+  // Unset only on frames from servers predating this field — clients
+  // fall back to receive-time then.
+  google.protobuf.Timestamp occurred_at = 11;
+
+  // What kind of frame this is — drives console-log rendering
+  // (step transitions vs free-form log lines vs LLM heartbeats)
+  // without message-substring sniffing. UNSPECIFIED from older
+  // servers ⇒ clients treat it as LIFECYCLE (the only frames that
+  // existed before this field).
+  AgentProgressKind kind = 12;
+}
+
+// AgentProgressKind classifies a progress frame for rendering.
+enum AgentProgressKind {
+  AGENT_PROGRESS_KIND_UNSPECIFIED = 0;
+  // Run lifecycle transitions: the executor's "starting" frame and
+  // the terminal "completed" frame (completed=true).
+  AGENT_PROGRESS_KIND_LIFECYCLE = 1;
+  // A runner phase/step began (phase = step name, step = number).
+  AGENT_PROGRESS_KIND_STEP_BEGIN = 2;
+  // A runner phase/step completed; message carries its summary
+  // ("planned 2/3 cluster(s): 14 operations ...").
+  AGENT_PROGRESS_KIND_STEP_COMPLETE = 3;
+  // A runner phase/step failed; message carries the error.
+  AGENT_PROGRESS_KIND_STEP_FAIL = 4;
+  // A free-form runner log line (agent_logs row twin).
+  AGENT_PROGRESS_KIND_LOG = 5;
+  // A sanitized LLM-turn heartbeat ("Reasoning about the fix...",
+  // "read_file lib/auth/session.dart"). High-frequency, live-only
+  // color - NOT persisted as steps; clients may render at lower
+  // visual weight.
+  AGENT_PROGRESS_KIND_HEARTBEAT = 6;
 }
 
 // BlastRadiusFailureMetadata carries the structured payload
