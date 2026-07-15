@@ -531,6 +531,12 @@ message ListAgentLogsRequest {
   string run_id = 1;
   int32 limit = 2;
   int32 offset = 3;
+  // When true the server excludes debug-level rows BEFORE applying
+  // limit/offset, so verbose tool-output logging can't starve the
+  // visible info/warn lines out of the page window. Consoles that
+  // never render debug rows should set this rather than filtering
+  // client-side.
+  bool exclude_debug = 4;
 }
 message ListAgentLogsResponse { repeated AgentLog logs = 1; }
 
