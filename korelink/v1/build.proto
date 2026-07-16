@@ -1991,6 +1991,19 @@ message BatchDispatchApplyFixRequest {
   // ineligible entries into the response's skipped list rather than
   // failing the batch.
   repeated string violation_ids = 3;
+  // force_regenerate mirrors [GetViolationDetailRequest.force_regenerate]
+  // for the batch entry. When true:
+  //   - the already-applied guard is bypassed: violations whose
+  //     fix-lifecycle row shows a LIVE applied fix (normally refused —
+  //     re-clicking "Fix all" must not burn a fresh LLM run on top of an
+  //     applied fix) are dispatched anyway; and
+  //   - the plan phase's cache-first short-circuit is skipped, so every
+  //     cluster re-plans against the LLM instead of reusing a validated
+  //     cached ChangeSet.
+  // The fix-loop cap is NOT bypassed — clearing a cap stays an explicit,
+  // separate action. Default false: re-application serves from cache and
+  // already-fixed violations are refused with an actionable skip reason.
+  bool force_regenerate = 4;
 }
 
 message BatchDispatchApplyFixResponse {
