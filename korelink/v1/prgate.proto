@@ -21,6 +21,15 @@ service PRGateService {
   // history view can label merged/closed PRs and gate re-check to OPEN only.
   rpc ListPrHistory(ListPrHistoryRequest) returns (ListPrHistoryResponse);
 
+  // ALL run instances for a PR — the append-only pr_check_runs event log,
+  // newest first. Distinct from ListPrHistory, which is deliberately collapsed
+  // to ONE (latest) row per PR: an in-app re-check EVOLVES its pr_checks row in
+  // place, so that row is CURRENT STATE while this log is the per-run record.
+  // Consequence: a PR with N commits + M in-app re-checks has N pr_checks rows
+  // but N+M+ run entries — any "runs" count must come from here, not pr_checks.
+  // Terminal runs only (a queued/in-progress check has not been logged yet).
+  rpc ListPrCheckRuns(ListPrCheckRunsRequest) returns (ListPrCheckRunsResponse);
+
   rpc GetPullRequest(GetPullRequestRequest) returns (GetPullRequestResponse);
   rpc RecheckPullRequest(RecheckRequest) returns (RecheckResponse);
   rpc StreamCheckProgress(StreamCheckProgressRequest) returns (stream PRCheckProgressUpdate);
@@ -477,6 +486,46 @@ message ListPrHistoryResponse {
 
 message GetPullRequestRequest { string pr_id = 1; }
 message GetPullRequestResponse { PullRequest pull_request = 1; }
+
+// PrCheckRun is ONE completed gate run — an entry in the append-only
+// pr_check_runs event log. The gate PR comment's "Run history" table is built
+// from the same rows.
+message PrCheckRun {
+  string id = 1;
+  // Soft reference to the pr_checks row this run finalized. Deliberately NOT a
+  // foreign key server-side — the log outlives its check row — so this may
+  // point at a row that no longer exists.
+  string check_id = 2;
+  string repo_id = 3;
+  int32 pr_number = 4;
+  string head_commit = 5;
+  PRStatus status = 6;                   // terminal only: passed/warning/blocked/error
+  int32 violation_count = 7;
+  int32 critical_count = 8;
+  int32 error_count = 9;
+  int32 warning_count = 10;
+  int32 info_count = 11;
+  int32 suppressed_count = 12;
+  int32 check_duration_ms = 13;          // 0 on runs recorded before this was captured
+  bool from_cache = 14;
+  // Set on status=error — distinguishes a run swept by the stale-check reaper
+  // from one that genuinely failed. Empty otherwise.
+  string error_message = 15;
+  google.protobuf.Timestamp finished_at = 16;
+  google.protobuf.Timestamp created_at = 17;
+}
+
+message ListPrCheckRunsRequest {
+  // Any pr_checks id belonging to the PR — a check id addresses the PR, not one
+  // scan. The owning org is resolved from it for authorization.
+  string pr_id = 1;
+  int32 limit = 2;                       // default 20, capped 100
+  int32 offset = 3;
+}
+message ListPrCheckRunsResponse {
+  repeated PrCheckRun runs = 1;
+  int32 total = 2;                       // total entries for the PR (for paging)
+}
 
 message RecheckRequest { string pr_id = 1; }
 message RecheckResponse {
