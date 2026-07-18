@@ -145,7 +145,11 @@ message Blueprint {
   google.protobuf.Timestamp published_at = 21;
   google.protobuf.Timestamp updated_at = 22;
   string license = 23;           // "free" or "premium"
-  float  price = 24;             // 0.00 for free, e.g. 4.99 for premium
+  // Field 24 was `float price`. Money is never a float: 4.99 is not representable in
+  // binary floating point, and repeated arithmetic drifts. Integer minor units only.
+  reserved 24;
+  reserved "price";
+  int64  price_minor = 39;       // 0 for free, e.g. 499 for EUR 4.99
   string full_spec_json = 25;
   string reviewer_id = 26;
   string reviewer_notes = 27;
@@ -476,12 +480,21 @@ message GetAnalyticsRequest { string blueprint_id = 1; }
 
 // ── Purchases ──
 
+// RecordPurchaseRequest is SUPER-ADMIN ONLY and records a purchase settled out of band.
+//
+// There is no payment provider integration, so there is no shape of this RPC a buyer could
+// call safely: accepting a caller-supplied price meant anyone could grant themselves a
+// premium blueprint permanently for a claimed payment of zero. Price and currency are read
+// from the blueprint, never from the request. When a provider is integrated, its verified
+// webhook calls the same service method.
 message RecordPurchaseRequest {
   string blueprint_id = 1;
-  string user_id = 2;
-  string payment_ref = 3;
-  double price_paid = 4;
-  string currency = 5;
+  string user_id = 2;        // the buyer; the caller is the admin recording on their behalf
+  string payment_ref = 3;    // the external settlement reference
+  // Fields 4 and 5 were `double price_paid` and `string currency`. Both are now derived
+  // server-side from the blueprint being purchased.
+  reserved 4, 5;
+  reserved "price_paid", "currency";
 }
 message RecordPurchaseResponse {
   bool   success = 1;
@@ -494,7 +507,11 @@ message BlueprintPurchase {
   string id = 1;
   string blueprint_id = 2;
   string user_id = 3;
-  double price_paid = 4;
+  // Minor units (cents), integer. Format for display with the currency, never store or
+  // transmit money as a float.
+  int64  price_paid_minor = 8;
+  reserved 4;
+  reserved "price_paid";
   string currency = 5;
   string payment_ref = 6;
   google.protobuf.Timestamp purchased_at = 7;
