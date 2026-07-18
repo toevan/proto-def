@@ -142,7 +142,12 @@ message CreateOrgRequest {
   string handle = 2;
   string initials = 3;                   // [NEW]
   string color = 4;                      // [NEW]
-  OrgPlan plan = 5;
+  // Field 5 was `OrgPlan plan`. Removed: a new org's tier is a SERVER GRANT, never a client
+  // claim. Accepting it let any caller self-assign Enterprise — unlimited seats and repos,
+  // the Deep Check entitlement, and tier-1 index-queue priority ahead of paying customers.
+  // Never recycle this number. Tier changes belong on a dedicated admin-only RPC.
+  reserved 5;
+  reserved "plan";
   string github_org = 6;
 }
 message CreateOrgResponse { Org org = 1; }
