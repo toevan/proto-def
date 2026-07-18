@@ -26,6 +26,16 @@ service AuthService {
 
   // Platform role management (super-admin only)
   rpc UpdatePlatformRole(UpdatePlatformRoleRequest) returns (UpdatePlatformRoleResponse);
+
+  // Locale
+  // ListSupportedLocales is UNAUTHENTICATED — the login screen and the marketing site both
+  // need the language list before a user exists. It exposes only the shipped catalogue.
+  rpc ListSupportedLocales(ListSupportedLocalesRequest) returns (ListSupportedLocalesResponse);
+  // SetUserLocale records an explicit choice. Rejects a locale the client has no bundle for.
+  rpc SetUserLocale(SetUserLocaleRequest) returns (SetUserLocaleResponse);
+  // SeedUserLocale records the locale a user arrived through, and takes effect only if they
+  // have never expressed a preference. Idempotent and safe to call on every sign-in.
+  rpc SeedUserLocale(SeedUserLocaleRequest) returns (SeedUserLocaleResponse);
 }
 
 // User-level plan — governs individual user access and personal feature limits.
@@ -72,6 +82,12 @@ message AuthUser {
                                                     // not a role. Any user can create/publish blueprints.
   repeated string permissions = 10;                 // permissions assigned to the user (e.g. "project.create", "project.read", "project.update", "project.delete")
   string username = 11;                              // provider username (e.g. GitHub login: "kwado-tech")
+
+  // Locale. Two fields because a recorded preference and a renderable locale are not the
+  // same thing: we deliberately remember that a user arrived through the German site before
+  // the app ships German bundles, so `locale` can be "de" while `effective_locale` is "en".
+  string locale = 12;                               // the user's stored preference; "" = never chosen
+  string effective_locale = 13;                     // what the client should actually render — always set
 }
 
 message OAuthLoginRequest {
@@ -196,4 +212,41 @@ message UpdatePlatformRoleResponse {
   bool success = 1;
   string previous_role = 2;
   string new_role = 3;
+}
+
+// ---- Locale ----
+
+// SupportedLocale is one entry in the shipped locale catalogue.
+message SupportedLocale {
+  string code = 1;                                  // BCP-47: "en", "de", "pt-BR"
+  string native_name = 2;                           // "Deutsch" — render this in the picker
+  string english_name = 3;                          // "German"  — admin surfaces
+  bool is_default = 4;                              // the fallback every unresolvable preference lands on
+}
+
+message ListSupportedLocalesRequest {}
+message ListSupportedLocalesResponse {
+  // Only locales the client can actually render (enabled AND a bundle ships for them).
+  // Safe to drive a language picker directly — no client-side filtering required.
+  repeated SupportedLocale locales = 1;
+  string default_code = 2;
+}
+
+message SetUserLocaleRequest {
+  string locale = 1;                                // must be one of ListSupportedLocales
+}
+message SetUserLocaleResponse {
+  string locale = 1;                                // the stored preference, echoed back
+  string effective_locale = 2;                      // what to render — equals locale on success
+}
+
+message SeedUserLocaleRequest {
+  string locale = 1;                                // the locale the user arrived through
+}
+message SeedUserLocaleResponse {
+  // False means the user already had a preference and it was left untouched. This is the
+  // normal outcome on every sign-in after the first, and is not an error.
+  bool seeded = 1;
+  string locale = 2;                                // the stored preference after this call
+  string effective_locale = 3;                      // what to render
 }
