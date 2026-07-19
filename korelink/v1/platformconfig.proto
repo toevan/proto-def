@@ -59,6 +59,14 @@ service PlatformConfigService {
   // from a bad edit: the admin does not need to remember the original numbers.
   rpc ResetPlanEntitlement(ResetPlanEntitlementRequest) returns (ResetPlanEntitlementResponse);
 
+  // AdjustAIAllowance credits (or claws back) AI-operation units against one
+  // account's CURRENT metering period. The operator answer to "this customer is
+  // locked out and support owes them headroom": negative units grant allowance,
+  // positive units revoke a prior credit. Every adjustment is a terminal ledger row
+  // naming the acting admin and the reason — a credit with no author or rationale is
+  // indistinguishable from a metering bug.
+  rpc AdjustAIAllowance(AdjustAIAllowanceRequest) returns (AdjustAIAllowanceResponse);
+
   // ListPublicPlans is the PRICE LIST, readable without authentication.
   //
   // PUBLIC BY DESIGN, AND DELIBERATELY NARROWER THAN ListPlanEntitlements. It exists
@@ -155,6 +163,23 @@ message UpdatePlanEntitlementRequest {
 
 message UpdatePlanEntitlementResponse {
   PlanEntitlement plan = 1;
+}
+
+message AdjustAIAllowanceRequest {
+  string account_id = 1;
+  // Signed units against the ceiling. NEGATIVE = credit (grants allowance),
+  // positive = clawback. Zero is rejected — an adjustment that adjusts nothing is
+  // an operator mistake, not a no-op.
+  int64 units = 2;
+  // Why the adjustment was made. Required; recorded verbatim on the ledger row.
+  string reason = 3;
+}
+
+message AdjustAIAllowanceResponse {
+  // The account's adjustment total for the period after this change.
+  int64 adjustment_units = 1;
+  // First day of the metering period the adjustment landed on (YYYY-MM-DD).
+  string period_start = 2;
 }
 
 message ResetPlanEntitlementRequest {
