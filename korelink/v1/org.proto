@@ -15,6 +15,13 @@ service OrgService {
   rpc GetOrg(GetOrgRequest) returns (GetOrgResponse);
   rpc UpdateOrg(UpdateOrgRequest) returns (UpdateOrgResponse);
 
+  // Tier change for an organisation — the dedicated admin-only RPC that
+  // CreateOrgRequest field 5's tombstone points at. Deliberately NOT part of
+  // UpdateOrg: the tier is commercial state, gated on payment authorization and on
+  // a STRICT org-admin check (platform staff may not make the customer's
+  // commercial decision), while UpdateOrg edits presentation fields.
+  rpc AssignOrgPlan(AssignOrgPlanRequest) returns (AssignOrgPlanResponse);
+
   // List orgs
   rpc ListMyOrgs(ListMyOrgsRequest) returns (ListMyOrgsResponse);                // caller's own orgs (from JWT)
   rpc ListUserOrgs(ListUserOrgsRequest) returns (ListUserOrgsResponse);           // admin: orgs for a specific user
@@ -160,6 +167,21 @@ message UpdateOrgRequest {
   string name = 2;
 }
 message UpdateOrgResponse { Org org = 1; }
+
+message AssignOrgPlanRequest {
+  string org_id = 1;
+  // The tier the org should hold after this call. ORG_PLAN_UNSPECIFIED is rejected —
+  // "no opinion" is not a plan, and defaulting it to anything would turn a
+  // zero-initialised request into a tier change.
+  OrgPlan plan = 2;
+}
+message AssignOrgPlanResponse {
+  OrgPlan from = 1;
+  OrgPlan to = 2;
+  // False when the org already held the requested plan. The call is idempotent:
+  // a retried delivery succeeds without writing a second audit row.
+  bool changed = 3;
+}
 
 // Authenticated user's own orgs — no input needed, identity from JWT
 message ListMyOrgsRequest {
