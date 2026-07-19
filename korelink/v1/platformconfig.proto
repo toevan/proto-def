@@ -72,6 +72,24 @@ message PlanLimit {
   string mode = 3;
 }
 
+// PlanPrice is what a plan costs.
+//
+// THE UNIT IS PART OF THE PRICE. €30 per seat and €30 per account differ by an order of
+// magnitude for a ten-seat team, and that ambiguity is exactly what let a landing page
+// reading "$30" appear to contradict a €299 figure when both described the same plan.
+message PlanPrice {
+  // Minor units (cents). Integer: money that is summed must not accumulate
+  // floating-point error. Meaningless when listed is false.
+  int64 minor = 1;
+  string currency = 2;  // ISO code; EUR is the accounting currency
+  // When true the amount is charged per seat, so an account pays minor × seats.
+  bool per_seat = 3;
+  // false for plans sold by conversation — Enterprise "Custom", and internal tiers.
+  // DISTINCT from minor == 0, which means genuinely free: "€0" and "contact us" are
+  // different commercial statements and must not render alike.
+  bool listed = 4;
+}
+
 // PlanEntitlement is what one plan grants on one axis.
 message PlanEntitlement {
   string axis = 1;  // personal | team
@@ -79,6 +97,7 @@ message PlanEntitlement {
   PlanLimit repos = 3;
   PlanLimit seats = 4;
   PlanLimit ai_operations = 5;
+  PlanPrice price = 9;
   // true when an operator has edited this row, which also means seed reconciliation
   // leaves it alone on deploy.
   bool overridden = 6;
@@ -98,6 +117,7 @@ message UpdatePlanEntitlementRequest {
   PlanLimit repos = 3;
   PlanLimit seats = 4;
   PlanLimit ai_operations = 5;
+  PlanPrice price = 6;
 }
 
 message UpdatePlanEntitlementResponse {
