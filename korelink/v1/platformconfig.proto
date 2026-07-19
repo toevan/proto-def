@@ -58,6 +58,39 @@ service PlatformConfigService {
   // ResetPlanEntitlement hands a plan back to the shipped default. The escape hatch
   // from a bad edit: the admin does not need to remember the original numbers.
   rpc ResetPlanEntitlement(ResetPlanEntitlementRequest) returns (ResetPlanEntitlementResponse);
+
+  // ListPublicPlans is the PRICE LIST, readable without authentication.
+  //
+  // PUBLIC BY DESIGN, AND DELIBERATELY NARROWER THAN ListPlanEntitlements. It exists
+  // so the marketing site stops carrying prices as translated copy — four locale
+  // files that could each drift from the biller, and did: the page advertised
+  // "$30 per repository" against a server that charges EUR30 per seat.
+  //
+  // What it OMITS is the security-relevant part. No `source` or `updated_by`: whether
+  // a limit was hand-tuned, and by whom, is operator information and would leak the
+  // existence and identity of platform staff. No ceilings: the fair-use headroom
+  // above the advertised number is deliberately not advertised, because publishing it
+  // makes it the real limit. Unlisted plans are excluded entirely rather than
+  // returned with a null price, so Enterprise cannot be rendered as "EUR0" by a
+  // client that mishandles the flag.
+  rpc ListPublicPlans(ListPublicPlansRequest) returns (ListPublicPlansResponse);
+}
+
+// PublicPlan is one purchasable plan, as a prospective customer may see it.
+message PublicPlan {
+  string axis = 1;  // personal | team
+  string plan = 2;
+  PlanPrice price = 3;
+  // Headline allowances — what the plan ADVERTISES, never the fair-use ceiling.
+  int32 repos_included = 4;
+  int32 seats_included = 5;
+  int32 ai_operations_included = 6;
+}
+
+message ListPublicPlansRequest {}
+
+message ListPublicPlansResponse {
+  repeated PublicPlan plans = 1;
 }
 
 // PlanLimit is one metered allowance.
