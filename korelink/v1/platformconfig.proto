@@ -37,6 +37,80 @@ service PlatformConfigService {
   // ListConfigAudit returns the config change history (newest first, across all
   // knobs) for the admin dashboard: which knob changed, old→new, by whom, when.
   rpc ListConfigAudit(ListConfigAuditRequest) returns (ListConfigAuditResponse);
+
+  // ── Plan entitlements ──
+  //
+  // The commercial limits every plan grants: repositories, seats, AI operations.
+  // Modelled as STRUCTURED ROWS rather than as flat dotted knobs, because they are
+  // not independent scalars — a ceiling below its own included number is refused by
+  // the database, and pretending otherwise would let an admin save a row the schema
+  // rejects. They live on this service anyway so they inherit its admin gate and its
+  // audit trail rather than growing a second operator surface.
+
+  // ListPlanEntitlements returns every plan on both axes with its current limits and
+  // whether an operator has overridden it.
+  rpc ListPlanEntitlements(ListPlanEntitlementsRequest) returns (ListPlanEntitlementsResponse);
+
+  // UpdatePlanEntitlement sets the limits for one plan and marks the row
+  // operator-owned, so seed reconciliation stops overwriting it on deploy.
+  rpc UpdatePlanEntitlement(UpdatePlanEntitlementRequest) returns (UpdatePlanEntitlementResponse);
+
+  // ResetPlanEntitlement hands a plan back to the shipped default. The escape hatch
+  // from a bad edit: the admin does not need to remember the original numbers.
+  rpc ResetPlanEntitlement(ResetPlanEntitlementRequest) returns (ResetPlanEntitlementResponse);
+}
+
+// PlanLimit is one metered allowance.
+message PlanLimit {
+  // What the plan advertises. Fair-use tiers warn here.
+  int32 included = 1;
+  // Where enforcement actually refuses. Must be >= included; the database rejects
+  // anything else, because a ceiling below the advertised number would deny customers
+  // before they reached what they paid for.
+  int32 ceiling = 2;
+  // hard | fair_use | contractual
+  string mode = 3;
+}
+
+// PlanEntitlement is what one plan grants on one axis.
+message PlanEntitlement {
+  string axis = 1;  // personal | team
+  string plan = 2;  // free | pro | max | team | enterprise | platform
+  PlanLimit repos = 3;
+  PlanLimit seats = 4;
+  PlanLimit ai_operations = 5;
+  // true when an operator has edited this row, which also means seed reconciliation
+  // leaves it alone on deploy.
+  bool overridden = 6;
+  string updated_by = 7;  // user id, empty when never edited
+  int64 updated_at_unix = 8;
+}
+
+message ListPlanEntitlementsRequest {}
+
+message ListPlanEntitlementsResponse {
+  repeated PlanEntitlement plans = 1;
+}
+
+message UpdatePlanEntitlementRequest {
+  string axis = 1;
+  string plan = 2;
+  PlanLimit repos = 3;
+  PlanLimit seats = 4;
+  PlanLimit ai_operations = 5;
+}
+
+message UpdatePlanEntitlementResponse {
+  PlanEntitlement plan = 1;
+}
+
+message ResetPlanEntitlementRequest {
+  string axis = 1;
+  string plan = 2;
+}
+
+message ResetPlanEntitlementResponse {
+  PlanEntitlement plan = 1;
 }
 
 // ConfigKnob is the admin-facing description of one managed knob.
