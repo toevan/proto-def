@@ -22,6 +22,12 @@ service OrgService {
   // commercial decision), while UpdateOrg edits presentation fields.
   rpc AssignOrgPlan(AssignOrgPlanRequest) returns (AssignOrgPlanResponse);
 
+  // GetBillingOverview is what the billing page renders: the org's REAL plan, and
+  // usage measured against what that plan advertises. Everything here is
+  // usage-visibility, which every tier includes; cost/spend breakdowns are a
+  // separate, sold capability and deliberately not in this message.
+  rpc GetBillingOverview(GetBillingOverviewRequest) returns (GetBillingOverviewResponse);
+
   // List orgs
   rpc ListMyOrgs(ListMyOrgsRequest) returns (ListMyOrgsResponse);                // caller's own orgs (from JWT)
   rpc ListUserOrgs(ListUserOrgsRequest) returns (ListUserOrgsResponse);           // admin: orgs for a specific user
@@ -181,6 +187,34 @@ message AssignOrgPlanResponse {
   // False when the org already held the requested plan. The call is idempotent:
   // a retried delivery succeeds without writing a second audit row.
   bool changed = 3;
+}
+
+message GetBillingOverviewRequest { string org_id = 1; }
+
+// One usage meter: consumption against what the plan ADVERTISES. The included
+// number is the denominator; the enforcement ceiling is deliberately not reported,
+// for the same reason OrgPlanConfig omits it — quoting it would advertise headroom
+// we may withdraw.
+message BillingUsageMeter {
+  int64 used = 1;
+  int64 included = 2;
+  // hard | fair_use | contractual. Contractual means the included number is an
+  // alerting threshold, not a gate — render "custom", never a lockout warning.
+  string mode = 3;
+}
+
+message GetBillingOverviewResponse {
+  OrgPlan plan = 1;
+  BillingUsageMeter seats = 2;
+  BillingUsageMeter repos = 3;
+  // Current metering period. Uses the SAME arithmetic as enforcement, so this
+  // number and a refusal can never disagree.
+  BillingUsageMeter ai_operations = 4;
+  // First day of the AI metering period (YYYY-MM-DD).
+  string ai_period_start = 5;
+  // Payment method and invoices are DELIBERATELY ABSENT: no payment provider
+  // exists, so there is nothing true to return. Clients render honest empty
+  // states rather than fabricated records.
 }
 
 // Authenticated user's own orgs — no input needed, identity from JWT
