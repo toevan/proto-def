@@ -18,11 +18,13 @@ option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelin
 // access is visible to the org it targets, never something that happens
 // to it invisibly.
 //
-// All RPCs require the platform admin role. Self-issuance is allowed by
-// design (the controls are the mandatory reason, the TTL and the
-// tenant-visible audit — not a four-eyes ceremony); every grant records
-// issuer and grantee separately so a future approver model needs no wire
-// change.
+// The management RPCs (Grant/Revoke/List) require the platform admin
+// role. Self-issuance is allowed by design (the controls are the
+// mandatory reason, the TTL and the tenant-visible audit — not a
+// four-eyes ceremony); every grant records issuer and grantee separately
+// so a future approver model needs no wire change.
+// GetSupportAccessStatus is the one TENANT-facing read: org members see
+// whether support currently holds access to THEIR org.
 service SupportAccessService {
   // GrantSupportAccess issues a time-boxed grant on one organization.
   // ttl_minutes <= 0 applies the 60-minute default; values above 1440
@@ -39,6 +41,15 @@ service SupportAccessService {
   // operator-side view. (The tenant-side view is the org's own audit
   // log, which carries the grant/revoke rows.)
   rpc ListSupportAccessGrants(ListSupportAccessGrantsRequest) returns (ListSupportAccessGrantsResponse);
+
+  // GetSupportAccessStatus is the TENANT-facing read: whether KoreLink
+  // support currently holds an active grant on the given org, with which
+  // scope, until when. Gated at org MEMBERSHIP (any member may see it —
+  // that visibility IS the feature; the client banner is built on this).
+  // Deliberately carries no staffer identity: the status surface says
+  // "support has access", and the org's audit log carries actor identity
+  // wherever actions were actually taken.
+  rpc GetSupportAccessStatus(GetSupportAccessStatusRequest) returns (GetSupportAccessStatusResponse);
 }
 
 // SupportAccessScope maps onto the role the org guards will synthesize
@@ -108,4 +119,21 @@ message ListSupportAccessGrantsRequest {
 
 message ListSupportAccessGrantsResponse {
   repeated SupportAccessGrant grants = 1;
+}
+
+message GetSupportAccessStatusRequest {
+  // The org whose support-access status the caller (a member of it) asks for.
+  string account_id = 1;
+}
+
+message GetSupportAccessStatusResponse {
+  // True iff at least one grant on the org is active (not revoked, not
+  // expired) at read time.
+  bool active = 1;
+  // The STRONGEST active scope (admin outranks read); UNSPECIFIED when
+  // active=false.
+  SupportAccessScope scope = 2;
+  // The LATEST expiry among active grants of the reported scope — when
+  // the banner may disappear. Unset when active=false.
+  google.protobuf.Timestamp expires_at = 3;
 }
