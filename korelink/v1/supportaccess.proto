@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// ===================================================================
+// SupportAccessService — explicit, audited, time-boxed support access
+// ===================================================================
+//
+// Replaces the implicit platform→org authorization bypass (PRD:
+// docs/architecture/PRD_SUPPORT_ACCESS_GRANTS.md). A grant is the ONLY
+// intended way platform staff touch a tenant's resources: append-only,
+// reason required, expires by itself, and every issuance/revocation is
+// written to the TENANT's own audit log in the same transaction — support
+// access is visible to the org it targets, never something that happens
+// to it invisibly.
+//
+// All RPCs require the platform admin role. Self-issuance is allowed by
+// design (the controls are the mandatory reason, the TTL and the
+// tenant-visible audit — not a four-eyes ceremony); every grant records
+// issuer and grantee separately so a future approver model needs no wire
+// change.
+service SupportAccessService {
+  // GrantSupportAccess issues a time-boxed grant on one organization.
+  // ttl_minutes <= 0 applies the 60-minute default; values above 1440
+  // (24h) are clamped — longer engagements re-issue, and every re-issue
+  // is a fresh audit row.
+  rpc GrantSupportAccess(GrantSupportAccessRequest) returns (GrantSupportAccessResponse);
+
+  // RevokeSupportAccess ends a grant early. Idempotent: revoking an
+  // already-revoked or expired grant succeeds with revoked=false and
+  // writes no second audit row.
+  rpc RevokeSupportAccess(RevokeSupportAccessRequest) returns (RevokeSupportAccessResponse);
+
+  // ListSupportAccessGrants enumerates grants, newest first — the
+  // operator-side view. (The tenant-side view is the org's own audit
+  // log, which carries the grant/revoke rows.)
+  rpc ListSupportAccessGrants(ListSupportAccessGrantsRequest) returns (ListSupportAccessGrantsResponse);
+}
+
+// SupportAccessScope maps onto the role the org guards will synthesize
+// (PRD §2.1): READ → org member / project viewer, ADMIN → org admin /
+// project owner. Two scopes only — a finer matrix invites drift against
+// the org-role model it shadows.
+enum SupportAccessScope {
+  SUPPORT_ACCESS_SCOPE_UNSPECIFIED = 0;
+  SUPPORT_ACCESS_SCOPE_READ = 1;
+  SUPPORT_ACCESS_SCOPE_ADMIN = 2;
+}
+
+// SupportAccessGrant is the append-only grant record. Revocation is a
+// stamp (revoked_at/revoked_by), never a row removal — the audit story
+// depends on the record surviving.
+message SupportAccessGrant {
+  string id = 1;
+  string account_id = 2;
+  // grantee_user_id is the platform staffer the grant empowers;
+  // granted_by is who issued it (equal on self-issue).
+  string grantee_user_id = 3;
+  string granted_by = 4;
+  SupportAccessScope scope = 5;
+  string reason = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  // Unset while the grant has not been revoked. An expired-but-unrevoked
+  // grant keeps revoked_at unset: expiry is read from expires_at.
+  google.protobuf.Timestamp revoked_at = 9;
+  string revoked_by = 10;
+}
+
+message GrantSupportAccessRequest {
+  // The tenant organization the grant targets. Personal accounts are
+  // refused: the bypass this replaces only ever covered org guards.
+  string account_id = 1;
+  SupportAccessScope scope = 2;
+  // Required, non-empty after trimming. This lands verbatim in the
+  // tenant-visible audit row.
+  string reason = 3;
+  // <= 0 → 60-minute default; > 1440 → clamped to 1440 (24h).
+  int64 ttl_minutes = 4;
+}
+
+message GrantSupportAccessResponse {
+  SupportAccessGrant grant = 1;
+}
+
+message RevokeSupportAccessRequest {
+  string grant_id = 1;
+}
+
+message RevokeSupportAccessResponse {
+  // False when the grant was already revoked or expired (idempotent
+  // success, no new audit row); true when THIS call ended it.
+  bool revoked = 1;
+}
+
+message ListSupportAccessGrantsRequest {
+  // Optional: restrict to one organization.
+  string account_id = 1;
+  // Only grants that are currently active (not revoked, not expired).
+  bool active_only = 2;
+  // Page size; <= 0 or > 200 → 50.
+  int32 limit = 3;
+}
+
+message ListSupportAccessGrantsResponse {
+  repeated SupportAccessGrant grants = 1;
+}
