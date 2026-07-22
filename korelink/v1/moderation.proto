@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// ===================================================================
+// ModerationService — the RESTRICTIVE axis of the account-attribute layer
+// ===================================================================
+//
+// Moderation status is the opposite of an attribute tag: where a tag ADDS
+// exposure/access, a moderation status RESTRICTS. It is a single lifecycle
+// state per subject (not a set), and it OVERRIDES everything — tags, grants,
+// and membership alike (PRD docs/architecture/PRD_ACCOUNT_TAGS.md §8: moderation
+// deny is precedence rule #1).
+//
+// Two axes, enforced at two choke points:
+//   - USER moderation follows the PERSON. A banned/suspended user is denied on
+//     every authenticated RPC (except an appeal allowlist) at a central
+//     interceptor — they cannot evade by switching or creating accounts.
+//   - ACCOUNT moderation follows an ORG/account. A suspended/banned account is
+//     unreachable, enforced in the orgauth resolver as precedence rule #1
+//     (before grant/membership/tag).
+//
+// Only SUSPENDED and BANNED enforce (deny); FLAGGED is a non-enforcing internal
+// watch marker; ACTIVE is the default. Every status change is platform-admin
+// gated and written to the audit log in the same transaction — a moderation
+// action carries legal/ToS weight and must be attributable.
+service ModerationService {
+  // SetUserModeration sets a user's moderation status with a reason. Upserts the
+  // single row for the user; ACTIVE clears an existing restriction. Platform-admin
+  // only; the change is audited in-transaction.
+  rpc SetUserModeration(SetUserModerationRequest) returns (SetUserModerationResponse);
+
+  // GetUserModeration reads a user's current status (ACTIVE when no row exists).
+  rpc GetUserModeration(GetUserModerationRequest) returns (GetUserModerationResponse);
+
+  // ListModeratedUsers enumerates users in a given status — the "who is banned"
+  // operator query. Newest change first.
+  rpc ListModeratedUsers(ListModeratedUsersRequest) returns (ListModeratedUsersResponse);
+
+  // SetAccountModeration sets an account's moderation status with a reason.
+  // Upserts; ACTIVE clears a restriction. Platform-admin only; audited in-tx.
+  rpc SetAccountModeration(SetAccountModerationRequest) returns (SetAccountModerationResponse);
+
+  // GetAccountModeration reads an account's current status (ACTIVE when no row).
+  rpc GetAccountModeration(GetAccountModerationRequest) returns (GetAccountModerationResponse);
+
+  // ListModeratedAccounts enumerates accounts in a given status. Newest first.
+  rpc ListModeratedAccounts(ListModeratedAccountsRequest) returns (ListModeratedAccountsResponse);
+}
+
+// ModerationStatus is a single lifecycle state per subject.
+//   ACTIVE    — default; no restriction.
+//   FLAGGED   — internal watch marker; recorded, visible to staff, does NOT deny.
+//   SUSPENDED — temporary deny (enforced).
+//   BANNED    — permanent deny (enforced).
+enum ModerationStatus {
+  MODERATION_STATUS_UNSPECIFIED = 0;
+  MODERATION_STATUS_ACTIVE = 1;
+  MODERATION_STATUS_FLAGGED = 2;
+  MODERATION_STATUS_SUSPENDED = 3;
+  MODERATION_STATUS_BANNED = 4;
+}
+
+// UserModeration is the current moderation row for one user.
+message UserModeration {
+  string user_id = 1;
+  ModerationStatus status = 2;
+  // Required for a non-ACTIVE status; the operator's justification, audited.
+  string reason = 3;
+  // The platform staffer who set the current status.
+  string moderated_by = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// AccountModeration is the current moderation row for one account.
+message AccountModeration {
+  string account_id = 1;
+  ModerationStatus status = 2;
+  string reason = 3;
+  string moderated_by = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message SetUserModerationRequest {
+  string user_id = 1;
+  ModerationStatus status = 2;
+  // Required (non-empty after trimming) for any non-ACTIVE status; lands verbatim
+  // in the audit row. ACTIVE (clearing a restriction) may omit it.
+  string reason = 3;
+}
+
+message SetUserModerationResponse {
+  UserModeration moderation = 1;
+}
+
+message GetUserModerationRequest {
+  string user_id = 1;
+}
+
+message GetUserModerationResponse {
+  UserModeration moderation = 1;
+}
+
+message ListModeratedUsersRequest {
+  // Filter to this status. UNSPECIFIED ⇒ every non-ACTIVE row.
+  ModerationStatus status = 1;
+  // Page size; <= 0 or > 200 ⇒ 50.
+  int32 limit = 2;
+}
+
+message ListModeratedUsersResponse {
+  repeated UserModeration users = 1;
+}
+
+message SetAccountModerationRequest {
+  string account_id = 1;
+  ModerationStatus status = 2;
+  string reason = 3;
+}
+
+message SetAccountModerationResponse {
+  AccountModeration moderation = 1;
+}
+
+message GetAccountModerationRequest {
+  string account_id = 1;
+}
+
+message GetAccountModerationResponse {
+  AccountModeration moderation = 1;
+}
+
+message ListModeratedAccountsRequest {
+  ModerationStatus status = 1;
+  int32 limit = 2;
+}
+
+message ListModeratedAccountsResponse {
+  repeated AccountModeration accounts = 1;
+}
