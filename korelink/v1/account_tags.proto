@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// ===================================================================
+// AccountTagsService — a platform-managed attribute layer on accounts
+// ===================================================================
+//
+// Attribute tags are additive, namespaced labels on an account (`kl:insider`,
+// `kl:qa`, `beta:launch-2026`, `promo:*`) that drive feature exposure,
+// internal/QA access, and segmentation. They are an INPUT to the systems that
+// already gate (feature_flags.targeting_rules, entitlement) — never a parallel
+// gate (PRD: docs/architecture/PRD_ACCOUNT_TAGS.md).
+//
+// THE FENCE (the whole ballgame): a tag NEVER grants access to another tenant's
+// customer org — that stays on the audited support-access grant. Tags reach
+// feature exposure, internal/non-tenant surfaces, and the account's own/test
+// resources; nothing else. This service is the SUBSTRATE (PR-1): storage +
+// platform-gated, audited, temporal assignment. Consumers land in later PRs.
+//
+// All management RPCs require the PLATFORM admin role — a customer must never
+// self-assign a privileged tag (that would be self-service god-mode). Every
+// assignment/revocation writes an audit row in the same transaction: a tag
+// change is an access change and must be attributable, exactly like a grant.
+service AccountTagsService {
+  // AssignAccountTag adds (or re-adds) an attribute tag to an account.
+  // ttl_minutes <= 0 makes the tag PERMANENT (unlike a support grant, a staff
+  // tag like kl:insider legitimately never expires); ttl_minutes > 0 time-boxes
+  // it (expires_at = now + ttl), self-expiring with no reaper. Re-assigning a
+  // live (account, tag) refreshes its reason/expiry in place; re-assigning a
+  // revoked one revives it. Platform-admin only; the tag must be namespaced.
+  rpc AssignAccountTag(AssignAccountTagRequest) returns (AssignAccountTagResponse);
+
+  // RevokeAccountTag removes a tag from an account. Idempotent: revoking an
+  // absent/already-revoked tag succeeds with revoked=false and writes no second
+  // audit row. Revocation is a stamp (revoked_at/revoked_by), never a row
+  // removal — the audit story depends on the record surviving.
+  rpc RevokeAccountTag(RevokeAccountTagRequest) returns (RevokeAccountTagResponse);
+
+  // ListAccountTags enumerates the tags on one account, newest first.
+  rpc ListAccountTags(ListAccountTagsRequest) returns (ListAccountTagsResponse);
+
+  // ListAccountsByTag enumerates the accounts that carry a given tag — the
+  // "who has kl:qa" operator query. Newest first.
+  rpc ListAccountsByTag(ListAccountsByTagRequest) returns (ListAccountsByTagResponse);
+}
+
+// AccountTag is the append-only tag record. Active ≡ revoked_at IS NULL AND
+// (expires_at unset OR expires_at > now()). Revocation is a stamp, never a
+// deletion.
+message AccountTag {
+  string id = 1;
+  string account_id = 2;
+  // Namespaced label, e.g. 'kl:qa'. The namespace before ':' authorizes who may
+  // set it and keeps operator/marketing/experiment tags from colliding.
+  string tag = 3;
+  string reason = 4;
+  // The platform staffer who assigned it.
+  string granted_by = 5;
+  google.protobuf.Timestamp created_at = 6;
+  // Unset ⇒ permanent. Else the tag self-expires the instant now() passes it.
+  google.protobuf.Timestamp expires_at = 7;
+  // Unset while the tag has not been revoked. An expired-but-unrevoked tag keeps
+  // revoked_at unset: expiry is read from expires_at.
+  google.protobuf.Timestamp revoked_at = 8;
+  string revoked_by = 9;
+}
+
+message AssignAccountTagRequest {
+  // The account the tag attaches to. Both org and personal accounts are valid —
+  // a staffer's PERSONAL account carries kl:insider/kl:qa.
+  string account_id = 1;
+  // Namespaced, non-empty after trimming (e.g. 'kl:qa'). The caller must be
+  // authorized for the namespace.
+  string tag = 2;
+  // Required, non-empty after trimming. Lands verbatim in the audit row.
+  string reason = 3;
+  // <= 0 ⇒ permanent; > 0 ⇒ time-boxed to now + ttl_minutes.
+  int64 ttl_minutes = 4;
+}
+
+message AssignAccountTagResponse {
+  AccountTag tag = 1;
+}
+
+message RevokeAccountTagRequest {
+  string account_id = 1;
+  string tag = 2;
+}
+
+message RevokeAccountTagResponse {
+  // False when the tag was absent/already-revoked (idempotent success, no new
+  // audit row); true when THIS call ended it.
+  bool revoked = 1;
+}
+
+message ListAccountTagsRequest {
+  string account_id = 1;
+  // Only tags currently active (not revoked, not expired).
+  bool active_only = 2;
+  // Page size; <= 0 or > 200 ⇒ 50.
+  int32 limit = 3;
+}
+
+message ListAccountTagsResponse {
+  repeated AccountTag tags = 1;
+}
+
+message ListAccountsByTagRequest {
+  // The exact namespaced tag to search for.
+  string tag = 1;
+  // Only accounts whose tag is currently active.
+  bool active_only = 2;
+  // Page size; <= 0 or > 200 ⇒ 50.
+  int32 limit = 3;
+}
+
+message ListAccountsByTagResponse {
+  repeated AccountTag tags = 1;
+}
