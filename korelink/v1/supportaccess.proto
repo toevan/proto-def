@@ -50,6 +50,15 @@ service SupportAccessService {
   // "support has access", and the org's audit log carries actor identity
   // wherever actions were actually taken.
   rpc GetSupportAccessStatus(GetSupportAccessStatusRequest) returns (GetSupportAccessStatusResponse);
+
+  // ListMyActiveSupportAccessGrants returns the CALLER'S OWN active grants —
+  // the orgs they currently hold support access on, so a staffer's client can
+  // offer to open exactly those (and only those). The caller is the
+  // authenticated identity, never a request field: a caller can only ever see
+  // their own grants. Strongest active grant per org, newest expiry first.
+  // Requires authentication only — listing one's own grants leaks nothing, and
+  // in practice only platform staff hold grants.
+  rpc ListMyActiveSupportAccessGrants(ListMyActiveSupportAccessGrantsRequest) returns (ListMyActiveSupportAccessGrantsResponse);
 }
 
 // SupportAccessScope maps onto the role the org guards will synthesize
@@ -136,4 +145,33 @@ message GetSupportAccessStatusResponse {
   // The LATEST expiry among active grants of the reported scope — when
   // the banner may disappear. Unset when active=false.
   google.protobuf.Timestamp expires_at = 3;
+}
+
+// MyActiveGrant is one org the CALLER currently holds an active support grant
+// on — the minimal shape a staffer's client needs to offer "open this org".
+// Deliberately leaner than SupportAccessGrant: it carries the org's display
+// identity but NOT grantee_user_id/granted_by/reason/revoked_* — a self-list
+// needs none of those, and the operator's reason is not the staffer's to see
+// here.
+message MyActiveGrant {
+  // The org the grant is on.
+  string account_id = 1;
+  // Display name + handle, joined from the org, so the client can render the
+  // row without a second lookup.
+  string org_name = 2;
+  string org_handle = 3;
+  // The STRONGEST active scope on this org (admin outranks read) — the
+  // effective role the staffer gets when they open it.
+  SupportAccessScope scope = 4;
+  // When this org's access lapses (the strongest grant's expiry). Always set:
+  // every grant is time-boxed.
+  google.protobuf.Timestamp expires_at = 5;
+  // When the (strongest) grant was issued.
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ListMyActiveSupportAccessGrantsRequest {}
+
+message ListMyActiveSupportAccessGrantsResponse {
+  repeated MyActiveGrant grants = 1;
 }
