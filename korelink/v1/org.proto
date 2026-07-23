@@ -146,6 +146,14 @@ message GitHubOrg {
   string existing_org_id = 5;            // KoreLink org ID if already connected
   int64 github_id = 6;                   // numeric GitHub org ID (for installation deep-link)
   bool app_installed = 7;                // true if KoreLink GitHub App is installed on this org
+
+  // How many repositories the installation can actually reach.
+  //
+  // app_installed answers "does an installation record exist on GitHub", which
+  // stays true when every repository has been deselected — so it cannot be used
+  // to decide whether KoreLink has anything to work with. This is that fact.
+  // 0 with app_installed=true means the app is installed but shares no repos.
+  int32 accessible_repo_count = 8;
 }
 
 // ── Requests/Responses ──
