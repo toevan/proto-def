@@ -138,6 +138,7 @@ enum InvitationStatus {
 
 // ── GitHub Org Discovery [NEW] ──
 
+// An installable GitHub account — an organisation, or the caller's own.
 message GitHubOrg {
   string handle = 1;                      // "acme-corp"
   string name = 2;                       // "Acme Corporation"
@@ -266,6 +267,17 @@ message OrgWithRole {
 message ListGitHubOrgsRequest {}          // uses auth token to discover GitHub orgs
 message ListGitHubOrgsResponse {
   repeated GitHubOrg orgs = 1;
+
+  // The caller's OWN GitHub account, described with the same fields.
+  //
+  // A personal account is installable exactly like an organisation — the App is
+  // installed on it, shares repositories with it, and can already have a
+  // KoreLink workspace. Onboarding could not say any of that about it, so the
+  // personal option had no install state to show and no gate to apply, while
+  // the organisation beside it had both.
+  //
+  // Unset when the caller's GitHub login is unknown.
+  GitHubOrg personal_account = 2;
 }
 
 message RemoveMemberRequest {
