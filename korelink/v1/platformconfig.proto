@@ -93,6 +93,16 @@ message PublicPlan {
   int32 repos_included = 4;
   int32 seats_included = 5;
   int32 ai_operations_included = 6;
+  // Capabilities the plan GRANTS, as stable identifiers. The consumer supplies its
+  // own wording; publishing prose here would make marketing copy an API response and
+  // put translation in the server.
+  repeated string features = 7;
+  // Capabilities ADVERTISED BUT NOT IMPLEMENTED. Separate from `features` so a
+  // consumer cannot render a roadmap entry as though it were included — the pricing
+  // page did exactly that with SSO, which the server has denied on every tier all
+  // along. Both lists already ship on /v1/public/pricing; carrying them here too is
+  // what stops the two doors onto this catalogue describing different products.
+  repeated string planned_features = 8;
 }
 
 message ListPublicPlansRequest {}
