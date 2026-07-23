@@ -117,6 +117,11 @@ message AccountModeration {
   string moderated_by = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
+  // When a SUSPENSION lapses — the account-axis twin of
+  // UserModeration.suspended_until, with identical semantics: only ever set
+  // alongside SUSPENDED, computed at read and never reaped, so a row may still
+  // read SUSPENDED with this in the past (a LAPSED suspension, not a live one).
+  google.protobuf.Timestamp suspended_until = 7;
 }
 
 message SetUserModerationRequest {
@@ -159,6 +164,9 @@ message SetAccountModerationRequest {
   string account_id = 1;
   ModerationStatus status = 2;
   string reason = 3;
+  // Optional, and ONLY meaningful with SUSPENDED: when the suspension lapses on
+  // its own. Must be in the future. Same rules as the user axis.
+  google.protobuf.Timestamp suspended_until = 4;
 }
 
 message SetAccountModerationResponse {
