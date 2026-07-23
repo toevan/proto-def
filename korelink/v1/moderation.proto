@@ -50,6 +50,16 @@ service ModerationService {
 
   // ListModeratedAccounts enumerates accounts in a given status. Newest first.
   rpc ListModeratedAccounts(ListModeratedAccountsRequest) returns (ListModeratedAccountsResponse);
+
+  // SubmitModerationAppeal lets a RESTRICTED user appeal their OWN suspension or
+  // ban. Unlike every other RPC here, it is NOT platform-admin gated — it is on
+  // the moderation appeal allowlist (handlers.ModerationAppealRPCs) so the very
+  // user the interceptor otherwise denies can still reach it. Strictly
+  // own-account: the subject is the authenticated caller, never a request field,
+  // so a caller can only ever appeal for themselves. Only a currently-restricted
+  // user may appeal, and only ONE appeal may be open at a time; an operator
+  // changing the user's status resolves the open appeal so the loop can repeat.
+  rpc SubmitModerationAppeal(SubmitModerationAppealRequest) returns (SubmitModerationAppealResponse);
 }
 
 // ModerationStatus is a single lifecycle state per subject.
@@ -143,4 +153,25 @@ message ListModeratedAccountsRequest {
 
 message ListModeratedAccountsResponse {
   repeated AccountModeration accounts = 1;
+}
+
+// ModerationAppeal is a user's own appeal against their restriction — the lean
+// shape the appealing user's client needs back. Carries no reviewer/operator
+// fields: a self-submission needs none, and the appeal's disposition surfaces
+// through the user's moderation status changing, not a field here.
+message ModerationAppeal {
+  string id = 1;
+  // The user's appeal text, echoed back so the client can confirm what was sent.
+  string message = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message SubmitModerationAppealRequest {
+  // The appeal text. Required, non-empty after trimming. The subject is the
+  // authenticated caller — there is deliberately NO user id field to spoof.
+  string message = 1;
+}
+
+message SubmitModerationAppealResponse {
+  ModerationAppeal appeal = 1;
 }
