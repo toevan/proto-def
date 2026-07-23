@@ -5,6 +5,7 @@ package korelink.v1;
 option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
 
 import "google/protobuf/timestamp.proto";
+import "korelink/v1/moderation.proto";
 
 // ============================================
 // AuthService — OAuth2 + JWT Authentication
@@ -88,6 +89,19 @@ message AuthUser {
   // the app ships German bundles, so `locale` can be "de" while `effective_locale` is "en".
   string locale = 12;                               // the user's stored preference; "" = never chosen
   string effective_locale = 13;                     // what the client should actually render — always set
+
+  // Moderation (restriction) state of THIS user, so the client can render an
+  // explicit "account restricted" screen instead of a wall of PermissionDenied
+  // (GetCurrentUser is the one RPC the moderation interceptor exempts, by
+  // design, precisely so this signal has a channel). DELIBERATELY NON-LEAKY:
+  // the auth surface only ever reports UNSPECIFIED, SUSPENDED, or BANNED —
+  // ACTIVE and FLAGGED (the internal staff-only watch marker) both collapse to
+  // UNSPECIFIED here, so an ordinary user learns nothing about being watched.
+  ModerationStatus moderation_status = 14;
+  // The operator-authored, user-facing justification. Set ONLY when
+  // moderation_status is SUSPENDED or BANNED; empty otherwise. Written for the
+  // user to read (see PRD_ACCOUNT_TAGS §8) — surfaced verbatim on the screen.
+  string moderation_reason = 15;
 }
 
 message OAuthLoginRequest {
