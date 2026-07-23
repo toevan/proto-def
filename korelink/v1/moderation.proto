@@ -60,6 +60,18 @@ service ModerationService {
   // user may appeal, and only ONE appeal may be open at a time; an operator
   // changing the user's status resolves the open appeal so the loop can repeat.
   rpc SubmitModerationAppeal(SubmitModerationAppealRequest) returns (SubmitModerationAppealResponse);
+
+  // ListModerationAppeals is the OPERATOR queue: appeals currently awaiting
+  // review, newest first, joined to the appellant's identity and the status
+  // they are appealing so a reviewer needs no second lookup. Platform-admin
+  // gated (unlike SubmitModerationAppeal above).
+  //
+  // Read-only by design: a reviewer ACTS through SetUserModeration, which
+  // resolves the open appeal in the same transaction. There is deliberately no
+  // "dismiss appeal" RPC — dismissing without a decision would leave the user
+  // restricted with nothing recorded, and re-affirming the SAME status already
+  // resolves the appeal.
+  rpc ListModerationAppeals(ListModerationAppealsRequest) returns (ListModerationAppealsResponse);
 }
 
 // ModerationStatus is a single lifecycle state per subject.
@@ -85,6 +97,16 @@ message UserModeration {
   string moderated_by = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
+  // When a SUSPENSION lapses. Only ever set alongside SUSPENDED — a ban is
+  // permanent and ACTIVE/FLAGGED carry no window. Unset means an open-ended
+  // suspension the operator must clear by hand.
+  //
+  // Expiry is COMPUTED AT READ, never reaped: once this instant passes, every
+  // enforcement read reports the user ACTIVE while this row is retained as the
+  // record of what happened. So a row may still read SUSPENDED here with a
+  // suspended_until in the past — that is a LAPSED suspension, not a live one,
+  // and operator surfaces should render it as such.
+  google.protobuf.Timestamp suspended_until = 7;
 }
 
 // AccountModeration is the current moderation row for one account.
@@ -103,6 +125,11 @@ message SetUserModerationRequest {
   // Required (non-empty after trimming) for any non-ACTIVE status; lands verbatim
   // in the audit row. ACTIVE (clearing a restriction) may omit it.
   string reason = 3;
+  // Optional, and ONLY meaningful with SUSPENDED: when the suspension lapses on
+  // its own. Must be in the future. Rejected with any other status (a ban is
+  // permanent; active/flagged have nothing to time-box), and omitting it means
+  // an open-ended suspension the operator clears by hand.
+  google.protobuf.Timestamp suspended_until = 4;
 }
 
 message SetUserModerationResponse {
@@ -174,4 +201,33 @@ message SubmitModerationAppealRequest {
 
 message SubmitModerationAppealResponse {
   ModerationAppeal appeal = 1;
+}
+
+// ModerationAppealSummary is one row of the operator review queue: the appeal
+// plus everything a reviewer needs to decide without a second lookup — who is
+// appealing, and the restriction they are appealing against.
+message ModerationAppealSummary {
+  string id = 1;
+  string user_id = 2;
+  // Appellant identity, joined from users.
+  string user_email = 3;
+  string user_name = 4;
+  // The appeal text, verbatim.
+  string message = 5;
+  // The restriction being appealed, as it stands NOW (a reviewer must decide
+  // against the current state, not the state at submission time).
+  ModerationStatus current_status = 6;
+  string current_reason = 7;
+  // Set when the current status is a time-boxed suspension; see UserModeration.
+  google.protobuf.Timestamp current_suspended_until = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message ListModerationAppealsRequest {
+  // Page size; <= 0 or > 200 ⇒ 50.
+  int32 limit = 1;
+}
+
+message ListModerationAppealsResponse {
+  repeated ModerationAppealSummary appeals = 1;
 }

@@ -102,6 +102,12 @@ message AuthUser {
   // moderation_status is SUSPENDED or BANNED; empty otherwise. Written for the
   // user to read (see PRD_ACCOUNT_TAGS §8) — surfaced verbatim on the screen.
   string moderation_reason = 15;
+  // When a SUSPENSION lapses, so the restricted screen can say "until <when>"
+  // instead of leaving the user guessing whether it is permanent. Set ONLY
+  // alongside SUSPENDED and only when the suspension is time-boxed; unset for
+  // BANNED (permanent) and for an open-ended suspension. A lapsed suspension
+  // never reaches the client at all — the caller simply reads as unrestricted.
+  google.protobuf.Timestamp moderation_suspended_until = 16;
 }
 
 message OAuthLoginRequest {
