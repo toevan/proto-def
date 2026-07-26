@@ -347,6 +347,13 @@ message DisconnectRepoResponse {
 message ReindexRepoRequest {
   string repo_id = 1;
   bool full = 2;                         // true = full reindex, false = incremental
+  // Restart a repo whose index looks wedged (worker died mid-index, so the repo is stuck
+  // "indexing" and an ordinary reindex is refused with IndexAlreadyInProgress).
+  //
+  // NOT an override of the concurrency guard: the server still refuses when the index job is
+  // actually heartbeating, so a live index can never be double-started. It only lets the
+  // request through to that liveness check instead of the wall-clock "already indexing" reject.
+  bool force = 3;
 }
 message ReindexRepoResponse {
   string job_id = 1;
