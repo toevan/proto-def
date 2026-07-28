@@ -509,4 +509,19 @@ message RepoChange {
   RepoStatus status = 2;
   RepoChangeReason reason = 3;
   google.protobuf.Timestamp occurred_at = 4;
+
+  // Display name, so a client learning about this repo FROM this frame has
+  // something to render instead of a UUID. Identity, not derived state.
+  string repo_name = 5;
+
+  // Set only when the publishing seam knows it — the reindex flip and the
+  // onboarding write, which create the job in the same transaction.
+  //
+  // This is what lets an OBSERVER watch a running index in DETAIL. Index
+  // progress is addressed by job id, so a device that did not dispatch the index
+  // has no id to subscribe with and can otherwise only learn that something is
+  // happening. Handing the id out here closes that gap: the observer picks it up
+  // and subscribes to the per-job progress stream exactly as the dispatching
+  // device does.
+  string index_job_id = 6;
 }
