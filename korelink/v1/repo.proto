@@ -30,6 +30,28 @@ service RepoService {
   rpc StreamBatchIndexProgress(StreamBatchIndexProgressRequest) returns (stream IndexProgressUpdate);
   rpc GetRepoProgressMetrics(GetRepoProgressMetricsRequest) returns (GetRepoProgressMetricsResponse);
 
+  // Server-stream of repo-state changes for an ORG, wrapped in a frame envelope
+  // so the server can interleave droppable heartbeats past reverse-proxy idle
+  // timeouts (nginx default proxy_read_timeout is 60s).
+  //
+  // Org-scoped, unlike StreamIndexProgress beside it, and that is the whole
+  // point. Index progress is addressed by JOB id, so only the client that
+  // started an index can subscribe — a second device, or a repo whose index was
+  // started by a push webhook or the freshness sweep, has no job id and can
+  // never learn the outcome. An org id is something every client already has, so
+  // an OBSERVER can converge.
+  //
+  // Frames are INVALIDATION SIGNALS carrying the new status, not snapshots. A
+  // client may flip a status-only control straight from `status`, but anything
+  // derived — violation counts, compliance rate, health — must be re-fetched,
+  // because it is computed from evidence this frame does not carry.
+  //
+  // Delivery is best-effort and unreplayed: frames published while a client is
+  // disconnected are gone, and a broker outage manifests as SILENCE rather than
+  // an error. A subscriber MUST therefore keep a low-frequency reconciliation
+  // read; the stream makes convergence fast, it does not make it guaranteed.
+  rpc StreamRepoChanges(StreamRepoChangesRequest) returns (stream RepoChangeFrame);
+
   // Blueprint assignment (repo-scoped)
   rpc AssignBlueprint(AssignBlueprintRequest) returns (AssignBlueprintResponse);
   rpc RemoveBlueprint(RemoveBlueprintRequest) returns (RemoveBlueprintResponse);
@@ -433,4 +455,58 @@ message BlueprintAssignment {
   google.protobuf.Timestamp assigned_at = 6;
   int32 rule_count = 7;                    // number of rules in the blueprint
   int32 violation_count = 8;               // repo-level violations for this blueprint
+}
+
+// ── Repo change stream ──
+
+message StreamRepoChangesRequest {
+  string org_id = 1;
+}
+
+// RepoChangeFrame is one frame on the StreamRepoChanges wire: either a real
+// change or a droppable heartbeat. Mirrors NotificationStreamFrame — an idle
+// stream MUST still put a byte on the wire inside the smallest reverse-proxy
+// idle window or the connection is dropped.
+message RepoChangeFrame {
+  oneof payload {
+    RepoChange change = 1;
+    RepoChangeHeartbeat heartbeat = 2;
+  }
+}
+
+// RepoChangeHeartbeat is a keepalive frame the client drops on receipt.
+message RepoChangeHeartbeat {
+  google.protobuf.Timestamp sent_at = 1;
+}
+
+// RepoChangeReason says WHY the repo row changed, so a client can decide how much
+// work to do.
+//
+// The distinction is load-bearing rather than descriptive: the repo LIST renders
+// health derived from violation counts, NOT from repo status, and those counts are
+// recomputed at a different seam entirely. A surface that only watched status
+// would never converge on the value it actually renders.
+enum RepoChangeReason {
+  REPO_CHANGE_REASON_UNSPECIFIED = 0;
+  REPO_CHANGE_REASON_CREATED = 1;             // onboarded
+  REPO_CHANGE_REASON_STATUS_CHANGED = 2;      // every index lifecycle transition
+  REPO_CHANGE_REASON_EVALUATION_UPDATED = 3;  // constraint evaluation rewrote violation counts
+  REPO_CHANGE_REASON_PROJECT_CHANGED = 4;     // re-parented; regroups project-scoped surfaces
+  REPO_CHANGE_REASON_METRICS_UPDATED = 5;     // indexer symbol/edge/file/layer counts
+  REPO_CHANGE_REASON_DESCRIPTION_CHANGED = 6; // GitHub "About" text backfilled
+}
+
+message RepoChange {
+  string repo_id = 1;
+  // The repo's status as known at the seam that published. UNSPECIFIED when that
+  // seam does not read it — the evaluation and metrics rollups recompute counts
+  // without touching the repositories row, and a lookup purely to fill this field
+  // would cost a query per rollup.
+  //
+  // Client rule: trust `status` only when it is not UNSPECIFIED; always re-fetch
+  // anything derived. That is the rule the invalidation-signal design imposes
+  // anyway, so an unset status costs a client nothing.
+  RepoStatus status = 2;
+  RepoChangeReason reason = 3;
+  google.protobuf.Timestamp occurred_at = 4;
 }
