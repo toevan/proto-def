@@ -74,6 +74,23 @@ message FlagUpdate {
   bool enabled = 3;
   bool deleted = 4;
   google.protobuf.Timestamp updated_at = 5;
+
+  // heartbeat marks a keepalive frame carrying NO flag. A client MUST drop it
+  // rather than apply it, or every beat would evaluate as a delete of the empty
+  // key.
+  //
+  // StreamFlags sends a snapshot and then idles, often for the whole session —
+  // flags change rarely by design. Behind the reverse proxy the on-prem guide
+  // ships (nginx, proxy_read_timeout 60s, no override) that idle connection is
+  // dropped every minute. The client re-reads its snapshot on reconnect, so no
+  // STATE is lost, which is why this is lower stakes than its siblings; the cost
+  // is a reconnect per minute per connected client, forever.
+  //
+  // An ADDITIVE field rather than a oneof frame, for the same reason
+  // ViolationLifecycleEvent took one: this message ships in a released client and
+  // wrapping it would change the type on the wire, so every deployed build would
+  // fail to decode every frame.
+  bool heartbeat = 6;
 }
 
 message FlagAuditEntry {
