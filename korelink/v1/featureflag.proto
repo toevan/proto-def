@@ -213,6 +213,20 @@ message EvalFlagsResponse {
 
 message StreamFlagsRequest {
   string org_id = 1;
+
+  // supports_heartbeat declares that this client filters FlagUpdate.heartbeat
+  // frames instead of applying them as data. The server beats ONLY at clients
+  // that set it.
+  //
+  // Why opt-in when the field is already additive: additive means an old
+  // client DECODES the frame — as an empty FlagUpdate, indistinguishable from
+  // a real update naming the empty key — not that it handles it. Deployed
+  // builds predate the filter, so an unconditional heartbeat would apply junk
+  // to every released client three times a minute for the life of every
+  // session. A client that stays silent here keeps the exact behavior it was
+  // built against (the proxy drops its idle stream and it reconnects — churn,
+  // not corruption); a client that declares support gets the keepalive.
+  bool supports_heartbeat = 2;
 }
 
 // Response is stream FlagUpdate (defined above)
