@@ -134,6 +134,33 @@ service PRGateService {
   // re-fetch.
   rpc StreamViolationLifecycle(StreamViolationLifecycleRequest)
       returns (stream ViolationLifecycleEvent);
+
+  // StreamPrChanges streams one ORG's pull-request state changes.
+  //
+  // This is the RPC that makes an OBSERVER converge, and it exists because the
+  // two check-progress streams above cannot do it: both are addressed by a check
+  // JOB ID, so only the client that dispatched a check can watch it. A second
+  // device on the same account, a re-run started by a teammate, a check triggered
+  // by a push webhook — none of them hold a job id, and no client change can fix
+  // that. It is a server-side addressing problem, the same one StreamRepoChanges
+  // solved for indexing.
+  //
+  // ONE channel carries the PR-gate check lifecycle, the PR-branch canvas build
+  // lifecycle, exception decisions and GDPR erasures, rather than a stream per
+  // subsystem. They are different server domains but the same client question —
+  // "something about this PR changed, re-read what you render" — and the surfaces
+  // that consume them all sit in PR context. Separate streams would mean separate
+  // subscriptions and separate reconnect ladders for one concern.
+  //
+  // Contract notes that matter to every consumer:
+  //
+  //   - Frames are INVALIDATION SIGNALS, not snapshots. Verdicts, violation sets
+  //     and scope payloads are derived and MUST be re-fetched.
+  //   - Delivery is best-effort and unreplayed, and a broker outage manifests as
+  //     SILENCE rather than an error. Clients keep a slow reconciliation read;
+  //     this stream makes convergence fast, not guaranteed.
+  //   - The stream is long-lived and has no terminal frame.
+  rpc StreamPrChanges(StreamPrChangesRequest) returns (stream PrChangeFrame);
 }
 
 // ── Core Types ──
@@ -712,4 +739,73 @@ message GetPRCanvasStateResponse {
   string state = 1;
   // Human-readable reason for conflicted/unavailable — rendered verbatim.
   string message = 2;
+}
+
+// ── PR change stream ──
+
+message StreamPrChangesRequest {
+  string org_id = 1;
+}
+
+// PrChangeFrame is one frame on the StreamPrChanges wire: either a real change or
+// a droppable heartbeat. Mirrors RepoChangeFrame — an idle stream MUST still put a
+// byte on the wire inside the smallest reverse-proxy idle window or the connection
+// is dropped, and a PR channel is idle most of the time.
+message PrChangeFrame {
+  oneof payload {
+    PrChange change = 1;
+    PrChangeHeartbeat heartbeat = 2;
+  }
+}
+
+// PrChangeHeartbeat is a keepalive frame the client drops on receipt.
+message PrChangeHeartbeat {
+  google.protobuf.Timestamp sent_at = 1;
+}
+
+// PrChangeReason says WHAT about the pull request moved, so a client can decide
+// how much work to do.
+enum PrChangeReason {
+  PR_CHANGE_REASON_UNSPECIFIED = 0;
+  // A pr_checks row's status moved: created, queued, in progress, finalized, or
+  // reaped to error.
+  PR_CHANGE_REASON_CHECK_STATUS_CHANGED = 1;
+  // A check rewrote the PR's violation set, or an exception decision changed how
+  // one renders. Distinct from a status move: the verdict can stay identical
+  // while the findings under it change.
+  PR_CHANGE_REASON_VIOLATIONS_UPDATED = 2;
+  // GitHub reported the PR opened, merged or closed.
+  PR_CHANGE_REASON_LIFECYCLE_CHANGED = 3;
+  // The PR-branch canvas build advanced (pending → indexing → indexed →
+  // evaluating → evaluated), or was reaped.
+  PR_CHANGE_REASON_CANVAS_SCOPE_CHANGED = 4;
+  // A GDPR erasure rewrote author identity across this org's checks. Carries no
+  // repo and no PR number — see PrChange.
+  PR_CHANGE_REASON_REDACTED = 5;
+}
+
+message PrChange {
+  // Empty — with pr_number 0 — when the change is not scoped to a single pull
+  // request. Today that is the erasure sweep, which acts on an org by AUTHOR and
+  // so has no one PR or repo to name. A consumer MUST treat such a frame as
+  // "re-read everything" rather than dropping it for failing an id filter.
+  string repo_id = 1;
+  int32 pr_number = 2;
+
+  PrChangeReason reason = 3;
+
+  // The new check or scope status where the publishing seam knew it, and empty
+  // otherwise.
+  //
+  // Deliberately a string rather than an enum, which is the one place this wire
+  // departs from RepoChange. The field carries EITHER a pr_checks status or a
+  // deep-check scope status depending on `reason` — two disjoint value sets on one
+  // field — so a single enum would have to merge two lifecycles that are unrelated
+  // except in being carried here. Interpret it per `reason`, trust it only when
+  // non-empty, and re-fetch anything derived regardless. That last rule is what
+  // the invalidation-signal design requires anyway, so an unset status costs a
+  // client nothing.
+  string status = 4;
+
+  google.protobuf.Timestamp occurred_at = 5;
 }
