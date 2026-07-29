@@ -708,6 +708,26 @@ message ViolationLifecycleEvent {
   // when re-opening a stream after a disconnect (apply only
   // events strictly newer than the last-seen).
   google.protobuf.Timestamp emitted_at = 7;
+
+  // heartbeat marks a keepalive frame carrying NO state. A client
+  // MUST drop it — and specifically must not let it advance the
+  // dedup watermark or reset a reconnect ladder, since neither
+  // says anything about whether the stream is delivering events.
+  //
+  // An ADDITIVE field rather than the oneof wrapper its siblings
+  // use (PrChangeFrame, RepoChangeFrame, NotificationStreamFrame).
+  // Those were designed with one; this message ships in a released
+  // client, and wrapping it would change the type on the wire —
+  // every deployed build would fail to decode every frame. A new
+  // field is invisible to old clients, which is exactly the
+  // property needed here.
+  //
+  // The cost is that the message is now a tagged union enforced by
+  // convention rather than by the type system: when heartbeat is
+  // true every other field is unset. The handler is the only
+  // producer, and the client drops these before mapping, so the
+  // invariant has exactly two enforcement points.
+  bool heartbeat = 8;
 }
 message TriggerPRCanvasIndexRequest {
   string repo_id = 1;
