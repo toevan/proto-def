@@ -64,8 +64,23 @@ message GetDashboardResponse {
   int32 repos_with_violations = 12;
   // The numerator and denominator behind compliance_rate, so the client can
   // say "X of Y checks passing" instead of a bare percentage.
+  //
+  // SEMANTICS (2026-07-30, exclusion-plus-visibility): CURRENT-STATE — the
+  // deduped latest-per-finding view, the same source as the violation counts —
+  // and EXCEPTION-AWARE: a finding under an active approved exception leaves
+  // the denominator entirely, exactly like the PR gate's result='exception'
+  // rows. evaluated = passed + OPEN violations.
   int32 compliance_passed = 13;
   int32 compliance_evaluated = 14;
+
+  // Accepted risk, in plain sight: current violations covered by an ACTIVE
+  // approved exception. Excluded from open_violations and from the compliance
+  // denominator — but never invisible: a card reading "0 open" with this
+  // non-zero says "everything here is accepted risk", not "clean". Equals the
+  // Repositories page's summary counter by construction (same view, same
+  // predicate — the views in api migration 000123 are the single home).
+  // open_violations + excepted_findings = every current violation.
+  int32 excepted_findings = 15;
 }
 
 message RecentPR {
