@@ -33,15 +33,39 @@ message GetDashboardResponse {
   int32 prs_passed_today = 4;
   int32 prs_blocked_today = 5;
   float compliance_rate = 6;             // 0.0–1.0
-  float compliance_rate_delta = 7;       // change vs last week (+0.04 = +4pp)
+  // DEPRECATED — always 0. Was "change vs last week", computed from a 7-day
+  // evidence window whose denominator counted gap rows and whose previous
+  // window was empty for young orgs: a delta the org's own pages could not
+  // reproduce. No history table exists to compute an honest one; a metric
+  // that cannot be recomputed from visible data does not ship.
+  float compliance_rate_delta = 7 [deprecated = true];
   int32 open_violations = 8;
-  int32 open_violations_delta = 9;       // change vs yesterday
+  // DEPRECATED — always 0. Was "change vs yesterday" over all-time
+  // pr_violations, a different id space than open_violations now reports.
+  int32 open_violations_delta = 9 [deprecated = true];
 
   // Recent PRs (last 5)
   repeated RecentPR recent_prs = 10;
 
   // Onboarding progress
   OnboardingProgress onboarding = 11;
+
+  // ── Truthful-metrics companions (2026-07-30) ──
+  //
+  // Every dashboard number must be reconcilable against the page that owns
+  // it. open_violations is SUM(repositories.violation_count) under the SAME
+  // predicate the Repositories page sums — the two surfaces cannot disagree.
+  // compliance_rate is passed/(passed+violation) over evidence_records,
+  // org-wide, the same formula the per-repo cards use — never a windowed
+  // variant those cards cannot reproduce.
+
+  // Repos with violation_count > 0, same predicate as open_violations —
+  // equals the Repositories page's warning + critical counts.
+  int32 repos_with_violations = 12;
+  // The numerator and denominator behind compliance_rate, so the client can
+  // say "X of Y checks passing" instead of a bare percentage.
+  int32 compliance_passed = 13;
+  int32 compliance_evaluated = 14;
 }
 
 message RecentPR {
