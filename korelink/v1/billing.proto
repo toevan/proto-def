@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+import "google/protobuf/timestamp.proto";
+import "korelink/v1/org.proto";
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// ===================================================================
+// BillingService — self-serve subscription lifecycle for an organisation
+// ===================================================================
+//
+// The paid self-serve path: an org admin subscribes to a plan, changes it
+// (prorated), cancels, or resumes. DISTINCT from OrgService.AssignOrgPlan, which
+// is the admin/provisioning path (an operator or a support grant moving a tier
+// WITHOUT a self-serve purchase). Both ultimately write the same entitlement
+// plan; this service moves money through the payment gateway first and records
+// the subscription / invoice / payment that paid for it.
+//
+// Every RPC is gated on RequireOrgAdmin — a subscription is the customer's
+// commercial decision, not something platform staff make on their behalf outside
+// an audited grant. Money moves through billing.PaymentGateway: the in-process
+// SimulatedGateway in dev (no real money), a real gateway plugged in later. See
+// docs/architecture/PRD_BILLING.md.
+service BillingService {
+  // Subscribe creates and activates a paid subscription for an org currently on
+  // the free plan. The first period is charged immediately; on a decline the org
+  // stays free and nothing is granted.
+  rpc Subscribe(SubscribeRequest) returns (SubscriptionResponse);
+
+  // ChangePlan changes an active subscription's plan / interval / seats. Upgrades
+  // and interval switches charge a proration immediately; downgrades and seat
+  // reductions are deferred to the period roll. A declined upgrade is a no-op —
+  // the current plan is kept, never downgraded.
+  rpc ChangePlan(ChangePlanRequest) returns (SubscriptionResponse);
+
+  // CancelSubscription cancels the org's subscription: at the period end
+  // (graceful — keeps access until the roll) or immediately (drops to free now,
+  // with no refund of the unused period).
+  rpc CancelSubscription(CancelSubscriptionRequest) returns (SubscriptionResponse);
+
+  // ResumeSubscription clears a scheduled at-period-end cancellation so the
+  // subscription keeps renewing.
+  rpc ResumeSubscription(ResumeSubscriptionRequest) returns (SubscriptionResponse);
+
+  // GetSubscription returns the org's current subscription, or has_subscription
+  // = false when it is on the free plan with none.
+  rpc GetSubscription(GetSubscriptionRequest) returns (GetSubscriptionResponse);
+}
+
+// BillingInterval is the billing period a subscription is charged on.
+enum BillingInterval {
+  BILLING_INTERVAL_UNSPECIFIED = 0;
+  BILLING_INTERVAL_MONTH = 1;
+  BILLING_INTERVAL_YEAR = 2; // billed at the annual multiplier (default 10 months).
+}
+
+// SubscriptionStatus is the lifecycle state of a subscription.
+enum SubscriptionStatus {
+  SUBSCRIPTION_STATUS_UNSPECIFIED = 0;
+  SUBSCRIPTION_STATUS_INCOMPLETE = 1; // created, awaiting the first payment.
+  SUBSCRIPTION_STATUS_ACTIVE = 2;     // paid and live.
+  SUBSCRIPTION_STATUS_PAST_DUE = 3;   // a renewal failed; in dunning, still entitled.
+  SUBSCRIPTION_STATUS_CANCELED = 4;   // terminal.
+}
+
+message SubscribeRequest {
+  string org_id = 1;
+  OrgPlan plan = 2;
+  BillingInterval interval = 3;
+  int32 seats = 4;
+}
+
+message ChangePlanRequest {
+  string org_id = 1;
+  OrgPlan plan = 2;
+  BillingInterval interval = 3;
+  int32 seats = 4;
+}
+
+message CancelSubscriptionRequest {
+  string org_id = 1;
+  // immediate=false (default) cancels gracefully at the period end; true cancels
+  // now and drops the org to free.
+  bool immediate = 2;
+}
+
+message ResumeSubscriptionRequest {
+  string org_id = 1;
+}
+
+message GetSubscriptionRequest {
+  string org_id = 1;
+}
+
+// Subscription is the wire view of an org's subscription.
+message Subscription {
+  string id = 1;
+  OrgPlan plan = 2;
+  BillingInterval interval = 3;
+  SubscriptionStatus status = 4;
+  int32 seats = 5;
+  google.protobuf.Timestamp current_period_start = 6;
+  google.protobuf.Timestamp current_period_end = 7;
+  bool cancel_at_period_end = 8;
+  // pending_change is a scheduled deferred change (a downgrade / seat reduction)
+  // to apply at the period roll; unset when none is scheduled.
+  PendingChange pending_change = 9;
+}
+
+// PendingChange is a deferred plan change awaiting the period roll.
+message PendingChange {
+  OrgPlan plan = 1;
+  BillingInterval interval = 2;
+  int32 seats = 3;
+  google.protobuf.Timestamp change_at = 4;
+}
+
+message SubscriptionResponse {
+  Subscription subscription = 1;
+}
+
+message GetSubscriptionResponse {
+  bool has_subscription = 1;
+  Subscription subscription = 2;
+}
