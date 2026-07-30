@@ -351,7 +351,8 @@ message RepoListSummary {
   int32 healthy          = 2;   // violation_count == 0
   int32 warning          = 3;   // violation_count 1–5
   int32 critical         = 4;   // violation_count > 5
-  int32 open_violations  = 5;   // SUM(violation_count) across all repos
+  int32 open_violations  = 5;   // SUM(violation_count) across all repos — OPEN only: actively-excepted findings are excluded
+  int32 excepted_findings = 6;  // current violations under an ACTIVE approved exception — accepted risk, shown, never hidden; open + excepted = every current violation
 }
 
 message ListReposResponse {
