@@ -127,6 +127,13 @@ message PublicPlan {
   // along. Both lists already ship on /v1/public/pricing; carrying them here too is
   // what stops the two doors onto this catalogue describing different products.
   repeated string planned_features = 8;
+  // What a YEAR costs, computed by the SERVER from the same live knob the invoice
+  // uses (billing.annual_months_charged; 10 = two months free). Carried so a plan
+  // card can show the real annual figure — clients never derive money themselves,
+  // and a hard-coded ×10 would silently diverge the moment the knob moved. Mirrors
+  // `price`'s unit flags: per_seat carries over, an unlisted plan stays unlisted,
+  // and a free plan is €0 on every cycle.
+  PlanPrice annual_price = 9;
 }
 
 message ListPublicPlansRequest {}

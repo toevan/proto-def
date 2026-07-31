@@ -80,6 +80,18 @@ service BillingService {
   // GetPersonalSubscription returns the calling user's current subscription, or
   // has_subscription = false when they are on the free plan with none.
   rpc GetPersonalSubscription(GetPersonalSubscriptionRequest) returns (GetPersonalSubscriptionResponse);
+
+  // ── billing records ───────────────────────────────────────────────────────
+
+  // ListInvoices returns the org's invoices, newest first, with their line
+  // items — the /billing "Billing records" surface. Org-admin gated like every
+  // other billing read; amounts are integer minor units, same discipline as
+  // the biller (money that is summed must not accumulate float error).
+  rpc ListInvoices(ListInvoicesRequest) returns (ListInvoicesResponse);
+
+  // ListPersonalInvoices is the personal-axis twin: the calling user's own
+  // invoices, no owner on the wire.
+  rpc ListPersonalInvoices(ListPersonalInvoicesRequest) returns (ListInvoicesResponse);
 }
 
 // BillingInterval is the billing period a subscription is charged on.
@@ -209,4 +221,49 @@ message PersonalSubscriptionResponse {
 message GetPersonalSubscriptionResponse {
   bool has_subscription = 1;
   PersonalSubscription subscription = 2;
+}
+
+// Invoice is one billing document, exactly as the biller recorded it.
+//
+// `status` uses the biller's states verbatim: draft | open | paid | void |
+// uncollectible. Timestamps are unix seconds; 0 means "has not happened"
+// (issued_at 0 = never issued, paid_at 0 = unpaid).
+message Invoice {
+  string id = 1;
+  string number = 2;
+  string status = 3;
+  BillingInterval interval = 4;
+  int64 period_start_unix = 5;
+  int64 period_end_unix = 6;
+  int64 subtotal_minor = 7;
+  int64 credit_minor = 8;
+  int64 tax_minor = 9;
+  int64 total_minor = 10;
+  string currency = 11;
+  int64 paid_at_unix = 12;
+  int64 created_at_unix = 13;
+  repeated InvoiceLine lines = 14;
+}
+
+// InvoiceLine is one line item on an invoice — the human-readable breakdown
+// ("Team plan · 3 seats · monthly", proration credits, etc.).
+message InvoiceLine {
+  string description = 1;
+  int32 quantity = 2;
+  int64 unit_minor = 3;
+  int64 amount_minor = 4;
+}
+
+message ListInvoicesRequest {
+  string org_id = 1;
+  // Newest-first cap; the server clamps (default 24, max 100).
+  int32 limit = 2;
+}
+
+message ListPersonalInvoicesRequest {
+  int32 limit = 1;
+}
+
+message ListInvoicesResponse {
+  repeated Invoice invoices = 1;
 }
