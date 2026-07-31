@@ -3,6 +3,7 @@ syntax = "proto3";
 package korelink.v1;
 
 import "google/protobuf/timestamp.proto";
+import "korelink/v1/auth.proto";
 import "korelink/v1/org.proto";
 
 option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
@@ -47,6 +48,38 @@ service BillingService {
   // GetSubscription returns the org's current subscription, or has_subscription
   // = false when it is on the free plan with none.
   rpc GetSubscription(GetSubscriptionRequest) returns (GetSubscriptionResponse);
+
+  // ── personal axis (PR-5c) ─────────────────────────────────────────────────
+  //
+  // The personal RPCs are a PARALLEL, UserPlan-typed set rather than an axis
+  // flag on the org messages, for two wire-level guarantees: a cross-axis plan
+  // request is UNREPRESENTABLE (UserPlan cannot name an org tier and vice
+  // versa), and the personal requests carry NO owner field at all — the owner
+  // is the AUTHENTICATED user, always, so acting on someone else's personal
+  // subscription cannot be expressed. Seats never appear: a personal
+  // subscription is single-seat by definition.
+
+  // SubscribePersonal starts a paid personal subscription (pro/max) for the
+  // calling user. The first period is charged immediately; on a decline the
+  // user stays free and nothing is granted.
+  rpc SubscribePersonal(SubscribePersonalRequest) returns (PersonalSubscriptionResponse);
+
+  // ChangePersonalPlan changes the calling user's plan / interval. Upgrades and
+  // interval switches charge a proration immediately; downgrades defer to the
+  // period roll. A declined upgrade is a no-op.
+  rpc ChangePersonalPlan(ChangePersonalPlanRequest) returns (PersonalSubscriptionResponse);
+
+  // CancelPersonalSubscription cancels the calling user's subscription: at the
+  // period end (graceful) or immediately (drops to free now, no refund of the
+  // unused period).
+  rpc CancelPersonalSubscription(CancelPersonalSubscriptionRequest) returns (PersonalSubscriptionResponse);
+
+  // ResumePersonalSubscription clears a scheduled at-period-end cancellation.
+  rpc ResumePersonalSubscription(ResumePersonalSubscriptionRequest) returns (PersonalSubscriptionResponse);
+
+  // GetPersonalSubscription returns the calling user's current subscription, or
+  // has_subscription = false when they are on the free plan with none.
+  rpc GetPersonalSubscription(GetPersonalSubscriptionRequest) returns (GetPersonalSubscriptionResponse);
 }
 
 // BillingInterval is the billing period a subscription is charged on.
@@ -124,4 +157,56 @@ message SubscriptionResponse {
 message GetSubscriptionResponse {
   bool has_subscription = 1;
   Subscription subscription = 2;
+}
+
+// ── personal axis (PR-5c) ───────────────────────────────────────────────────
+
+message SubscribePersonalRequest {
+  UserPlan plan = 1;             // pro or max; UNSPECIFIED/FREE are rejected
+  BillingInterval interval = 2;
+}
+
+message ChangePersonalPlanRequest {
+  UserPlan plan = 1;
+  BillingInterval interval = 2;
+}
+
+message CancelPersonalSubscriptionRequest {
+  // immediate=false (default) cancels gracefully at the period end; true cancels
+  // now and drops the user to free.
+  bool immediate = 1;
+}
+
+message ResumePersonalSubscriptionRequest {}
+
+message GetPersonalSubscriptionRequest {}
+
+// PersonalSubscription is the wire view of the calling user's subscription.
+message PersonalSubscription {
+  string id = 1;
+  UserPlan plan = 2;
+  BillingInterval interval = 3;
+  SubscriptionStatus status = 4;
+  google.protobuf.Timestamp current_period_start = 5;
+  google.protobuf.Timestamp current_period_end = 6;
+  bool cancel_at_period_end = 7;
+  // pending_change is a scheduled deferred change (a downgrade) to apply at the
+  // period roll; unset when none is scheduled.
+  PendingPersonalChange pending_change = 8;
+}
+
+// PendingPersonalChange is a deferred personal plan change awaiting the roll.
+message PendingPersonalChange {
+  UserPlan plan = 1;
+  BillingInterval interval = 2;
+  google.protobuf.Timestamp change_at = 3;
+}
+
+message PersonalSubscriptionResponse {
+  PersonalSubscription subscription = 1;
+}
+
+message GetPersonalSubscriptionResponse {
+  bool has_subscription = 1;
+  PersonalSubscription subscription = 2;
 }
