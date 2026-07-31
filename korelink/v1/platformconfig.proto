@@ -67,6 +67,30 @@ service PlatformConfigService {
   // indistinguishable from a metering bug.
   rpc AdjustAIAllowance(AdjustAIAllowanceRequest) returns (AdjustAIAllowanceResponse);
 
+  // ── Billing overrides: refunds + credits (PRD_BILLING §4.6) ──────────────
+  //
+  // Money-movement overrides, platform admin only. They live on this service
+  // for the same reason the plan block above does: to inherit its admin gate
+  // rather than growing a second operator surface with its own authorization
+  // to get wrong. The append-only refund/credit ledger rows record the acting
+  // admin and the reason — the row IS the audit entry.
+
+  // RefundPayment returns money to the customer for one captured payment.
+  // Partial refunds are allowed; cumulative refunds never exceed the payment's
+  // amount, and a payment whose full amount has been returned reads
+  // `refunded`. ONE IDEMPOTENCY KEY == ONE REFUND: a retry with the same key
+  // converges on the same refund without moving money twice. A refund the
+  // gateway left unsettled (transport fault, or an async accept) returns
+  // status `pending` — retry with the SAME key to converge; a new key would
+  // be a second refund. Refunding is orthogonal to the subscription
+  // lifecycle: cancelling, if wanted, is its own explicit action.
+  rpc RefundPayment(RefundPaymentRequest) returns (RefundPaymentResponse);
+
+  // GrantBillingCredit banks account credit — goodwill, a promo, or a refund
+  // issued as credit instead of money back (`source` says which). Credit only
+  // ever ADDS balance: it moves no money and touches no subscription.
+  rpc GrantBillingCredit(GrantBillingCreditRequest) returns (GrantBillingCreditResponse);
+
   // ListPublicPlans is the PRICE LIST, readable without authentication.
   //
   // PUBLIC BY DESIGN, AND DELIBERATELY NARROWER THAN ListPlanEntitlements. It exists
@@ -291,4 +315,32 @@ message ConfigAuditEntry {
 message ListConfigAuditResponse {
   repeated ConfigAuditEntry entries = 1;
   bool has_more = 2;               // another older page exists
+}
+
+// ── billing overrides (§4.6) ────────────────────────────────────────────────
+
+message RefundPaymentRequest {
+  string payment_id = 1;       // the captured payment to refund
+  int64 amount_minor = 2;      // > 0; partials allowed up to the payment's amount
+  string reason = 3;           // required — recorded on the ledger row; an override without a why is an audit hole
+  string idempotency_key = 4;  // required — one key == one refund; retries reuse it
+}
+
+message RefundPaymentResponse {
+  string refund_id = 1;
+  string status = 2;              // pending | succeeded | failed
+  int64 amount_minor = 3;
+  string gateway_refund_ref = 4;  // set once the gateway settled it
+}
+
+message GrantBillingCreditRequest {
+  string account_id = 1;      // team account (the personal axis follows PR-5)
+  int64 amount_minor = 2;     // > 0
+  string source = 3;          // proration | refund | promo
+  string reason = 4;          // required — same audit rule as refunds
+  int64 expires_at_unix = 5;  // 0 = never expires; otherwise must be in the future
+}
+
+message GrantBillingCreditResponse {
+  int64 available_minor = 1;  // the owner's available credit after the grant
 }
