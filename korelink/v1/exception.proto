@@ -116,8 +116,32 @@ message CreateExceptionRequest {
   // way as PR-rooted exceptions, so the downstream workflow is
   // unified.
   string evidence_id = 5;
+
+  // Rule-scoped root [NEW]: a PREEMPTIVE exception for one blueprint rule
+  // across chosen repos — no originating violation or evidence row. Mutually
+  // exclusive with [violation_id]/[evidence_id]: exactly one of the three
+  // roots must be set. The server validates that the rule belongs to the
+  // blueprint and that EVERY named repo is actively covered by it (repo-scope
+  // adoption, or project-scope adoption on the repo's project), resolves the
+  // rule's name and severity from the blueprint definition, and creates ONE
+  // exception per repo through the same risk/approval pipeline as the other
+  // roots. Repos that already carry a pending/approved exception for the rule
+  // are skipped rather than duplicated.
+  RuleScope rule_scope = 6;
 }
-message CreateExceptionResponse { ExceptionRequest exception = 1; }
+
+message RuleScope {
+  string blueprint_id = 1;
+  string rule_id = 2;
+  repeated string repo_ids = 3;
+}
+
+message CreateExceptionResponse {
+  ExceptionRequest exception = 1;
+  // Every row a rule-scoped request created (one per repo, minus skipped
+  // duplicates); [exception] carries the first for compatibility.
+  repeated ExceptionRequest created = 2;
+}
 
 message GetExceptionRequest { string exception_id = 1; }
 message GetExceptionResponse { ExceptionRequest exception = 1; }
