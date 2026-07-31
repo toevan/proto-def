@@ -342,5 +342,7 @@ message GrantBillingCreditRequest {
 }
 
 message GrantBillingCreditResponse {
-  int64 available_minor = 1;  // the owner's available credit after the grant
+  // The owner's available credit after the grant. -1 means the grant COMMITTED
+  // but the balance read-back failed — do not re-grant; re-read instead.
+  int64 available_minor = 1;
 }
