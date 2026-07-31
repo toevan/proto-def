@@ -73,6 +73,11 @@ message Org {
   string github_installation_id = 9;   // GitHub App installation ID
   google.protobuf.Timestamp created_at = 10;
   google.protobuf.Timestamp updated_at = 11;
+  // Which kind of account this is: "personal" (the auto-created single-user
+  // workspace, named after its owner) or "team". Carried so clients can
+  // present personal workspaces as what they are (the owner's identity +
+  // a Personal tag) instead of as an oddly-named organisation.
+  string kind = 12;
 }
 
 // Organization-level plan — governs org-wide limits (seats, repos, features).
