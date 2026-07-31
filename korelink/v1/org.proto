@@ -262,6 +262,15 @@ message ListAllOrgsResponse {
 message OrgWithRole {
   Org org = 1;
   OrgRole my_role = 2;                   // the caller's role in this org
+
+  // Whether this account's onboarding is COMPLETE: dismissed, or the three
+  // core milestones (GitHub connected + project created + repo added) all
+  // latched. Computed by the server from onboarding_progress so clients
+  // never re-derive the verdict — the client-side derivation read whichever
+  // account the list happened to put first (alphabetically, which places the
+  // auto-created personal account before most orgs) and looped fully
+  // onboarded users back into the wizard on every login.
+  bool onboarding_completed = 3;
 }
 
 message ListGitHubOrgsRequest {}          // uses auth token to discover GitHub orgs
