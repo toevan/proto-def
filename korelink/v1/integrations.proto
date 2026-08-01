@@ -47,6 +47,11 @@ message Integration {
   string connected_by = 5;          // email of the admin who connected it
   google.protobuf.Timestamp connected_at = 6;
   google.protobuf.Timestamp last_checked_at = 7;
+  // Deep link to manage the connection on the vendor's own surface.
+  // github only: the EXACT installation-settings page (org installs at
+  // /organizations/{org}/settings/installations/{id}, user installs at
+  // /settings/installations/{id}). Empty elsewhere.
+  string manage_url = 8;
 }
 
 message ConnectIntegrationRequest {
