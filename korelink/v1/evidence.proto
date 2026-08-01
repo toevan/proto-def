@@ -16,6 +16,9 @@ service EvidenceService {
   rpc ExportEvidence(ExportEvidenceRequest) returns (ExportEvidenceResponse);
   rpc GetEvidenceExportJob(GetEvidenceExportJobRequest) returns (GetEvidenceExportJobResponse);
   rpc GetEvidenceSummary(GetEvidenceSummaryRequest) returns (GetEvidenceSummaryResponse);
+  // Distinct authors appearing in the org's evidence records — powers the
+  // audit-trail author filter dropdown.
+  rpc ListEvidenceAuthors(ListEvidenceAuthorsRequest) returns (ListEvidenceAuthorsResponse);
   rpc GenerateSBOM(GenerateSBOMRequest) returns (GenerateSBOMResponse);
 
   // Compliance reports
@@ -103,6 +106,9 @@ message ListEvidenceRequest {
   int32 limit = 8;
   int32 offset = 9;
 }
+message ListEvidenceAuthorsRequest { string org_id = 1; }
+message ListEvidenceAuthorsResponse { repeated string authors = 1; }
+
 message ListEvidenceResponse {
   repeated EvidenceRecord records = 1;
   int32 total = 2;
