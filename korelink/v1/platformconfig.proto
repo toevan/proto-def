@@ -239,9 +239,13 @@ message ConfigKnob {
   string tier = 3;           // "A" | "B" | "C"
   string value_type = 4;     // int | int32 | int64 | bool | string | float | duration_sec
   string description = 5;
-  string value = 6;          // JSON-encoded effective value
-  string default_value = 7;  // JSON-encoded env/struct default (Reset target)
+  string value = 6;          // JSON-encoded effective value (MASKED when sensitive)
+  string default_value = 7;  // JSON-encoded env/struct default (Reset target; masked when sensitive)
   bool overridden = 8;       // effective value differs from the default
+  // Secret-bearing knob: value/default arrive MASKED and the audit history is
+  // masked too. Clients render an obscured input and must never round-trip the
+  // masked placeholder as a new value (the server rejects it).
+  bool sensitive = 9;
   int64 version = 9;         // override row version (0 when not overridden)
 }
 
