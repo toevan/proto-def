@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// ============================================
+// IntegrationsService — org-level third-party connections
+// ============================================
+//
+// Providers: github | jira | linear | slack. Credentials are validated LIVE
+// against the vendor on connect, stored server-side, and NEVER returned —
+// responses carry display-safe fields only.
+//
+// GitHub is derived from the org's GitHub App installation (the existing
+// install flow), not from stored credentials: Connect goes through the App
+// install redirect and Disconnect happens on GitHub (the installation id is
+// a self-healing cache — clearing it here would silently re-heal).
+service IntegrationsService {
+  rpc ListIntegrations(ListIntegrationsRequest) returns (ListIntegrationsResponse);
+  // Validates the supplied credentials against the vendor NOW; stores them
+  // on success. Refused for provider=github (use the App install flow).
+  rpc ConnectIntegration(ConnectIntegrationRequest) returns (ConnectIntegrationResponse);
+  // Removes the stored connection. Refused for provider=github.
+  rpc DisconnectIntegration(DisconnectIntegrationRequest) returns (DisconnectIntegrationResponse);
+  // Re-validates the STORED credentials now and updates status/last_checked.
+  rpc TestIntegration(TestIntegrationRequest) returns (TestIntegrationResponse);
+}
+
+message ListIntegrationsRequest {
+  string org_id = 1;
+}
+message ListIntegrationsResponse {
+  repeated Integration integrations = 1;
+}
+
+message Integration {
+  string provider = 1;              // github | jira | linear | slack
+  string status = 2;                // connected | disconnected | error
+  // Human display of WHAT is connected, never a credential:
+  //   github → org/user login; jira → base URL + account email;
+  //   linear → workspace/viewer name; slack → masked webhook tail.
+  string display_target = 3;
+  string error_message = 4;         // set when status=error (last failed check)
+  string connected_by = 5;          // email of the admin who connected it
+  google.protobuf.Timestamp connected_at = 6;
+  google.protobuf.Timestamp last_checked_at = 7;
+}
+
+message ConnectIntegrationRequest {
+  string org_id = 1;
+  string provider = 2;              // jira | linear | slack
+  // Provider-shaped credentials (exactly one set):
+  JiraConfig jira = 3;
+  LinearConfig linear = 4;
+  SlackConfig slack = 5;
+}
+message JiraConfig {
+  string base_url = 1;              // https://your-site.atlassian.net
+  string email = 2;                 // Atlassian account email
+  string api_token = 3;             // API token (secret — never echoed)
+}
+message LinearConfig {
+  string api_key = 1;               // Linear API key (secret — never echoed)
+}
+message SlackConfig {
+  string webhook_url = 1;           // Incoming webhook URL (secret — never echoed)
+}
+message ConnectIntegrationResponse {
+  Integration integration = 1;
+}
+
+message DisconnectIntegrationRequest {
+  string org_id = 1;
+  string provider = 2;
+}
+message DisconnectIntegrationResponse {}
+
+message TestIntegrationRequest {
+  string org_id = 1;
+  string provider = 2;
+}
+message TestIntegrationResponse {
+  Integration integration = 1;
+}
