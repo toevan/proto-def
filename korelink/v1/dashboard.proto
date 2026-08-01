@@ -15,6 +15,11 @@ service DashboardService {
   rpc GetAttentionItems(GetAttentionItemsRequest) returns (AttentionItemsResponse);
   rpc GetCompliancePosture(GetCompliancePostureRequest) returns (GetCompliancePostureResponse);
 
+  // Per-developer (author-scoped) dashboard: the CALLER's PR-gate activity
+  // in this org — checks, pass rate, violations their PRs surfaced. Main-
+  // branch index evaluations carry no author and are deliberately absent.
+  rpc GetDeveloperDashboard(GetDeveloperDashboardRequest) returns (GetDeveloperDashboardResponse);
+
   // Compliance checklist CRUD (HIPAA §164.308 administrative safeguards)
   rpc UpsertChecklistItem(UpsertChecklistItemRequest) returns (ChecklistItem);
   rpc CompleteChecklistItem(CompleteChecklistItemRequest) returns (ChecklistItem);
@@ -221,4 +226,46 @@ message ListChecklistByFrameworkRequest {
 
 message ListChecklistResponse {
   repeated ChecklistItem items = 1;
+}
+
+// ── Developer dashboard ──
+
+message GetDeveloperDashboardRequest {
+  string org_id = 1;
+}
+
+message DeveloperWeek {
+  google.protobuf.Timestamp week_start = 1;
+  int32 checks = 2;
+  int32 violations = 3;
+}
+
+message DeveloperViolationRow {
+  string rule_name = 1;
+  string severity = 2;
+  string file_path = 3;
+  int32 line = 4;
+  string repo_name = 5;
+  int32 pr_number = 6;
+}
+
+message DeveloperRuleHit {
+  string rule_name = 1;
+  int32 hits = 2;
+}
+
+message GetDeveloperDashboardResponse {
+  // The GitHub login attribution is keyed on. EMPTY = the caller has no
+  // recorded username — nothing can be attributed, clients render the
+  // honest explanation instead of zeros.
+  string attributed_login = 1;
+  int32 prs_this_week = 2;
+  int32 prs_prev_week = 3;          // real WoW baseline
+  // passed/(passed+errored) over the caller's checks, 30d. NEGATIVE when
+  // no concluded checks exist (unknown, not 0%).
+  double pass_rate_30d = 4;
+  int32 violations_30d = 5;         // violations the caller's checks surfaced
+  repeated DeveloperViolationRow open_violations = 6; // latest failing check per PR
+  repeated DeveloperWeek weekly = 7;                  // sparse; clients pad 8 slots
+  repeated DeveloperRuleHit top_rules = 8;            // most-hit rules, 30d
 }
