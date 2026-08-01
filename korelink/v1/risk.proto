@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// Org-posture aggregates for the Risk Dashboard. Every number is derived
+// from the same canonical sources the rest of the product shows —
+// open_violation_findings (deduped, exception-aware), current_repo_evidence,
+// the evidence ledger, and pr_checks — so the dashboard can never disagree
+// with the pages it links to.
+service RiskService {
+  rpc GetRiskDashboard(GetRiskDashboardRequest) returns (GetRiskDashboardResponse);
+}
+
+message GetRiskDashboardRequest { string org_id = 1; }
+
+message RiskMetrics {
+  int32 open_violations = 1;
+  // Open findings whose rule severity is critical or error.
+  int32 high_risk_open = 2;
+  // passed_now / (passed_now + open_now) — the repos-page formula, org-wide.
+  float compliance_rate = 3;
+  int32 blueprints_enforced = 4;
+  int32 repos_covered = 5;
+  // PR checks that finished blocked in the last 30 days.
+  int32 prs_blocked_30d = 6;
+  // Accepted risk in plain sight: findings under an active approved exception.
+  int32 excepted_findings = 7;
+}
+
+// severity x age bucket ('fresh' <24h, 'recent' <=7d, 'stale' >7d).
+message RiskMatrixCell {
+  string severity = 1;
+  string age_bucket = 2;
+  int32 count = 3;
+}
+
+message WeeklyTrendPoint {
+  google.protobuf.Timestamp week_start = 1;
+  int32 violations = 2;
+  int32 passed = 3;
+}
+
+message BlueprintCoverage {
+  string blueprint_id = 1;
+  string blueprint_name = 2;
+  float pass_rate = 3;
+  int32 open_violations = 4;
+}
+
+message OpenViolationRow {
+  string severity = 1;
+  string blueprint_name = 2;
+  string rule_name = 3;
+  string file_path = 4;
+  int32 line = 5;
+  string repo_name = 6;
+  google.protobuf.Timestamp detected_at = 7;
+  string author = 8;
+}
+
+// pr_checks over the last 30 days, grouped by author.
+message LeaderboardEntry {
+  string author = 1;
+  string author_avatar = 2;
+  int32 prs = 3;
+  float pass_rate = 4;
+  int32 violations = 5;
+}
+
+// An open rule breaching more than one repo.
+message RuleCorrelation {
+  string rule_id = 1;
+  string rule_name = 2;
+  repeated string repo_names = 3;
+  int32 total = 4;
+}
+
+message RepoCompliance {
+  string repo_id = 1;
+  string repo_name = 2;
+  float compliance_rate = 3;
+  int32 open_violations = 4;
+}
+
+message GetRiskDashboardResponse {
+  RiskMetrics metrics = 1;
+  repeated RiskMatrixCell matrix = 2;
+  // Oldest-first, 12 ISO weeks.
+  repeated WeeklyTrendPoint weekly_trend = 3;
+  repeated BlueprintCoverage coverage = 4;
+  // Highest severity first, capped server-side.
+  repeated OpenViolationRow open_violations = 5;
+  repeated LeaderboardEntry leaderboard = 6;
+  repeated RuleCorrelation correlations = 7;
+  float org_compliance_rate = 8;
+  repeated RepoCompliance repo_compliance = 9;
+  // True when this week's violation evidence rose >=25% (and >=5 rows)
+  // over last week.
+  bool violation_spike = 10;
+  float spike_delta_pct = 11;
+}
