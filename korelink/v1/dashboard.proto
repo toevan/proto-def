@@ -261,10 +261,15 @@ message GetDeveloperDashboardResponse {
   string attributed_login = 1;
   int32 prs_this_week = 2;
   int32 prs_prev_week = 3;          // real WoW baseline
-  // passed/(passed+errored) over the caller's checks, 30d. NEGATIVE when
-  // no concluded checks exist (unknown, not 0%).
+  // Share of the caller's concluded GOVERNANCE outcomes (30d) that did not
+  // block: (passed+warning)/(passed+warning+blocked). 'error' checks are
+  // infrastructure failures and count nowhere. NEGATIVE when no concluded
+  // checks exist (unknown, not 0%).
   double pass_rate_30d = 4;
-  int32 violations_30d = 5;         // violations the caller's checks surfaced
+  // Uncapped size of the open_violations population (violations on the
+  // latest concluded check of each of the caller's PRs, 30d) — the stat and
+  // the capped list never disagree.
+  int32 open_violation_total = 5;
   repeated DeveloperViolationRow open_violations = 6; // latest failing check per PR
   repeated DeveloperWeek weekly = 7;                  // sparse; clients pad 8 slots
   repeated DeveloperRuleHit top_rules = 8;            // most-hit rules, 30d
