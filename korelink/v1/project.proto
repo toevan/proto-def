@@ -103,6 +103,8 @@ message ProjectRepo {
   string name = 2;                       // "payment-service"
   string language = 3;                   // "Go"
   repeated BlueprintRef blueprints = 4;   // repo-scoped blueprints
+  string status = 5;                     // repo_status verbatim (pending/indexing/indexed/error/...)
+  int32 open_violations = 6;             // open findings on current evidence
 }
 
 // ── Project-level access control ──
