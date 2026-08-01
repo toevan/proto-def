@@ -245,7 +245,7 @@ message ConfigKnob {
   // Secret-bearing knob: value/default arrive MASKED and the audit history is
   // masked too. Clients render an obscured input and must never round-trip the
   // masked placeholder as a new value (the server rejects it).
-  bool sensitive = 9;
+  bool sensitive = 10;
   int64 version = 9;         // override row version (0 when not overridden)
 }
 
