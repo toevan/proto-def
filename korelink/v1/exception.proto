@@ -132,8 +132,13 @@ message CreateExceptionRequest {
 
 message RuleScope {
   string blueprint_id = 1;
+  // Single-rule form, kept for wire compatibility. Servers union this with
+  // [rule_ids]; new clients should send [rule_ids].
   string rule_id = 2;
   repeated string repo_ids = 3;
+  // Rules to waive — the request fans out one exception per (rule, repo)
+  // pair, minus skipped duplicates.
+  repeated string rule_ids = 4;
 }
 
 message CreateExceptionResponse {
