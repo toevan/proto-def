@@ -21,6 +21,13 @@ service EvidenceService {
   rpc ListEvidenceAuthors(ListEvidenceAuthorsRequest) returns (ListEvidenceAuthorsResponse);
   rpc GenerateSBOM(GenerateSBOMRequest) returns (GenerateSBOMResponse);
 
+  // Compliance report history: a generated report is an evidence export
+  // (same filters, same store) plus a durable metadata row. Download URLs
+  // are RE-SIGNED on every list — presigned links expire, the artifact
+  // and its filename do not.
+  rpc GenerateComplianceReport(GenerateComplianceReportRequest) returns (GenerateComplianceReportResponse);
+  rpc ListComplianceReports(ListComplianceReportsRequest) returns (ListComplianceReportsResponse);
+
   // Compliance reports
   rpc GenerateDPIA(GenerateDPIARequest) returns (GenerateDPIAResponse);
   rpc GenerateControlMapping(GenerateControlMappingRequest) returns (GenerateControlMappingResponse);
@@ -134,6 +141,40 @@ message ExportEvidenceResponse {
   int32 record_count = 3;
   string job_id = 4;                    // set for async exports
   EvidenceExportJobStatus status = 5;   // completed for sync path
+}
+
+message GenerateComplianceReportRequest {
+  string org_id = 1;
+  string name = 2;                      // display name, e.g. "GDPR baseline — July"
+  string format = 3;                    // "csv" or "pdf"
+  string blueprint_id = 4;              // optional filter (empty = all)
+  string repo_id = 5;                   // optional filter (empty = all)
+  google.protobuf.Timestamp from = 6;   // optional
+  google.protobuf.Timestamp to = 7;     // optional
+}
+message GenerateComplianceReportResponse {
+  ComplianceReportRow report = 1;
+}
+message ListComplianceReportsRequest {
+  string org_id = 1;
+  int32 limit = 2;                      // default 50
+}
+message ListComplianceReportsResponse {
+  repeated ComplianceReportRow reports = 1;
+}
+message ComplianceReportRow {
+  string id = 1;
+  string name = 2;
+  string format = 3;                    // "csv" or "pdf"
+  string status = 4;                    // completed | pending | failed
+  string blueprint_name = 5;            // empty = all blueprints
+  string repo_name = 6;                 // empty = all repos
+  google.protobuf.Timestamp period_from = 7;
+  google.protobuf.Timestamp period_to = 8;
+  int32 record_count = 9;
+  string generated_by = 10;
+  google.protobuf.Timestamp created_at = 11;
+  string download_url = 12;             // freshly presigned; empty while pending/failed
 }
 
 enum EvidenceExportJobStatus {
