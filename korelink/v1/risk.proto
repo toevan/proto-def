@@ -13,6 +13,40 @@ option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelin
 // with the pages it links to.
 service RiskService {
   rpc GetRiskDashboard(GetRiskDashboardRequest) returns (GetRiskDashboardResponse);
+  // Org-level blueprint analytics: per-blueprint current state + weekly
+  // violation series, per-rule quality, and 30-day totals — the Blueprint
+  // Analytics page's data, from the same canonical sources.
+  rpc GetBlueprintInsights(GetBlueprintInsightsRequest) returns (GetBlueprintInsightsResponse);
+}
+
+message GetBlueprintInsightsRequest { string org_id = 1; }
+
+message BlueprintInsightRow {
+  string blueprint_id = 1;
+  string blueprint_name = 2;
+  int32 open_violations = 3;
+  int32 passed_now = 4;
+  // Twelve ISO weeks of violation evidence, oldest first (sparse — weeks
+  // with no rows are omitted; clients pad).
+  repeated WeeklyTrendPoint weekly = 5;
+}
+
+message RuleQualityRow {
+  string rule_id = 1;
+  string rule_name = 2;
+  string blueprint_name = 3;
+  int32 open_violations = 4;
+  int32 passed_now = 5;
+}
+
+message GetBlueprintInsightsResponse {
+  int32 violations_30d = 1;
+  int32 checks_30d = 2;
+  float org_pass_rate = 3;
+  repeated BlueprintInsightRow blueprints = 4;
+  repeated RuleQualityRow rules = 5;
+  repeated RepoCompliance repos = 6;
+  repeated WeeklyTrendPoint activity = 7;
 }
 
 message GetRiskDashboardRequest { string org_id = 1; }
