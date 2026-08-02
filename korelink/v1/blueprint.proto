@@ -36,6 +36,9 @@ service BlueprintService {
   rpc CompareBlueprintVersions(CompareBlueprintVersionsRequest) returns (CompareBlueprintVersionsResponse);
   rpc GetBlueprintImpactAnalysis(GetBlueprintImpactAnalysisRequest) returns (GetBlueprintImpactAnalysisResponse);
   rpc DryRunBlueprintConstraints(DryRunBlueprintConstraintsRequest) returns (DryRunBlueprintConstraintsResponse);
+  // AI explanation of one dry-run violation: why the engine flagged it and
+  // whether the fix belongs in the code or in the blueprint (review-first flow).
+  rpc ExplainDryRunViolation(ExplainDryRunViolationRequest) returns (ExplainDryRunViolationResponse);
 
   // User Reviews
   rpc ReviewBlueprint(ReviewBlueprintRequest) returns (ReviewBlueprintResponse);
@@ -794,6 +797,27 @@ message DryRunBlueprintConstraintsResponse {
   int32 total_affected_files = 3;
   int32 repos_evaluated = 4;
   int32 repos_failed = 5;                  // repos where evaluation failed (best-effort)
+}
+
+message ExplainDryRunViolationRequest {
+  string blueprint_id = 1;
+  string org_id = 2;
+  string repo_id = 3;
+  // The violation as reported by the dry run.
+  string rule_id = 4;
+  string file_path = 5;
+  int32 line = 6;
+  string message = 7;
+}
+
+message ExplainDryRunViolationResponse {
+  // Why the engine flagged this, in terms of the blueprint's rules.
+  string explanation = 1;
+  // Concrete next step (code change or blueprint adjustment).
+  string suggestion = 2;
+  // "fix_code" — the code genuinely breaks the intended architecture;
+  // "adjust_blueprint" — the rule over-restricts; the blueprint should allow this.
+  string suggestion_kind = 3;
 }
 
 message RepoDryRunResult {
