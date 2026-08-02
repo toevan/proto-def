@@ -71,6 +71,7 @@ enum AgentType {
   AGENT_TYPE_VIOLATION_FIX = 2;
   AGENT_TYPE_IMPLEMENTATION = 3;
   AGENT_TYPE_MIGRATION = 4;
+  AGENT_TYPE_BLUEPRINT_DRAFT = 5;   // AI drafts/refines a repo's detected blueprint (review-first flow)
 }
 
 enum AgentRunStatus {
