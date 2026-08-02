@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+// AI usage telemetry read surface over ai_usage_events — one row per completed
+// agentloop run (PRD_ORG_BYOK_MULTIPROVIDER_AI §11). Best-effort observability,
+// NOT the enforcement ledger (ai_operations stays authoritative for quota).
+//
+// Cost honesty is load-bearing: cost_usd is the best-known figure
+// (upstream-reported when available, else the priced estimate); actual and
+// estimated are kept separate, and unpriced_runs counts rows with neither
+// (local/self-hosted models — render "n/a", never $0.00).
+service AIUsageService {
+  // Org-scoped summary (RequireOrgMember). What one org spends on AI.
+  rpc GetOrgAIUsage(GetOrgAIUsageRequest) returns (GetOrgAIUsageResponse);
+  // Platform-wide aggregate across every org (RequireAdmin — staff only).
+  rpc GetPlatformAIUsage(GetPlatformAIUsageRequest) returns (GetPlatformAIUsageResponse);
+}
+
+// ── Shared ────────────────────────────────────────────────────────────
+
+// A single day's totals for a trend series.
+message AIUsageDailyPoint {
+  google.protobuf.Timestamp day = 1;
+  int32 runs = 2;
+  int64 tokens = 3;
+  double cost_usd = 4;
+  // Platform series only: distinct orgs active that day (0 on org series).
+  int32 orgs = 5;
+}
+
+// Per-surface breakdown (canvas_detail / agent_violation_fix / agent_fix_apply
+// / legacy_fixgen). Shared by the org and platform responses.
+message AIUsageSurfaceRow {
+  string surface = 1;
+  int32 runs = 2;
+  int64 tokens = 3;
+  double cost_usd = 4;
+}
+
+// ── Org ───────────────────────────────────────────────────────────────
+
+message GetOrgAIUsageRequest {
+  string org_id = 1;
+  // Lookback window in days. 0 → server default (30). Clamped to [1, 365].
+  int32 window_days = 2;
+}
+
+message OrgAIUsageHeadline {
+  int32 runs = 1;
+  // prompt + completion tokens.
+  int64 tokens = 2;
+  int64 cache_read_tokens = 3;
+  // Runs served on the org's own key (BYOK).
+  int32 byok_runs = 4;
+  // Runs whose model has no price (local/self-hosted) — cost is n/a, not $0.
+  int32 unpriced_runs = 5;
+  // Best-known spend: coalesce(actual, estimated) summed.
+  double cost_usd = 6;
+  // Upstream-reported spend (OpenRouter reports it; other wires do not).
+  double actual_cost_usd = 7;
+  // Priced estimate for runs with no upstream figure.
+  double estimated_cost_usd = 8;
+}
+
+message OrgAIUsageProviderRow {
+  string provider = 1;
+  string model = 2;
+  bool byok = 3;
+  int32 runs = 4;
+  int64 tokens = 5;
+  double cost_usd = 6;
+  // True when any run for this provider/model had no price.
+  bool has_unpriced = 7;
+}
+
+message GetOrgAIUsageResponse {
+  OrgAIUsageHeadline headline = 1;
+  repeated AIUsageSurfaceRow by_surface = 2;
+  repeated OrgAIUsageProviderRow by_provider = 3;
+  // Daily trend, oldest first (sparse — empty days omitted; clients pad).
+  repeated AIUsageDailyPoint daily = 4;
+  // The effective window the server applied.
+  int32 window_days = 5;
+}
+
+// ── Platform ──────────────────────────────────────────────────────────
+
+message GetPlatformAIUsageRequest {
+  int32 window_days = 1;
+}
+
+message PlatformAIUsageHeadline {
+  int32 runs = 1;
+  // Distinct orgs that ran any AI in the window.
+  int32 orgs = 2;
+  // Distinct orgs that ran at least one BYOK run.
+  int32 byok_orgs = 3;
+  int32 byok_runs = 4;
+  int64 tokens = 5;
+  double cost_usd = 6;
+  double actual_cost_usd = 7;
+  double estimated_cost_usd = 8;
+  int32 unpriced_runs = 9;
+}
+
+message PlatformAIUsageProviderRow {
+  string provider = 1;
+  int32 runs = 2;
+  int32 orgs = 3;
+  int64 tokens = 4;
+  double cost_usd = 5;
+}
+
+// Top orgs by best-known spend.
+message PlatformAIUsageOrgRow {
+  string org_id = 1;
+  string org_name = 2;
+  bool byok = 3;
+  int32 runs = 4;
+  int64 tokens = 5;
+  double cost_usd = 6;
+}
+
+message GetPlatformAIUsageResponse {
+  PlatformAIUsageHeadline headline = 1;
+  repeated PlatformAIUsageProviderRow by_provider = 2;
+  repeated AIUsageSurfaceRow by_surface = 3;
+  repeated PlatformAIUsageOrgRow top_orgs = 4;
+  repeated AIUsageDailyPoint daily = 5;
+  int32 window_days = 6;
+}
