@@ -90,8 +90,27 @@ message GetOrgAIUsageResponse {
 
 // ── Platform ──────────────────────────────────────────────────────────
 
+// Optional BYOK scope for the platform aggregate.
+enum ByokFilter {
+  BYOK_FILTER_UNSPECIFIED = 0; // all runs (platform + BYOK)
+  BYOK_FILTER_BYOK = 1;        // runs on an org's own key only
+  BYOK_FILTER_PLATFORM = 2;    // runs on the platform key only
+}
+
 message GetPlatformAIUsageRequest {
   int32 window_days = 1;
+  // Optional: scope every figure to a single org (empty = all orgs). When
+  // set, the dashboard reads as that org's platform-side detail.
+  string org_id = 2;
+  // Optional: scope to BYOK vs platform-key runs (unspecified = all).
+  ByokFilter byok_filter = 3;
+}
+
+// A selectable org for the org filter (every org with usage in the window,
+// independent of the org filter itself so the picker stays stable).
+message PlatformAIUsageOrgOption {
+  string org_id = 1;
+  string org_name = 2;
 }
 
 message PlatformAIUsageHeadline {
@@ -133,4 +152,8 @@ message GetPlatformAIUsageResponse {
   repeated PlatformAIUsageOrgRow top_orgs = 4;
   repeated AIUsageDailyPoint daily = 5;
   int32 window_days = 6;
+  // Every org with usage in the window (for the org filter dropdown) —
+  // reflects the window + BYOK scope but NOT the org scope, so selecting an
+  // org never empties the picker. Name-ordered.
+  repeated PlatformAIUsageOrgOption filterable_orgs = 7;
 }
