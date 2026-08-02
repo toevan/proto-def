@@ -94,6 +94,9 @@ message OpenViolationRow {
   string repo_name = 6;
   google.protobuf.Timestamp detected_at = 7;
   string author = 8;
+  // These are REPO-BRANCH (main head) violations — the client deep-links to
+  // the repo surface, not PR Gate, and needs the id to do it.
+  string repo_id = 9;
 }
 
 // pr_checks over the last 30 days, grouped by author.
