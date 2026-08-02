@@ -39,6 +39,9 @@ service BlueprintService {
   // AI explanation of one dry-run violation: why the engine flagged it and
   // whether the fix belongs in the code or in the blueprint (review-first flow).
   rpc ExplainDryRunViolation(ExplainDryRunViolationRequest) returns (ExplainDryRunViolationResponse);
+  // Full engine validation of an IN-FLIGHT spec (nothing saved) — backs the
+  // editor's live as-you-type validation against the authoring contract.
+  rpc ValidateBlueprintSpec(ValidateBlueprintSpecRequest) returns (ValidateBlueprintResponse);
 
   // User Reviews
   rpc ReviewBlueprint(ReviewBlueprintRequest) returns (ReviewBlueprintResponse);
@@ -818,6 +821,17 @@ message ExplainDryRunViolationResponse {
   // "fix_code" — the code genuinely breaks the intended architecture;
   // "adjust_blueprint" — the rule over-restricts; the blueprint should allow this.
   string suggestion_kind = 3;
+}
+
+message ValidateBlueprintSpecRequest {
+  // Optional: validate in the context of an existing row (its slug/version/
+  // identity fields), with the provided spec/rules spliced over it. Absent →
+  // placeholders are synthesized so document-level issues dominate.
+  string blueprint_id = 1;
+  string name = 2;
+  string blueprint_type = 3;   // "structural" | "compliance" | "security" | "design"
+  string full_spec_json = 4;
+  string rules_json = 5;       // optional: JSON array of rule objects
 }
 
 message RepoDryRunResult {
