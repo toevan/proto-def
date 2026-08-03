@@ -49,6 +49,12 @@ service OrgService {
 
   // Audit log queries
   rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse);
+  // Compliance export of the org's admin activity log as CSV. Same filters,
+  // authorization (org admin) and plan gate (FeatureAuditLog) as
+  // ListAuditLogs; the export is row-capped server-side and reports
+  // truncation honestly so a partial file is never mistaken for the whole
+  // history.
+  rpc ExportAuditLogsCsv(ExportAuditLogsCsvRequest) returns (ExportAuditLogsCsvResponse);
 }
 
 // ── Core Types ──
@@ -411,4 +417,22 @@ message ListAuditLogsRequest {
 message ListAuditLogsResponse {
   repeated AuditLogEntry entries = 1;
   int32 total = 2;
+}
+
+message ExportAuditLogsCsvRequest {
+  string org_id = 1;
+  string action_filter = 2;
+  string actor_id_filter = 3;
+  string resource_type_filter = 4;
+  google.protobuf.Timestamp since = 5;
+  google.protobuf.Timestamp until = 6;
+}
+message ExportAuditLogsCsvResponse {
+  bytes csv = 1;                 // UTF-8 CSV with a header row
+  string filename = 2;           // suggested download name
+  int32 row_count = 3;           // data rows in the file
+  // True when the org's matching history exceeds the server-side export cap
+  // — the file holds the MOST RECENT row_count rows; narrow the date range
+  // for the rest.
+  bool truncated = 4;
 }
