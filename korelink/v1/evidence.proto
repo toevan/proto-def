@@ -37,6 +37,42 @@ service EvidenceService {
   // stores and writes an audit-log record. The immutable evidence ledger holds
   // no personal data and is not affected.
   rpc EraseDataSubject(EraseDataSubjectRequest) returns (EraseDataSubjectResponse);
+
+  // Signed supply-chain attestations for one evaluated commit — the
+  // distribution read behind "verify without KoreLink". Envelopes are
+  // returned VERBATIM (in-toto SLSA-VSA statement in a DSSE envelope);
+  // verification runs against exactly these bytes with stock cosign and the
+  // published public key. Authorization derives the owning org from the REPO
+  // row (viewer floor), never from the request.
+  rpc ListVerdictAttestations(ListVerdictAttestationsRequest) returns (ListVerdictAttestationsResponse);
+}
+
+// ── Verdict attestations ──
+
+message ListVerdictAttestationsRequest {
+  string repo_id = 1;
+  string head_sha = 2;  // the evaluated commit
+}
+
+// VerdictAttestation is one signed verdict envelope plus its distribution
+// facts. Numeric zero / empty string mean "not (yet) there": rekor fields are
+// empty until the transparency-log sweep lands the entry, twin_commit_sha is
+// empty until the git-twin mirror carries the file.
+message VerdictAttestation {
+  string run_id = 1;            // evidence_runs.id the envelope attests
+  int64  chain_seq = 2;         // position in the repo's tamper-evident chain
+  string blueprint_id = 3;
+  string decision = 4;          // pass | blocked | exception (gap is unattestable)
+  bytes  envelope = 5;          // DSSE envelope JSON, VERBATIM
+  string payload_hash = 6;      // "sha256:<hex>" of the signed payload bytes
+  string key_id = 7;            // SPKI fingerprint of the signing key
+  int64  rekor_log_index = 8;   // transparency-log inclusion; 0 = not logged yet
+  string rekor_log_url = 9;     // WHICH log holds the proof; "" = not logged yet
+  string twin_commit_sha = 10;  // evidence-branch commit carrying the file; "" = not mirrored yet
+}
+
+message ListVerdictAttestationsResponse {
+  repeated VerdictAttestation attestations = 1;
 }
 
 // ── Core Types ──
