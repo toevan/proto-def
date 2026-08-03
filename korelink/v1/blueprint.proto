@@ -289,6 +289,10 @@ message ListMarketplaceRequest {
   BlueprintSource source = 9;     // filter by source (0 = all)
   BlueprintType type = 10;        // filter by type (0 = all)
   string query = 11;              // free-text search against name, tags, languages, frameworks
+  // Multi-type filter: OR-semantics across entries (e.g. [SECURITY, COMPLIANCE]
+  // = the project-scope catalog the onboarding wizard shows). Empty = no type
+  // filter. When set, takes precedence over the single `type` field.
+  repeated BlueprintType types = 12;
 }
 message ListMarketplaceResponse {
   repeated Blueprint blueprints = 1;
