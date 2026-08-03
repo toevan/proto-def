@@ -166,6 +166,14 @@ message GitHubOrg {
   // to decide whether KoreLink has anything to work with. This is that fact.
   // 0 with app_installed=true means the app is installed but shares no repos.
   int32 accessible_repo_count = 8;
+
+  // True when the CALLER is a member of existing_org_id. Meaningful only
+  // when already_connected — it is what separates "switch to your
+  // workspace" from "this org is on KoreLink, ask an admin for an invite"
+  // (invitations are the ONLY join path). already_connected alone is
+  // account-EXISTENCE, resolved by GitHub handle globally, and says
+  // nothing about the caller's access.
+  bool is_member = 9;
 }
 
 // ── Requests/Responses ──
