@@ -27,7 +27,32 @@ service NotificationService {
   // proxy_read_timeout is 60s). The client increments the unread badge +
   // (canvas) reacts on each NOTIFICATION frame and ignores HEARTBEAT frames.
   rpc StreamNotifications(StreamNotificationsRequest) returns (stream NotificationStreamFrame);
+
+  // Per-USER per-ORG email notification preferences (opt-IN — every flag
+  // defaults false so a deploy never surprises anyone with mail). Self-scoped:
+  // the subject is always the AUTHENTICATED caller; org_id names which of
+  // their orgs the prefs apply to (membership-gated server-side).
+  rpc GetMyNotificationPrefs(GetMyNotificationPrefsRequest) returns (GetMyNotificationPrefsResponse);
+  rpc UpdateMyNotificationPrefs(UpdateMyNotificationPrefsRequest) returns (UpdateMyNotificationPrefsResponse);
 }
+
+// NotificationPrefs are the caller's email opt-ins for one org. Each flag maps
+// to a REAL delivery trigger on the governance-event spine — flags for events
+// that don't fire are deliberately absent.
+message NotificationPrefs {
+  // Email when a PR gate concludes with introduced violations (a blocked PR).
+  bool pr_gate_blocked_email = 1;
+  // Email when an agent run reaches a failed terminal state.
+  bool agent_run_failed_email = 2;
+}
+
+message GetMyNotificationPrefsRequest { string org_id = 1; }
+message GetMyNotificationPrefsResponse { NotificationPrefs prefs = 1; }
+message UpdateMyNotificationPrefsRequest {
+  string org_id = 1;
+  NotificationPrefs prefs = 2;
+}
+message UpdateMyNotificationPrefsResponse { NotificationPrefs prefs = 1; }
 
 // NotificationStreamFrame is one frame on the StreamNotifications wire: either a
 // real notification or a droppable heartbeat. Modeled on the Stage-3
