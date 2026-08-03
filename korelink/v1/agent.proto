@@ -72,6 +72,16 @@ enum AgentType {
   AGENT_TYPE_IMPLEMENTATION = 3;
   AGENT_TYPE_MIGRATION = 4;
   AGENT_TYPE_BLUEPRINT_DRAFT = 5;   // AI drafts/refines a repo's detected blueprint (review-first flow)
+  // Full-fidelity coverage of the server's seeded agent set. Before these
+  // values existed, ListAgentConfigs returned UNSPECIFIED for five of the
+  // eight org-seeded config rows (internal/agent UserDispatchedAgentTypes),
+  // making a truthful per-org agent settings surface impossible.
+  AGENT_TYPE_FIX_APPLY = 6;          // applies a generated FixPlan end-to-end (branch, push, open PR)
+  AGENT_TYPE_FIX_VIOLATION = 7;      // seven-stage ChangeSet fix pipeline (cluster→…→apply)
+  AGENT_TYPE_REVIEW = 8;             // agentloop code-quality review (structured findings)
+  AGENT_TYPE_MIGRATION_SCAN = 9;     // read-only migration PLANNER (plan preview; migration executes)
+  AGENT_TYPE_TEST_COVERAGE_DIFF = 10; // per-PR structural test-coverage inventory
+  AGENT_TYPE_CANVAS_DETAIL = 11;     // internal config-storage/forensics type — not user-dispatchable
 }
 
 enum AgentRunStatus {
