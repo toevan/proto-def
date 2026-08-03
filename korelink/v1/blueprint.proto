@@ -125,6 +125,9 @@ message BlueprintRef {
   string blueprint_name = 2;            // "PCI-DSS Compliance"
   string blueprint_version = 3;
   BlueprintScope scope = 4;                      // "project" or "repo"
+  // "structural" | "compliance" | "security" | "design" — clients key the
+  // type icon on this (the marketplace icon convention).
+  string blueprint_type = 5;
 }
 
 message Blueprint {
