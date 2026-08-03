@@ -16,6 +16,14 @@ service WebhookService {
   rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse);
   rpc DeleteWebhook(DeleteWebhookRequest) returns (DeleteWebhookResponse);
   rpc ListWebhookDeliveries(ListWebhookDeliveriesRequest) returns (ListWebhookDeliveriesResponse);
+  // Pause/resume a webhook without destroying it (URL/events stay immutable —
+  // rotating a sink is delete+create so the secret always rotates with it).
+  // Admin-gated and audited with the old→new value like create/delete.
+  rpc SetWebhookEnabled(SetWebhookEnabledRequest) returns (SetWebhookEnabledResponse);
+  // Sends a signed `test.ping` payload to the webhook SYNCHRONOUSLY (single
+  // attempt, no retry ladder) and reports the endpoint's verdict. The
+  // attempt is recorded in the delivery log like any real delivery.
+  rpc TestWebhook(TestWebhookRequest) returns (TestWebhookResponse);
 }
 
 // ── Types ──
@@ -89,4 +97,27 @@ message ListWebhookDeliveriesRequest {
 message ListWebhookDeliveriesResponse {
   repeated WebhookDeliveryInfo deliveries = 1;
   int32 total = 2;
+}
+
+message SetWebhookEnabledRequest {
+  string org_id = 1;
+  string webhook_id = 2;
+  bool enabled = 3;
+}
+message SetWebhookEnabledResponse {
+  WebhookInfo webhook = 1;
+}
+
+message TestWebhookRequest {
+  string org_id = 1;
+  string webhook_id = 2;
+}
+message TestWebhookResponse {
+  // True when the endpoint answered 2xx.
+  bool success = 1;
+  // HTTP status the endpoint returned; 0 when the request never completed
+  // (network error / timeout) — see error.
+  int32 status_code = 2;
+  int32 response_ms = 3;
+  string error = 4;
 }
