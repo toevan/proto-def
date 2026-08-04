@@ -69,6 +69,10 @@ message VerdictAttestation {
   int64  rekor_log_index = 8;   // transparency-log inclusion; 0 = not logged yet
   string rekor_log_url = 9;     // WHICH log holds the proof; "" = not logged yet
   string twin_commit_sha = 10;  // evidence-branch commit carrying the file; "" = not mirrored yet
+  // Display name of the blueprint at read time (joined, not stored in the
+  // immutable record). Empty when the blueprint row is gone; the id above
+  // remains the stable key. Clients render THIS, never the UUID.
+  string blueprint_name = 11;
 }
 
 message ListVerdictAttestationsResponse {
