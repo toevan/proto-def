@@ -42,6 +42,11 @@ service OrgService {
   // OrgInvitation workflow
   rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
   rpc ListInvitations(ListInvitationsRequest) returns (ListInvitationsResponse);
+  // Invitee-scoped preview: the authenticated caller may view an invitation
+  // only when their email matches the invitee's — the accept page needs to
+  // show WHAT you are joining before you commit. Returns any status so the
+  // client can render accepted/expired/revoked honestly.
+  rpc GetInvitation(GetInvitationRequest) returns (GetInvitationResponse);
   rpc AcceptInvitation(AcceptInvitationRequest) returns (AcceptInvitationResponse);
   rpc DeclineInvitation(DeclineInvitationRequest) returns (DeclineInvitationResponse);
   rpc RevokeInvitation(RevokeInvitationRequest) returns (RevokeInvitationResponse);
@@ -362,6 +367,14 @@ message ListInvitationsRequest {
 message ListInvitationsResponse {
   repeated Invitation invitations = 1;
   int32 total = 2;
+}
+
+message GetInvitationRequest {
+  string invitation_id = 1;
+}
+message GetInvitationResponse {
+  Invitation invitation = 1;
+  Org org = 2;  // display summary of the inviting org
 }
 
 // Invitee accepts — server creates OrgMember, sets invitation status to ACCEPTED
