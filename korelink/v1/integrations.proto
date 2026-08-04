@@ -37,7 +37,7 @@ message ListIntegrationsResponse {
 }
 
 message Integration {
-  string provider = 1;              // github | jira | linear | slack
+  string provider = 1;              // github | jira | linear | slack | kosli
   string status = 2;                // connected | disconnected | error
   // Human display of WHAT is connected, never a credential:
   //   github → org/user login; jira → base URL + account email;
@@ -56,11 +56,12 @@ message Integration {
 
 message ConnectIntegrationRequest {
   string org_id = 1;
-  string provider = 2;              // jira | linear | slack
+  string provider = 2;              // jira | linear | slack | kosli
   // Provider-shaped credentials (exactly one set):
   JiraConfig jira = 3;
   LinearConfig linear = 4;
   SlackConfig slack = 5;
+  KosliConfig kosli = 6;
 }
 message JiraConfig {
   string base_url = 1;              // https://your-site.atlassian.net
@@ -72,6 +73,12 @@ message LinearConfig {
 }
 message SlackConfig {
   string webhook_url = 1;           // Incoming webhook URL (secret — never echoed)
+}
+message KosliConfig {
+  string api_token = 1;             // Kosli API token (secret — never echoed)
+  string org = 2;                   // Kosli organization name
+  // Kosli host, https only. Empty = app.kosli.com; set for self-hosted Kosli.
+  string base_url = 3;
 }
 message ConnectIntegrationResponse {
   Integration integration = 1;
