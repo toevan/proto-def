@@ -6,6 +6,7 @@ option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelin
 
 import "google/protobuf/timestamp.proto";
 import "korelink/v1/blueprint.proto";
+import "korelink/v1/org.proto";
 
 // ============================================
 // RepoService — GitHub Repos, Onboarding, Indexing
@@ -56,6 +57,16 @@ service RepoService {
   rpc AssignBlueprint(AssignBlueprintRequest) returns (AssignBlueprintResponse);
   rpc RemoveBlueprint(RemoveBlueprintRequest) returns (RemoveBlueprintResponse);
   rpc ListRepoBlueprints(ListRepoBlueprintsRequest) returns (ListRepoBlueprintsResponse);
+
+  // Repo-level member access — the MOST-SPECIFIC access tier (see
+  // RequireRepoAccess). A RepoMember row grants/overrides access on one repo,
+  // or DENIES it, letting a project member be scoped out of a specific repo
+  // without leaving the project. Managed by an org admin/owner or the repo's
+  // project owner/maintainer.
+  rpc AddRepoMember(AddRepoMemberRequest) returns (AddRepoMemberResponse);
+  rpc UpdateRepoMemberPermission(UpdateRepoMemberPermissionRequest) returns (UpdateRepoMemberPermissionResponse);
+  rpc RemoveRepoMember(RemoveRepoMemberRequest) returns (RemoveRepoMemberResponse);
+  rpc ListRepoMembers(ListRepoMembersRequest) returns (ListRepoMembersResponse);
 }
 
 // ── Core Types ──
@@ -525,4 +536,76 @@ message RepoChange {
   // and subscribes to the per-job progress stream exactly as the dispatching
   // device does.
   string index_job_id = 6;
+}
+
+// ── Repo-level access control ──
+// Distinct from OrgRole (org.proto — feature access) and ProjectPermission
+// (project.proto — project scope). A RepoMember row is the MOST-SPECIFIC access
+// tier the server resolves (RequireRepoAccess): it grants/overrides access on
+// ONE repo, or DENIES it — letting a project member be scoped out of a specific
+// repo without leaving the project. Absence of a row falls through to the
+// project then org tiers, so this only ever refines, never the baseline.
+enum RepoPermission {
+  REPO_PERMISSION_UNSPECIFIED = 0;
+  REPO_PERMISSION_ADMIN = 1;                       // manage the repo's members; full access
+  REPO_PERMISSION_WRITE = 2;                       // create PRs, fix violations
+  REPO_PERMISSION_READ  = 3;                       // view only
+  REPO_PERMISSION_DENY  = 4;                       // explicitly hide this repo from the user
+}
+
+// A member's explicit access on a specific repo.
+message RepoMember {
+  string user_id = 1;
+  string repo_id = 2;
+  string name = 3;
+  string email = 4;
+  string avatar_url = 5;
+  OrgRole org_role = 6;                            // organizational role (for display)
+  RepoPermission permission = 7;                   // grant level, or DENY
+  google.protobuf.Timestamp created_at = 8;
+}
+
+// ── Repo Member Management ──
+// A user must be an org member first; then they can be given explicit repo
+// access (or a deny). Gated on org admin/owner OR the repo's project
+// owner/maintainer.
+
+message AddRepoMemberRequest {
+  string repo_id = 1;
+  string user_id = 2;
+  RepoPermission permission = 3;
+}
+message AddRepoMemberResponse {
+  bool success = 1;
+  string error = 2;
+  RepoMember member = 3;
+}
+
+message UpdateRepoMemberPermissionRequest {
+  string repo_id = 1;
+  string user_id = 2;
+  RepoPermission permission = 3;
+}
+message UpdateRepoMemberPermissionResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message RemoveRepoMemberRequest {
+  string repo_id = 1;
+  string user_id = 2;
+}
+message RemoveRepoMemberResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ListRepoMembersRequest {
+  string repo_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+message ListRepoMembersResponse {
+  repeated RepoMember members = 1;
+  int32 total = 2;
 }
