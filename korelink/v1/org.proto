@@ -89,6 +89,11 @@ message Org {
   // present personal workspaces as what they are (the owner's identity +
   // a Personal tag) instead of as an oddly-named organisation.
   string kind = 12;
+  // Numeric GitHub id for a personal account (the owner's GitHub user id), so a
+  // client can deep-link straight to the account's App install/authorize page
+  // (target_id + target_type=User) instead of GitHub's account picker. 0 when
+  // unknown / not a personal account.
+  int64 github_id = 13;
 }
 
 // Organization-level plan — governs org-wide limits (seats, repos, features).
