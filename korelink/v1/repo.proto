@@ -223,6 +223,14 @@ message ListGitHubReposRequest {
 }
 message ListGitHubReposResponse {
   repeated GitHubRepo repos = 1;
+  // Live GitHub App install state for this account, resolved (and self-healed)
+  // alongside the repo list at no extra GitHub round-trip. Lets the client tell
+  // "App not installed" from "installed but no repositories shared" — the empty
+  // `repos` list alone cannot: both are empty. `installed` is whether an
+  // installation currently exists; `accessible_repo_count` is how many repos it
+  // can reach (0 while installed ⇒ share repositories, don't re-install).
+  bool installed = 2;
+  int32 accessible_repo_count = 3;
 }
 
 message OnboardRepoRequest {
