@@ -433,7 +433,7 @@ message NodeViolation {
   // be decided, #1631). Clients render an "advisory" chip from this field
   // instead of parsing the message suffix; severity (field 3) already
   // carries the demoted level from the engine verdict.
-  string degraded_reason = 22;
+  string degraded_reason = 25;
 
   // Phase 2b fields — reserved to lock the wire layout. Do not reuse these
   // numbers; they map 1:1 to the client's violation detail sheet:
