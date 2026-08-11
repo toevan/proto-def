@@ -342,6 +342,15 @@ message IndexRun {
   google.protobuf.Timestamp started_at = 7;
   google.protobuf.Timestamp completed_at = 8;
   string error = 9;
+  // last_heartbeat_at is the running indexer's most recent proof-of-life, stamped
+  // on a fixed cadence (~60s) AND on every phase transition. It is the definitive
+  // liveness signal: a live index — even a huge repo grinding for many minutes —
+  // keeps this fresh, while a dead/hung worker stops stamping it. Clients gate the
+  // "Force re-index" affordance on its STALENESS (now - last_heartbeat_at past a
+  // small threshold) rather than on wall-clock run age, which false-positives on
+  // legitimately-long indexes. For a not-yet-picked-up job it is the row's creation
+  // time (DB default), so a job that never gets a worker still goes stale correctly.
+  google.protobuf.Timestamp last_heartbeat_at = 10;
 }
 
 message ListReposRequest {
@@ -381,9 +390,12 @@ message ReindexRepoRequest {
   // Restart a repo whose index looks wedged (worker died mid-index, so the repo is stuck
   // "indexing" and an ordinary reindex is refused with IndexAlreadyInProgress).
   //
-  // NOT an override of the concurrency guard: the server still refuses when the index job is
-  // actually heartbeating, so a live index can never be double-started. It only lets the
-  // request through to that liveness check instead of the wall-clock "already indexing" reject.
+  // A user-initiated force is UNCONDITIONAL — it always supersedes the current index and
+  // starts a fresh run, so healing a wedged repo never fails. This does NOT risk double-
+  // indexing a genuinely-live repo: the new run supersedes the old, and the worker discards
+  // a superseded job's writes at completion (its completion-time supersede guard), so two
+  // runs can never both publish. Only the user "Force re-index" path sets this; batch and
+  // system reindexes never force.
   bool force = 3;
 }
 message ReindexRepoResponse {
