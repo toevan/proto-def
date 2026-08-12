@@ -94,6 +94,35 @@ message Org {
   // (target_id + target_type=User) instead of GitHub's account picker. 0 when
   // unknown / not a personal account.
   int64 github_id = 13;
+
+  // Open violations across this org's governed repos, and all-time PR check
+  // count. Same "zero unless the RPC populates it" convention as
+  // plan_config.seat_used/repo_used above: computing these is a per-account
+  // aggregate that only ListAllOrgs (the platform-admin org table) pays for —
+  // GetOrg/ListMyOrgs/etc. leave them at 0 rather than adding a query cost
+  // nothing there needs.
+  int32 violation_count = 14;
+  int32 pr_count = 15;
+
+  // Real subscription-derived billing status. UNSPECIFIED except where the
+  // RPC populates it (ListAllOrgs) — same zero-unless-populated convention.
+  // Deliberately does NOT include a "trial" value: no trial concept exists
+  // anywhere server-side (no trialing subscription status, no trial_ends_at
+  // column) — a client showing "Trial" today is fabricating it.
+  BillingStatus billing_status = 16;
+}
+
+enum BillingStatus {
+  BILLING_STATUS_UNSPECIFIED = 0;
+  BILLING_STATUS_FREE = 1;         // free plan, no subscription
+  BILLING_STATUS_ACTIVE = 2;       // a non-canceled subscription with status='active'
+  BILLING_STATUS_PAST_DUE = 3;     // a non-canceled subscription with status='past_due'
+  BILLING_STATUS_INCOMPLETE = 4;   // a non-canceled subscription with status='incomplete'
+  // Paid plan with no subscription row — platform staff assigned this tier
+  // directly (AssignOrgPlan), not through the billing pipeline. Distinct from
+  // FREE: this org has real paid-tier access, it just isn't paying for it
+  // through a subscription.
+  BILLING_STATUS_GRANTED = 5;
 }
 
 // Organization-level plan — governs org-wide limits (seats, repos, features).
