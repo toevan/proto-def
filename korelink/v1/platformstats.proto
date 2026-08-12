@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "korelink/v1/org.proto";
+
+// ============================================
+// PlatformStatsService — aggregate, platform-wide metrics
+// ============================================
+//
+// Backs the platform-admin Overview dashboard's summary numbers (organization
+// counts, plan mix, and — over time — whatever else gets a real aggregation).
+// Deliberately its own service, not folded into OrgService/etc.: the metrics
+// span multiple domains (orgs today; users, PR volume, and more as they land),
+// so a single, purpose-built, admin-gated surface is the only home that fits
+// all of them without becoming a domain-mismatched grab bag on someone else's
+// service.
+//
+// GetOverviewStatsResponse grows ONE FIELD AT A TIME, and only once its own
+// real query exists — never a placeholder for a number nobody computes yet.
+// A metric with no real backing (e.g. MRR, which has no payment gateway
+// behind it as of this writing) does not get a field here; it stays absent
+// from the contract until it has real data to report, and the client shows
+// "not yet available" rather than a wire zero that reads as "we checked and
+// it's zero."
+service PlatformStatsService {
+  // GetOverviewStats returns platform-wide aggregate metrics for the admin
+  // overview dashboard. Admin-only.
+  rpc GetOverviewStats(GetOverviewStatsRequest) returns (GetOverviewStatsResponse);
+}
+
+message GetOverviewStatsRequest {}
+
+message GetOverviewStatsResponse {
+  // Every non-deleted account (orgs + personal accounts), same population
+  // `OrgService.ListAllOrgs`'s own `total` reports — so this number always
+  // agrees with what an admin sees paging through that list.
+  int32 total_orgs = 1;
+
+  // total_orgs broken down by plan tier. Always sums to total_orgs — same
+  // population, grouped instead of listed.
+  repeated PlanCount plan_distribution = 2;
+}
+
+message PlanCount {
+  OrgPlan plan = 1;
+  int32 count = 2;
+}
