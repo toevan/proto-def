@@ -4,6 +4,7 @@ package korelink.v1;
 
 option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
 
+import "google/protobuf/timestamp.proto";
 import "korelink/v1/org.proto";
 
 // ============================================
@@ -42,9 +43,22 @@ message GetOverviewStatsResponse {
   // total_orgs broken down by plan tier. Always sums to total_orgs — same
   // population, grouped instead of listed.
   repeated PlanCount plan_distribution = 2;
+
+  // Cumulative total_orgs population AS OF each of the last 7 ISO week
+  // boundaries (Monday 00:00 UTC), oldest first. The final entry always
+  // equals total_orgs above (evaluated at the same instant). Powers the
+  // Overview dashboard's org-growth sparkline — derived on demand from
+  // accounts.created_at/deleted_at, not a snapshot table, so history is
+  // correct from day one rather than only accumulating from deploy forward.
+  repeated WeeklyOrgCount weekly_org_growth = 3;
 }
 
 message PlanCount {
   OrgPlan plan = 1;
   int32 count = 2;
+}
+
+message WeeklyOrgCount {
+  google.protobuf.Timestamp week_start = 1;
+  int32 total_orgs = 2;
 }
