@@ -19,17 +19,21 @@ option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelin
 // to it invisibly.
 //
 // The management RPCs (Grant/Revoke/List) require the platform admin
-// role. Self-issuance is allowed by design (the controls are the
-// mandatory reason, the TTL and the tenant-visible audit — not a
-// four-eyes ceremony); every grant records issuer and grantee separately
-// so a future approver model needs no wire change.
+// role. As of the request/approve workflow below, GrantSupportAccess no
+// longer self-issues — every new grant now originates from an APPROVED
+// request (RequestSupportAccess -> ApproveSupportAccessRequest), reviewed
+// by a platform admin other than the requester. grantee_user_id/
+// granted_by were kept as separate fields from day one specifically so
+// this didn't need a wire change.
 // GetSupportAccessStatus is the one TENANT-facing read: org members see
 // whether support currently holds access to THEIR org.
 service SupportAccessService {
-  // GrantSupportAccess issues a time-boxed grant on one organization.
-  // ttl_minutes <= 0 applies the 60-minute default; values above 1440
-  // (24h) are clamped — longer engagements re-issue, and every re-issue
-  // is a fresh audit row.
+  // GrantSupportAccess is RETIRED as a direct-issuance path: the handler
+  // now refuses every call unconditionally (after the same RequireAdmin
+  // check as always, so a non-admin caller sees no difference). Kept on
+  // the wire for compatibility. Use RequestSupportAccess +
+  // ApproveSupportAccessRequest instead — that pair is the only way a
+  // NEW grant can be created now.
   rpc GrantSupportAccess(GrantSupportAccessRequest) returns (GrantSupportAccessResponse);
 
   // RevokeSupportAccess ends a grant early. Idempotent: revoking an
@@ -59,6 +63,35 @@ service SupportAccessService {
   // Requires authentication only — listing one's own grants leaks nothing, and
   // in practice only platform staff hold grants.
   rpc ListMyActiveSupportAccessGrants(ListMyActiveSupportAccessGrantsRequest) returns (ListMyActiveSupportAccessGrantsResponse);
+
+  // RequestSupportAccess submits a request for peer review — the ONLY way
+  // (together with ApproveSupportAccessRequest) a new grant can now be
+  // created. The caller is always the requester; there is no "request on
+  // behalf of" field. At most one PENDING request may exist per (caller,
+  // account) at a time — a second submission before the first is decided
+  // is refused.
+  rpc RequestSupportAccess(RequestSupportAccessRequest) returns (RequestSupportAccessResponse);
+
+  // ApproveSupportAccessRequest approves a pending request and atomically
+  // issues the resulting grant. The approver must be a platform admin
+  // OTHER than the requester — self-approval is refused. Approving an
+  // already-decided or review-window-lapsed request is refused.
+  rpc ApproveSupportAccessRequest(ApproveSupportAccessRequestRequest) returns (ApproveSupportAccessRequestResponse);
+
+  // DenySupportAccessRequest denies a pending request. Same approver fence
+  // as approval. A non-empty reason is required — it is what the
+  // requester sees explaining the denial.
+  rpc DenySupportAccessRequest(DenySupportAccessRequestRequest) returns (DenySupportAccessRequestResponse);
+
+  // ListPendingSupportAccessRequests is the operator review queue: every
+  // request still awaiting a decision, oldest first, across all orgs.
+  rpc ListPendingSupportAccessRequests(ListPendingSupportAccessRequestsRequest) returns (ListPendingSupportAccessRequestsResponse);
+
+  // ListMySupportAccessRequests returns the CALLER'S OWN requests (every
+  // status, full history) — the "My Requests" view. Self-fenced exactly
+  // like ListMyActiveSupportAccessGrants: the caller is the authenticated
+  // identity, never a request field.
+  rpc ListMySupportAccessRequests(ListMySupportAccessRequestsRequest) returns (ListMySupportAccessRequestsResponse);
 }
 
 // SupportAccessScope maps onto the role the org guards will synthesize
@@ -174,4 +207,118 @@ message ListMyActiveSupportAccessGrantsRequest {}
 
 message ListMyActiveSupportAccessGrantsResponse {
   repeated MyActiveGrant grants = 1;
+}
+
+// ===================================================================
+// Support access REQUESTS — request / approve / deny
+// ===================================================================
+
+// SupportAccessRequestStatus is the request's own lifecycle — separate
+// from SupportAccessScope/anything grant-related. Terminal states are
+// approved/denied; there is no stored "expired" value (a request whose
+// review window has lapsed simply stops appearing in the pending queue —
+// see request_expires_at below).
+enum SupportAccessRequestStatus {
+  SUPPORT_ACCESS_REQUEST_STATUS_UNSPECIFIED = 0;
+  SUPPORT_ACCESS_REQUEST_STATUS_PENDING = 1;
+  SUPPORT_ACCESS_REQUEST_STATUS_APPROVED = 2;
+  SUPPORT_ACCESS_REQUEST_STATUS_DENIED = 3;
+}
+
+// SupportAccessRequest is one request for peer-reviewed support access.
+// Unlike SupportAccessGrant (self-list vs operator-list split), this one
+// message shape serves both ListPendingSupportAccessRequests (operator
+// queue) and ListMySupportAccessRequests (self history) — a requester is
+// always entitled to see their own full request, and an operator needs
+// the same fields to decide it, so there is no leaner/richer split here.
+message SupportAccessRequest {
+  string id = 1;
+  string account_id = 2;
+  // The platform staffer who submitted this request — always the caller
+  // of RequestSupportAccess, never a request field on that RPC.
+  string requested_by = 3;
+  SupportAccessScope scope = 4;
+  // Required, non-empty after trimming. Carried into the resulting
+  // grant's own audit row verbatim once approved.
+  string reason = 5;
+  google.protobuf.Timestamp created_at = 6;
+  // The review-window deadline: once passed, a still-pending request can
+  // no longer be approved or denied (ApproveSupportAccessRequest/
+  // DenySupportAccessRequest refuse it) and it drops out of
+  // ListPendingSupportAccessRequests — the client derives an "Expired"
+  // badge from status==PENDING && request_expires_at in the past, there
+  // is no separate stored status value for it.
+  google.protobuf.Timestamp request_expires_at = 7;
+  SupportAccessRequestStatus status = 8;
+  // Unset while pending. The platform admin who approved or denied this —
+  // always someone other than requested_by.
+  string decided_by = 9;
+  google.protobuf.Timestamp decided_at = 10;
+  // Set only when status == DENIED — the reviewer's reason, shown to the
+  // requester verbatim.
+  string denial_reason = 11;
+  // Set only when status == APPROVED — the grant this request produced.
+  string resulting_grant_id = 12;
+  // Joined display fields, so neither queue needs a second lookup.
+  string org_name = 13;
+  string org_handle = 14;
+  string requested_by_name = 15;
+  string requested_by_email = 16;
+}
+
+message RequestSupportAccessRequest {
+  // The tenant organization access is being requested on. Same
+  // restriction as GrantSupportAccessRequest: personal accounts refused.
+  string account_id = 1;
+  SupportAccessScope scope = 2;
+  // Required, non-empty after trimming.
+  string reason = 3;
+  // The TTL the eventual grant will use if approved. Same clamping as
+  // GrantSupportAccessRequest.ttl_minutes: <= 0 -> 60-minute default,
+  // > 1440 -> clamped to 1440 (24h). The approver cannot change this —
+  // approve or deny as requested, no editing.
+  int64 ttl_minutes = 4;
+}
+
+message RequestSupportAccessResponse {
+  SupportAccessRequest request = 1;
+}
+
+message ApproveSupportAccessRequestRequest {
+  string request_id = 1;
+}
+
+message ApproveSupportAccessRequestResponse {
+  // The grant produced by approval — reuses the existing message; an
+  // approved request's result genuinely IS a SupportAccessGrant, not a
+  // parallel type.
+  SupportAccessGrant grant = 1;
+}
+
+message DenySupportAccessRequestRequest {
+  string request_id = 1;
+  // Required, non-empty after trimming — shown to the requester verbatim.
+  string reason = 2;
+}
+
+message DenySupportAccessRequestResponse {
+  SupportAccessRequest request = 1;
+}
+
+message ListPendingSupportAccessRequestsRequest {
+  // Page size; <= 0 or > 200 -> 50.
+  int32 limit = 1;
+}
+
+message ListPendingSupportAccessRequestsResponse {
+  repeated SupportAccessRequest requests = 1;
+}
+
+message ListMySupportAccessRequestsRequest {
+  // Page size; <= 0 or > 200 -> 50.
+  int32 limit = 1;
+}
+
+message ListMySupportAccessRequestsResponse {
+  repeated SupportAccessRequest requests = 1;
 }
