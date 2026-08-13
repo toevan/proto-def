@@ -264,6 +264,10 @@ message SupportAccessRequest {
   string org_handle = 14;
   string requested_by_name = 15;
   string requested_by_email = 16;
+  // The TTL the resulting grant will carry, already clamped (default 1h,
+  // max 24h) at request time — fixed here, the approver cannot edit it.
+  // A reviewer needs this to judge scope+duration together, not just scope.
+  int32 requested_ttl_minutes = 17;
 }
 
 message RequestSupportAccessRequest {
