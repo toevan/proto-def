@@ -47,6 +47,14 @@ service AccountTagsService {
   // ListAccountsByTag enumerates the accounts that carry a given tag — the
   // "who has kl:qa" operator query. Newest first.
   rpc ListAccountsByTag(ListAccountsByTagRequest) returns (ListAccountsByTagResponse);
+
+  // ListKnownTags enumerates the DISTINCT live tag labels in use across the
+  // whole platform, optionally filtered by a substring — the vocabulary
+  // DISCOVERY query a search-as-you-type tag picker needs. Unlike
+  // ListAccountTags/ListAccountsByTag (both require already knowing an
+  // account or an exact tag), this answers "what tags exist at all".
+  // Ordered by usage (most-adopted first), then alphabetically.
+  rpc ListKnownTags(ListKnownTagsRequest) returns (ListKnownTagsResponse);
 }
 
 // AccountTag is the append-only tag record. Active ≡ revoked_at IS NULL AND
@@ -121,4 +129,25 @@ message ListAccountsByTagRequest {
 
 message ListAccountsByTagResponse {
   repeated AccountTag tags = 1;
+}
+
+message ListKnownTagsRequest {
+  // Optional substring match (case-insensitive); empty/unset returns the
+  // full known vocabulary up to `limit`.
+  string search = 1;
+  // Page size; <= 0 or > 200 ⇒ 50.
+  int32 limit = 2;
+}
+
+message ListKnownTagsResponse {
+  repeated KnownTag tags = 1;
+}
+
+// KnownTag is one entry in the platform's tag vocabulary — the label plus
+// how widely it's already in use, so a picker can distinguish an
+// established convention from a likely typo.
+message KnownTag {
+  string tag = 1;
+  // How many DISTINCT accounts currently carry this tag (live only).
+  int32 account_count = 2;
 }
