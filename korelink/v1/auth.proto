@@ -132,6 +132,14 @@ message AuthUser {
   // (case-insensitive GitHub-login match — users.username is never null).
   // 0 when never matched or not populated.
   int32 pr_count = 18;
+
+  // This user's own personal account_id (accounts.id where kind='personal',
+  // owner_user_id=this user) — every user has exactly one. Account-scoped
+  // operations (e.g. AccountTagsService) key on account_id, not user_id;
+  // this is what lets the platform-admin Users page attach one to a user
+  // without a second resolver round-trip. Empty unless this RPC populates
+  // it (same "zero unless populated" convention as organizations/pr_count).
+  string personal_account_id = 19;
 }
 
 // One team-org membership, as seen from the platform-admin Users listing
