@@ -110,6 +110,13 @@ message Org {
   // anywhere server-side (no trialing subscription status, no trial_ends_at
   // column) — a client showing "Trial" today is fabricating it.
   BillingStatus billing_status = 16;
+
+  // The personal account owner's OWN plan ("free"/"pro"/"max", users.plan —
+  // a different enum axis than plan_config.plan/OrgPlan above, which is
+  // meaningless on a personal row). Empty for team accounts, or where the
+  // RPC didn't join it (same zero-unless-populated convention as
+  // violation_count/pr_count above).
+  string owner_plan = 17;
 }
 
 enum BillingStatus {
