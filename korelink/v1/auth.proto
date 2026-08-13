@@ -116,24 +116,31 @@ message AuthUser {
   google.protobuf.Timestamp moderation_suspended_until = 16;
 
   // Real per-user aggregates for the platform-admin Users table
-  // (ListAllUsers) — zero/empty/UNSPECIFIED unless that RPC populates
-  // them, same "zero unless populated" convention as Org.violation_count/
-  // pr_count (org.proto). Every other AuthUser-returning RPC (GetCurrentUser
-  // etc.) leaves these at their wire default.
+  // (ListAllUsers) — empty/zero unless that RPC populates them, same
+  // "zero unless populated" convention as Org.violation_count/pr_count
+  // (org.proto). Every other AuthUser-returning RPC (GetCurrentUser etc.)
+  // leaves these at their wire default.
   //
-  // The user's most recently active TEAM org membership. A user may belong
-  // to zero team orgs (personal-only) or several; this is the one shown in
-  // a single-row admin table. Empty/UNSPECIFIED when no team membership
-  // exists at all — org_count says how many really exist.
-  string primary_org_name = 17;
-  string primary_org_handle = 18;
-  OrgRole primary_role = 19;
-  int32 org_count = 20;
+  // EVERY team org this user belongs to (a user may belong to zero, one,
+  // or several — a personal account is intentionally excluded, since it's
+  // trivial/uninformative for a platform admin), ordered most-recently-
+  // active first. Not just a single "primary" org: a user's full
+  // membership set is the whole point of a platform-admin roster.
+  repeated UserOrgMembership organizations = 17;
 
   // All-time PR count, matched via pr_checks.author = users.username
   // (case-insensitive GitHub-login match — users.username is never null).
   // 0 when never matched or not populated.
-  int32 pr_count = 21;
+  int32 pr_count = 18;
+}
+
+// One team-org membership, as seen from the platform-admin Users listing
+// (AuthUser.organizations) — the org's own display identity plus this
+// user's role within it.
+message UserOrgMembership {
+  string org_name = 1;
+  string org_handle = 2;
+  OrgRole role = 3;
 }
 
 message OAuthLoginRequest {
