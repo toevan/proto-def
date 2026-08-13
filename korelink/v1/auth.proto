@@ -6,6 +6,7 @@ option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelin
 
 import "google/protobuf/timestamp.proto";
 import "korelink/v1/moderation.proto";
+import "korelink/v1/org.proto";
 
 // ============================================
 // AuthService — OAuth2 + JWT Authentication
@@ -27,6 +28,11 @@ service AuthService {
 
   // Platform role management (super-admin only)
   rpc UpdatePlatformRole(UpdatePlatformRoleRequest) returns (UpdatePlatformRoleResponse);
+
+  // ListAllUsers returns platform-wide users for the platform-admin Users
+  // page. Admin-only (same tier as OrgService.ListAllOrgs — a platform-
+  // console listing, not a tenant-owned resource).
+  rpc ListAllUsers(ListAllUsersRequest) returns (ListAllUsersResponse);
 
   // Locale
   // ListSupportedLocales is UNAUTHENTICATED — the login screen and the marketing site both
@@ -108,6 +114,26 @@ message AuthUser {
   // BANNED (permanent) and for an open-ended suspension. A lapsed suspension
   // never reaches the client at all — the caller simply reads as unrestricted.
   google.protobuf.Timestamp moderation_suspended_until = 16;
+
+  // Real per-user aggregates for the platform-admin Users table
+  // (ListAllUsers) — zero/empty/UNSPECIFIED unless that RPC populates
+  // them, same "zero unless populated" convention as Org.violation_count/
+  // pr_count (org.proto). Every other AuthUser-returning RPC (GetCurrentUser
+  // etc.) leaves these at their wire default.
+  //
+  // The user's most recently active TEAM org membership. A user may belong
+  // to zero team orgs (personal-only) or several; this is the one shown in
+  // a single-row admin table. Empty/UNSPECIFIED when no team membership
+  // exists at all — org_count says how many really exist.
+  string primary_org_name = 17;
+  string primary_org_handle = 18;
+  OrgRole primary_role = 19;
+  int32 org_count = 20;
+
+  // All-time PR count, matched via pr_checks.author = users.username
+  // (case-insensitive GitHub-login match — users.username is never null).
+  // 0 when never matched or not populated.
+  int32 pr_count = 21;
 }
 
 message OAuthLoginRequest {
@@ -232,6 +258,18 @@ message UpdatePlatformRoleResponse {
   bool success = 1;
   string previous_role = 2;
   string new_role = 3;
+}
+
+// ---- Platform Admin: Users ----
+
+message ListAllUsersRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string search = 3;                                  // optional: matches name/email/username
+}
+message ListAllUsersResponse {
+  repeated AuthUser users = 1;
+  int32 total = 2;                                     // true platform-wide count matching the request's filters
 }
 
 // ---- Locale ----
