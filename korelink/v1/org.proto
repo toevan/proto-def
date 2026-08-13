@@ -5,6 +5,7 @@ package korelink.v1;
 option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
 
 import "google/protobuf/timestamp.proto";
+import "korelink/v1/moderation.proto";
 
 // ============================================
 // OrgService — Organization Management & Invitations
@@ -117,6 +118,25 @@ message Org {
   // RPC didn't join it (same zero-unless-populated convention as
   // violation_count/pr_count above).
   string owner_plan = 17;
+
+  // Moderation status of this account (the ACCOUNT axis — independent of any
+  // individual member's own user-level status). UNSPECIFIED except where the
+  // RPC populates it: ListMyOrgs and ListUserOrgs (both backed by the same
+  // self-service ListOrgsByUserID query — no other read path joins it, same
+  // zero-unless-populated convention as violation_count/pr_count above).
+  //
+  // ListMyOrgs additionally collapses FLAGGED to UNSPECIFIED before returning
+  // it — a flagged account is an internal watch marker, and an org's own
+  // members should not learn they're under quiet review, mirroring
+  // AuthUser.moderation_status's own non-leaky projection for the user axis.
+  // ListUserOrgs (the platform-admin surface) reports the raw status.
+  ModerationStatus moderation_status = 18;
+  // Required (non-empty) whenever moderation_status is SUSPENDED or BANNED;
+  // empty otherwise — same convention as AuthUser.moderation_reason.
+  string moderation_reason = 19;
+  // Only ever set for a live, time-boxed suspension; unset for a ban, an
+  // open-ended suspension, or when moderation_status isn't populated.
+  google.protobuf.Timestamp moderation_suspended_until = 20;
 }
 
 enum BillingStatus {
