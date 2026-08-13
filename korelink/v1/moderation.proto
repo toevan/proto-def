@@ -72,6 +72,26 @@ service ModerationService {
   // restricted with nothing recorded, and re-affirming the SAME status already
   // resolves the appeal.
   rpc ListModerationAppeals(ListModerationAppealsRequest) returns (ListModerationAppealsResponse);
+
+  // SubmitAccountModerationAppeal lets an ORG ADMIN of a RESTRICTED account
+  // appeal its suspension or ban — the ACCOUNT axis' twin of
+  // SubmitModerationAppeal above, with one structural difference: the subject
+  // (the account) is never the caller's own identity, so the request DOES
+  // carry an account_id, and the server authorizes the caller as that
+  // account's admin before accepting it. Unlike the user-axis appeal, this is
+  // NOT on the moderation-interceptor's allowlist — a caller whose OWN user
+  // account is separately restricted should resolve that first. Only a
+  // currently-restricted account may appeal, and only ONE appeal may be open
+  // at a time; an operator changing the account's status resolves the open
+  // appeal so the loop can repeat.
+  rpc SubmitAccountModerationAppeal(SubmitAccountModerationAppealRequest) returns (SubmitAccountModerationAppealResponse);
+
+  // ListAccountModerationAppeals is the OPERATOR queue for account-axis
+  // appeals — the twin of ListModerationAppeals. Platform-admin gated.
+  // Read-only for the same reason: a reviewer acts through
+  // SetAccountModeration, which resolves the open appeal in the same
+  // transaction.
+  rpc ListAccountModerationAppeals(ListAccountModerationAppealsRequest) returns (ListAccountModerationAppealsResponse);
 }
 
 // ModerationStatus is a single lifecycle state per subject.
@@ -238,4 +258,62 @@ message ListModerationAppealsRequest {
 
 message ListModerationAppealsResponse {
   repeated ModerationAppealSummary appeals = 1;
+}
+
+// AccountModerationAppeal is the lean shape returned to the submitting admin —
+// the account axis' twin of ModerationAppeal.
+message AccountModerationAppeal {
+  string id = 1;
+  string account_id = 2;
+  // The submitted appeal text, echoed back so the client can confirm what was
+  // sent.
+  string message = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message SubmitAccountModerationAppealRequest {
+  // Which account this appeal is for. Required — unlike the user-axis appeal,
+  // the subject is never the caller's own identity, so it cannot be inferred
+  // from auth claims.
+  string account_id = 1;
+  // The appeal text. Required, non-empty after trimming.
+  string message = 2;
+}
+
+message SubmitAccountModerationAppealResponse {
+  AccountModerationAppeal appeal = 1;
+}
+
+// AccountModerationAppealSummary is one row of the operator review queue for
+// account-axis appeals — the twin of ModerationAppealSummary, extended with
+// the SUBMITTING ADMIN's identity (subject and submitter are different
+// people on this axis, unlike the user-axis appeal).
+message AccountModerationAppealSummary {
+  string id = 1;
+  string account_id = 2;
+  // The restricted account's own identity, joined from accounts.
+  string account_name = 3;
+  string account_handle = 4;
+  // The admin who submitted the appeal on the account's behalf.
+  string submitted_by_user_id = 5;
+  string submitted_by_name = 6;
+  string submitted_by_email = 7;
+  // The appeal text, verbatim.
+  string message = 8;
+  // The restriction being appealed, as it stands NOW (a reviewer must decide
+  // against the current state, not the state at submission time).
+  ModerationStatus current_status = 9;
+  string current_reason = 10;
+  // Set when the current status is a time-boxed suspension; see AccountModeration.
+  google.protobuf.Timestamp current_suspended_until = 11;
+  google.protobuf.Timestamp created_at = 12;
+}
+
+message ListAccountModerationAppealsRequest {
+  // Page size; <= 0 or > 200 ⇒ 50.
+  int32 limit = 1;
+}
+
+message ListAccountModerationAppealsResponse {
+  repeated AccountModerationAppealSummary appeals = 1;
 }
