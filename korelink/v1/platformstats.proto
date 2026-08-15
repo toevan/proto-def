@@ -6,6 +6,7 @@ option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelin
 
 import "google/protobuf/timestamp.proto";
 import "korelink/v1/org.proto";
+import "korelink/v1/blueprint.proto";
 
 // ============================================
 // PlatformStatsService — aggregate, platform-wide metrics
@@ -30,6 +31,14 @@ service PlatformStatsService {
   // GetOverviewStats returns platform-wide aggregate metrics for the admin
   // overview dashboard. Admin-only.
   rpc GetOverviewStats(GetOverviewStatsRequest) returns (GetOverviewStatsResponse);
+
+  // GetPlatformAnalytics returns platform-wide aggregate metrics for the
+  // admin Analytics dashboard (scan volume, blueprint adoption/publishing,
+  // AI fix outcomes). A distinct RPC from GetOverviewStats — different page,
+  // different metrics — not a second copy of the same "grow one field at a
+  // time, only once real" discipline stated above, which applies here too.
+  // Admin-only.
+  rpc GetPlatformAnalytics(GetPlatformAnalyticsRequest) returns (GetPlatformAnalyticsResponse);
 }
 
 message GetOverviewStatsRequest {}
@@ -61,4 +70,76 @@ message PlanCount {
 message WeeklyOrgCount {
   google.protobuf.Timestamp week_start = 1;
   int32 total_orgs = 2;
+}
+
+message GetPlatformAnalyticsRequest {}
+
+// Tier a blueprint is presented under in admin/marketplace surfaces.
+// Derived server-side from (source, license) — see
+// internal/platformanalytics.ClassifyBlueprintTier for the exact rule and
+// its documented product basis (the marketplace page's access-model
+// explainer). Not a raw column; there is no single DB field for this.
+enum BlueprintTier {
+  BLUEPRINT_TIER_UNSPECIFIED = 0;
+  BLUEPRINT_TIER_OFFICIAL = 1;
+  BLUEPRINT_TIER_PREMIUM = 2;
+  BLUEPRINT_TIER_COMMUNITY = 3;
+}
+
+message GetPlatformAnalyticsResponse {
+  // All-time count of pr_checks that concluded a scan (status IN passed,
+  // warning, blocked) — mirrors DevWeekly's "concluded" convention.
+  int32 prs_scanned_total = 1;
+
+  // Trailing 7 ISO calendar weeks of scan volume + average violations per
+  // scanned PR, oldest first. Powers the Weekly PR Volume chart AND both
+  // the "this week" and Avg-Violations trend deltas — same 7-week window,
+  // one query, so the chart and the stat cards can never drift apart.
+  repeated WeeklyPRStat weekly_pr_stats = 2;
+
+  // Non-deleted blueprints with status=published.
+  int32 blueprints_published_total = 3;
+  // Same population, published_at >= start of the current calendar month.
+  int32 blueprints_published_month_to_date = 4;
+
+  // Active-adoption counts grouped by BlueprintType. Always sums to the
+  // total active-adoption count (client derives percentages from the
+  // counts, same as it already does).
+  repeated BlueprintTypeShare blueprint_adoption_by_type = 5;
+
+  // Top blueprints by active-adoption count, highest first.
+  repeated TopAdoptedBlueprint top_blueprints = 6;
+
+  // Fraction of AI-suggested-fix dispatches (manual apply, existing-PR
+  // apply, and org-level auto-fix — all three funnel into the same
+  // agent_runs dispatch, see ClassifyBlueprintTier's sibling doc in
+  // internal/platformanalytics) whose linked fix branch/PR ended up merged,
+  // for the current ISO week. Absent (not zero) when there were zero
+  // dispatches in the window — a metric with no denominator has no rate.
+  optional double ai_fix_merge_rate = 7;
+  // Same metric, prior ISO week — powers the trend delta. Absent under the
+  // same zero-denominator rule.
+  optional double ai_fix_merge_rate_prev = 8;
+}
+
+message WeeklyPRStat {
+  google.protobuf.Timestamp week_start = 1;
+  int32 scanned_count = 2;
+  double avg_violations = 3;
+}
+
+message BlueprintTypeShare {
+  BlueprintType type = 1;
+  int32 count = 2;
+}
+
+message TopAdoptedBlueprint {
+  string blueprint_id = 1;
+  string name = 2;
+  BlueprintTier tier = 3;
+  int32 adoption_count = 4;
+  // Adoption-event growth, current vs prior ISO week, as a fraction (e.g.
+  // 0.12 = +12%). Absent when there were zero adoptions in the prior week
+  // (no baseline to compare against), same zero-denominator rule as above.
+  optional double growth_pct = 5;
 }
