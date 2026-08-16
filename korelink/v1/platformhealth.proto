@@ -27,8 +27,9 @@ import "google/protobuf/timestamp.proto";
 service PlatformHealthService {
   // GetSystemHealth returns current status + trend history for every
   // monitored infra dependency and process, plus real per-service
-  // throughput metrics (indexer queue/throughput, Neo4j graph size,
-  // webhook queue depth) where a genuine data source exists. Admin-only.
+  // throughput metrics (indexer queue/throughput, Neo4j graph size, and
+  // every worker's Redis job-queue depth) where a genuine data source
+  // exists. Admin-only.
   rpc GetSystemHealth(GetSystemHealthRequest) returns (GetSystemHealthResponse);
 }
 
@@ -76,6 +77,10 @@ message GetSystemHealthResponse {
   // Absent until the low-frequency Neo4j graph-size sample has run at
   // least once, or if this request's own read of it fails.
   optional Neo4jGraphSize neo4j_graph_size = 3;
+  // Replaced by the generalized job_queues below (#112) — locked to stop a
+  // future field from reusing this tag with an incompatible wire type.
+  reserved 4;
+  reserved "webhook_queue";
   // One entry per worker's Redis job queue (repo/webhook/prgate/agent —
   // every non-server ServiceKind that actually owns a queue). A queue
   // whose own Redis stats read fails this request is simply absent from
