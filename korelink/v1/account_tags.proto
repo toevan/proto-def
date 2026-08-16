@@ -148,6 +148,14 @@ message ListKnownTagsResponse {
 // established convention from a likely typo.
 message KnownTag {
   string tag = 1;
-  // How many DISTINCT accounts currently carry this tag (live only).
+  // How many DISTINCT accounts currently carry this tag (live only). Zero
+  // for a documented catalog entry never yet assigned to any account —
+  // that is a legitimate value here, not an absent/unset field.
   int32 account_count = 2;
+  // Human-readable explanation of what this tag means, from the platform's
+  // documented tag catalog (account_tag_catalog). Absent for an ad-hoc tag
+  // that was free-typed via the picker's own "create new" affordance and
+  // was never added to the catalog — that is a legitimate state, not an
+  // error.
+  optional string description = 3;
 }
