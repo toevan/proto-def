@@ -76,9 +76,12 @@ message GetSystemHealthResponse {
   // Absent until the low-frequency Neo4j graph-size sample has run at
   // least once, or if this request's own read of it fails.
   optional Neo4jGraphSize neo4j_graph_size = 3;
-  // Absent if no webhook queue is configured, or if this request's own
-  // read of its Redis stats fails.
-  optional WebhookQueueHealth webhook_queue = 4;
+  // One entry per worker's Redis job queue (repo/webhook/prgate/agent —
+  // every non-server ServiceKind that actually owns a queue). A queue
+  // whose own Redis stats read fails this request is simply absent from
+  // the list — never fabricated, and never taking the other queues or
+  // any other part of this response down with it.
+  repeated ServiceJobQueueHealth job_queues = 5;
 }
 
 message ServiceHealthStatus {
@@ -117,10 +120,11 @@ message Neo4jGraphSize {
 }
 
 // Mirrors redisqueue.Queue.Stats' own return shape (pkg/db/redis/queue) —
-// the webhook worker's real, already-tested queue-introspection call, not
-// a new mechanism.
-message WebhookQueueHealth {
-  int64 pending = 1;
-  int64 processing = 2;
-  int64 failed = 3;
+// every worker's real, already-tested queue-introspection call, not a new
+// mechanism. One instance per worker queue (repo/webhook/prgate/agent).
+message ServiceJobQueueHealth {
+  ServiceKind service = 1;
+  int64 pending = 2;
+  int64 processing = 3;
+  int64 failed = 4;
 }
