@@ -69,13 +69,15 @@ enum HealthStatus {
 
 message GetSystemHealthResponse {
   repeated ServiceHealthStatus services = 1;
-  // Absent (not zero-valued) when the sampler has never successfully
-  // queried index_jobs — never fabricated.
+  // Absent (not zero-valued) if this request's own index_jobs read fails —
+  // a genuinely independent card from `services` above, never fabricated
+  // and never taking the rest of this response down with it.
   optional IndexerThroughput indexer = 2;
   // Absent until the low-frequency Neo4j graph-size sample has run at
-  // least once.
+  // least once, or if this request's own read of it fails.
   optional Neo4jGraphSize neo4j_graph_size = 3;
-  // Absent if the webhook queue's Redis stats call fails.
+  // Absent if no webhook queue is configured, or if this request's own
+  // read of its Redis stats fails.
   optional WebhookQueueHealth webhook_queue = 4;
 }
 
@@ -83,9 +85,10 @@ message ServiceHealthStatus {
   ServiceKind service = 1;
   HealthStatus status = 2;
   google.protobuf.Timestamp last_checked_at = 3;
-  // Fraction of samples in the trend window that succeeded (0.0-1.0).
-  // Absent when there are zero samples in the window (sampler hasn't run
-  // yet / brand-new deploy) — never fabricated as a false 1.0 "healthy".
+  // Percentage of samples in the trend window that succeeded (0-100, e.g.
+  // 99.5 for 99.5%), not a 0.0-1.0 fraction. Absent when there are zero
+  // samples in the window (sampler hasn't run yet / brand-new deploy) —
+  // never fabricated as a false 100 "healthy".
   optional double uptime_pct = 4;
   // Absent for the 5 process kinds, which are presence-based (no ping
   // latency to report).
@@ -95,6 +98,8 @@ message ServiceHealthStatus {
 
 message HealthTrendPoint {
   google.protobuf.Timestamp bucket_start = 1;
+  // Percentage (0-100), same convention as ServiceHealthStatus.uptime_pct.
+  // Absent when this hour bucket has zero samples.
   optional double uptime_pct = 2;
   optional double avg_latency_ms = 3;
 }
