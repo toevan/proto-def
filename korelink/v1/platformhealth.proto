@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package korelink.v1;
+
+option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ===================================================================
+// PlatformHealthService — infra + process liveness for the Platform
+// System Health dashboard
+// ===================================================================
+//
+// A distinct concern from PlatformStatsService (org/user/blueprint business
+// metrics) and PlatformConfigService (config propagation) — this is
+// "is the platform's own infrastructure up," backed by a periodic sampler
+// (internal/platformhealth) that pings Postgres/Redis/Neo4j/the object
+// store and reads the same per-process heartbeat PlatformConfigService's
+// convergence view already uses, storing bounded history so this can
+// report real uptime%/latency trends, not just an instantaneous check.
+//
+// Admin-only, single RPC — the response grows one field at a time as real
+// data backs it, same discipline as GetOverviewStatsResponse and
+// GetPlatformAnalyticsResponse: a metric with no real signal (e.g. the old
+// mocked page's "Requests/day," which nothing in this codebase computes
+// today) stays absent from the contract rather than a fabricated number.
+service PlatformHealthService {
+  // GetSystemHealth returns current status + trend history for every
+  // monitored infra dependency and process, plus real per-service
+  // throughput metrics (indexer queue/throughput, Neo4j graph size,
+  // webhook queue depth) where a genuine data source exists. Admin-only.
+  rpc GetSystemHealth(GetSystemHealthRequest) returns (GetSystemHealthResponse);
+}
+
+message GetSystemHealthRequest {
+  // Trend window in hours. 0 defaults to 24 server-side.
+  int32 window_hours = 1;
+}
+
+// ServiceKind enumerates every infra dependency and process this platform
+// monitors. The 4 infra kinds are pinged directly; the 5 process kinds are
+// read from PlatformConfigService's own per-process Redis heartbeat
+// (ConfigChangeBus.ReadAppliedStatuses) — a process is "up" iff it has a
+// live (non-expired) heartbeat, the same signal the convergence dashboard
+// already relies on.
+enum ServiceKind {
+  SERVICE_KIND_UNSPECIFIED = 0;
+  SERVICE_KIND_POSTGRES = 1;
+  SERVICE_KIND_REDIS = 2;
+  SERVICE_KIND_NEO4J = 3;
+  SERVICE_KIND_OBJECT_STORE = 4;
+  SERVICE_KIND_SERVER = 5;
+  SERVICE_KIND_WORKER_AGENT = 6;
+  SERVICE_KIND_WORKER_PRGATE = 7;
+  SERVICE_KIND_WORKER_REPO = 8;
+  SERVICE_KIND_WORKER_WEBHOOK = 9;
+}
+
+// HealthStatus: UP = last sample succeeded. DOWN = last sample failed.
+// DEGRADED = last sample succeeded but uptime_pct over the trend window is
+// below threshold (currently up, but has been flaky recently) — a real,
+// defined rule (internal/platformhealth.Service), not an arbitrary label.
+enum HealthStatus {
+  HEALTH_STATUS_UNSPECIFIED = 0;
+  HEALTH_STATUS_UP = 1;
+  HEALTH_STATUS_DEGRADED = 2;
+  HEALTH_STATUS_DOWN = 3;
+}
+
+message GetSystemHealthResponse {
+  repeated ServiceHealthStatus services = 1;
+  // Absent (not zero-valued) when the sampler has never successfully
+  // queried index_jobs — never fabricated.
+  optional IndexerThroughput indexer = 2;
+  // Absent until the low-frequency Neo4j graph-size sample has run at
+  // least once.
+  optional Neo4jGraphSize neo4j_graph_size = 3;
+  // Absent if the webhook queue's Redis stats call fails.
+  optional WebhookQueueHealth webhook_queue = 4;
+}
+
+message ServiceHealthStatus {
+  ServiceKind service = 1;
+  HealthStatus status = 2;
+  google.protobuf.Timestamp last_checked_at = 3;
+  // Fraction of samples in the trend window that succeeded (0.0-1.0).
+  // Absent when there are zero samples in the window (sampler hasn't run
+  // yet / brand-new deploy) — never fabricated as a false 1.0 "healthy".
+  optional double uptime_pct = 4;
+  // Absent for the 5 process kinds, which are presence-based (no ping
+  // latency to report).
+  optional double avg_latency_ms = 5;
+  repeated HealthTrendPoint trend = 6;
+}
+
+message HealthTrendPoint {
+  google.protobuf.Timestamp bucket_start = 1;
+  optional double uptime_pct = 2;
+  optional double avg_latency_ms = 3;
+}
+
+message IndexerThroughput {
+  int32 queue_depth = 1;
+  int32 indexed_last_24h = 2;
+  optional double avg_duration_seconds = 3;
+}
+
+message Neo4jGraphSize {
+  int64 node_count = 1;
+  int64 edge_count = 2;
+  google.protobuf.Timestamp sampled_at = 3;
+}
+
+// Mirrors redisqueue.Queue.Stats' own return shape (pkg/db/redis/queue) —
+// the webhook worker's real, already-tested queue-introspection call, not
+// a new mechanism.
+message WebhookQueueHealth {
+  int64 pending = 1;
+  int64 processing = 2;
+  int64 failed = 3;
+}
