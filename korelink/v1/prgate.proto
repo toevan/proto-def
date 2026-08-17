@@ -353,6 +353,19 @@ message ExceptionBrief {
   int32 days_remaining = 3;
 }
 
+// BuildValidatePolicy selects how the Apply Fix agent's Phase B
+// (build/lint validator) judges an applied fix before it is pushed.
+// Mirrors the server's buildvalidate.BuildValidatePolicy string enum;
+// storage is the same agent_configs.settings JSON blob as
+// auto_fix_enabled (the fixapply dispatcher path reads it from there
+// with repo > project > org scope inheritance).
+enum BuildValidatePolicy {
+  BUILD_VALIDATE_POLICY_UNSPECIFIED = 0;  // treated as DIFF (the default)
+  BUILD_VALIDATE_POLICY_DIFF = 1;         // block only errors the fix introduced (baseline-compared)
+  BUILD_VALIDATE_POLICY_STRICT = 2;       // block on ANY analyzer error in the post-fix tree
+  BUILD_VALIDATE_POLICY_OFF = 3;          // skip Phase B entirely (org's CI owns validation)
+}
+
 // ReevaluatePRsMode controls whether/how a repo's OPEN PRs are re-evaluated
 // after a blueprint adoption/unadoption changes its constraint set. (The gate
 // always reads the CURRENT adopted blueprints live on each run; this only
@@ -472,6 +485,15 @@ message PRGateConfig {
   // ASK = show the re-evaluate dialog, AUTO = call RegatePullRequests for all
   // open PRs. Default ASK (UNSPECIFIED is treated as ASK).
   ReevaluatePRsMode reevaluate_prs_on_blueprint_change = 17;
+
+  // How the Apply Fix agent's Phase B build validator judges an applied
+  // fix (see BuildValidatePolicy). Federated like auto_fix_enabled /
+  // auto_merge_on_convergence: served and updated through this config
+  // message, stored in agent_configs.settings JSON under
+  // agent_type='canvas_detail' where fixapply.OrgConfigResolver reads
+  // it. UNSPECIFIED is treated as DIFF on write and never served (the
+  // server always answers a concrete policy).
+  BuildValidatePolicy build_validate_policy = 18;
 }
 
 message PRCheckSummary {
