@@ -47,6 +47,18 @@ service PRGateService {
   rpc GetPRGateConfig(GetPRGateConfigRequest) returns (GetPRGateConfigResponse);
   rpc UpdatePRGateConfig(UpdatePRGateConfigRequest) returns (UpdatePRGateConfigResponse);
 
+  // Per-REPO overrides of the Apply Fix keys (auto_fix_enabled,
+  // auto_merge_on_convergence, build_validate_policy) — Apply Fix config
+  // phase 2. Overrides are TRI-STATE per key: an absent field means
+  // "inherit the org value" and the resolver merges key-by-key
+  // (repo > project > org), so an override row carrying one key never
+  // resets the others. Storage: repo-scoped agent_configs rows under
+  // agent_type='canvas_detail' — the same rows the dispatch-path
+  // resolver reads. List is org-member read; Set is org-admin write,
+  // audited; setting every field to inherit clears the override.
+  rpc ListRepoAutoFixOverrides(ListRepoAutoFixOverridesRequest) returns (ListRepoAutoFixOverridesResponse);
+  rpc SetRepoAutoFixOverride(SetRepoAutoFixOverrideRequest) returns (SetRepoAutoFixOverrideResponse);
+
   // Re-evaluate (re-gate) a repo's OPEN PRs — used after a blueprint
   // adoption/unadoption changes the constraint set. Enqueues a fresh
   // deferred-full PR check per selected PR; empty pr_numbers = ALL open PRs.
@@ -620,6 +632,36 @@ message GetViolationResponse { EnrichedViolation violation = 1; }
 
 message GetPRGateConfigRequest { string org_id = 1; }
 message GetPRGateConfigResponse { PRGateConfig config = 1; }
+
+// One repo's Apply Fix override state. Field presence IS the tri-state:
+// an absent optional bool / an UNSPECIFIED policy means "inherit the org
+// value". repo_name is display-joined server-side from repositories.
+message RepoAutoFixOverride {
+  string repo_id = 1;
+  string repo_name = 2;
+  optional bool auto_fix_enabled = 3;
+  optional bool auto_merge_on_convergence = 4;
+  BuildValidatePolicy build_validate_policy = 5;  // UNSPECIFIED = inherit
+}
+
+message ListRepoAutoFixOverridesRequest { string org_id = 1; }
+message ListRepoAutoFixOverridesResponse {
+  // Only repos with at least one overridden key appear here.
+  repeated RepoAutoFixOverride overrides = 1;
+}
+
+message SetRepoAutoFixOverrideRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  optional bool auto_fix_enabled = 3;
+  optional bool auto_merge_on_convergence = 4;
+  BuildValidatePolicy build_validate_policy = 5;  // UNSPECIFIED = inherit
+}
+message SetRepoAutoFixOverrideResponse {
+  // The persisted override; unset when the write cleared the override
+  // (every field was inherit).
+  RepoAutoFixOverride override = 1;
+}
 
 message UpdatePRGateConfigRequest {
   string org_id = 1;
