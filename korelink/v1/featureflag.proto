@@ -51,6 +51,17 @@ enum FlagAuditAction {
 
 // ── Core Messages ──
 
+// TagList wraps a repeated string as a MESSAGE field specifically so it carries proto3's
+// native message-field presence (nil vs. an explicit, possibly-empty message) — a bare
+// `repeated string` cannot distinguish "not set" from "set to empty" on the wire, which
+// would make it impossible for UpdateFlagRequest to ever CLEAR a tag list back to "no
+// restriction" (the same gap this proto's own targeting_rules/rollout_percentage fields
+// already have — deliberately not repeated here for a field admins will genuinely want to
+// clear).
+message TagList {
+  repeated string tags = 1;
+}
+
 message FeatureFlag {
   string id = 1;
   string org_id = 2;                               // empty = global flag
@@ -66,6 +77,16 @@ message FeatureFlag {
   string updated_by = 12;
   google.protobuf.Timestamp created_at = 13;
   google.protobuf.Timestamp updated_at = 14;
+
+  // allowed_tags/blocked_tags gate this flag on the account-tags substrate (the same
+  // tags assignable to an org elsewhere in platform-admin). Evaluated per-org at read
+  // time — see EvalFlag: a blocked-tag match always wins over an allowed-tag match; an
+  // empty allowed_tags list means "no allow-list restriction" (falls through to
+  // rollout_percentage), a non-empty one means the org needs at least one of these
+  // tags to receive the flag. Both empty = tag gating not configured for this flag.
+  // Always present on read (never nil) — empty tags means "no gating", not "unknown".
+  TagList allowed_tags = 15;
+  TagList blocked_tags = 16;
 }
 
 message FlagUpdate {
@@ -121,6 +142,8 @@ message CreateFlagRequest {
   bool enabled = 7;
   string targeting_rules = 8;                       // JSON string
   int32 rollout_percentage = 9;
+  TagList allowed_tags = 10;                        // see FeatureFlag.allowed_tags; absent = none
+  TagList blocked_tags = 11;                        // see FeatureFlag.blocked_tags; absent = none
 }
 
 message CreateFlagResponse {
@@ -160,6 +183,11 @@ message UpdateFlagRequest {
   google.protobuf.Value default_value = 4;
   string targeting_rules = 5;                       // JSON string
   int32 rollout_percentage = 6;
+  // nil = leave this list untouched; a present TagList (even TagList{}) REPLACES the
+  // flag's current list with exactly the tags it carries — the only way to explicitly
+  // clear a list back to "no restriction" is to send a present-but-empty TagList.
+  TagList allowed_tags = 7;
+  TagList blocked_tags = 8;
 }
 
 message UpdateFlagResponse {
