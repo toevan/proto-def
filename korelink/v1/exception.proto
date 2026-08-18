@@ -56,6 +56,11 @@ message ExceptionRequest {
   // Audit
   google.protobuf.Timestamp created_at = 20;
   google.protobuf.Timestamp resolved_at = 21;  // when fully approved or rejected
+
+  // Path-scoped rows only: the repo-relative file/directory this exception
+  // covers (subtree-prefix suppression). Empty for every other lineage.
+  // rule_id is '*' on an all-rules path waiver.
+  string path_pattern = 22;
 }
 
 enum ExceptionStatus {
@@ -117,6 +122,17 @@ message CreateExceptionRequest {
   // unified.
   string evidence_id = 5;
 
+  // Path-scoped root [NEW]: a waiver for one file or a whole directory
+  // subtree on ONE repo — the canvas "exempt this file/directory"
+  // false-positive mitigation. Mutually exclusive with the other roots:
+  // exactly one of the four must be set. The server normalizes the path
+  // (repo-relative, no trailing slash, no traversal), refuses the repository
+  // root, and stores rule_id '*' when [PathScope.rule_id] is empty (every
+  // rule under the path). Suppression is subtree-prefix: the path itself and
+  // everything under it. Same risk/approval/audit pipeline as the other
+  // roots; all-rules waivers enter at HIGH risk (strictest approval chain).
+  PathScope path_scope = 7;
+
   // Rule-scoped root [NEW]: a PREEMPTIVE exception for one blueprint rule
   // across chosen repos — no originating violation or evidence row. Mutually
   // exclusive with [violation_id]/[evidence_id]: exactly one of the three
@@ -128,6 +144,15 @@ message CreateExceptionRequest {
   // roots. Repos that already carry a pending/approved exception for the rule
   // are skipped rather than duplicated.
   RuleScope rule_scope = 6;
+}
+
+message PathScope {
+  string repo_id = 1;
+  // Repo-relative file or directory path (no leading/trailing slash). A
+  // directory covers its whole subtree.
+  string path = 2;
+  // Empty = every rule under the path (stored as the '*' sentinel).
+  string rule_id = 3;
 }
 
 message RuleScope {
