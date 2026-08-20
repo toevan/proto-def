@@ -1941,7 +1941,7 @@ message ApplyFixViaAgentRequest {
   string violation_id = 1;
 
   // Optional branch name. When unset, the agent generates one of
-  // the form `korelink/fix-violation-<short_id>` so concurrent
+  // the form `toevan/fix-violation-<short_id>` so concurrent
   // ApplyFixViaAgent calls for the same violation collide on the
   // canonical name (idempotency anchor).
   string branch_name = 3;
