@@ -115,13 +115,13 @@ enum TagSource {
   TAG_SOURCE_CATALOG = 1;
   // Inherited from a referenced type that carries the tag.
   TAG_SOURCE_TYPE_PROPAGATION = 2;
-  // Force-added by .korelink/tags.yaml.
+  // Force-added by .toevan/tags.yaml.
   TAG_SOURCE_OVERRIDE_ADD = 3;
 }
 
 // ── OverrideEntry ──
 //
-// Per-symbol catalog adjustment loaded from .korelink/tags.yaml at
+// Per-symbol catalog adjustment loaded from .toevan/tags.yaml at
 // repo root. Resolved AFTER catalog matching and type propagation,
 // so overrides have last word. Every entry MUST carry a reason —
 // surfaced in audit logs and the audit blueprint's INFO violations.

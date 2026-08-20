@@ -1004,7 +1004,7 @@ message GetViolationDetailReply {
   // suppressing a tag isn't a meaningful operation.
   //
   // The canvas "Suppress this tag" action uses this value as the
-  // `symbol:` key in `.korelink/tags.yaml`. The per-repo override
+  // `symbol:` key in `.toevan/tags.yaml`. The per-repo override
   // mechanism matches on the full SymbolID (not the display name)
   // so the same value MUST round-trip from the indexer's emitted
   // [FieldDescriptor.SymbolID] through here for the override to take
@@ -1385,7 +1385,7 @@ message EvidenceLocation {
   // symbol_id is the deterministic graph.Symbol.id at the
   // location, of the form `<filePath>:<kind>:<qualifier>`.
   // Distinct from `symbol` (display name): symbol_id is the key
-  // the per-repo `.korelink/tags.yaml` override file matches
+  // the per-repo `.toevan/tags.yaml` override file matches
   // against for the "Suppress this tag" action.
   string symbol_id = 6;
   // category_id is the catalog category id (e.g.
@@ -1948,7 +1948,7 @@ message ApplyFixViaAgentRequest {
 
   // Optional client-provided deep-link URL pointing back at the
   // violation in the canvas (e.g.,
-  // `https://app.korelink.dev/canvas/<project>?violation_id=<id>`).
+  // `https://app.toevan.dev/canvas/<project>?violation_id=<id>`).
   // The server forwards this verbatim into the auto-generated PR
   // body so reviewers can click through from GitHub to the
   // violation's full context (rule definition, evidence trail,
