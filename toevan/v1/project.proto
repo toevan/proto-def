@@ -5,8 +5,8 @@ package toevan.v1;
 option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 import "google/protobuf/timestamp.proto";
-import "korelink/v1/org.proto";
-import "korelink/v1/blueprint.proto";
+import "toevan/v1/org.proto";
+import "toevan/v1/blueprint.proto";
 
 // ============================================
 // ProjectService — Project CRUD, Members, Blueprints, Repos

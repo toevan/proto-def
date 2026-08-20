@@ -5,8 +5,8 @@ package toevan.v1;
 option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 import "google/protobuf/timestamp.proto";
-import "korelink/v1/types.proto";
-import "korelink/v1/agent.proto";
+import "toevan/v1/types.proto";
+import "toevan/v1/agent.proto";
 
 // ============================================
 // BuildService — Code Generation, Build Orchestration, Previews
