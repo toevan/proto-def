@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-package korelink.v1;
+package toevan.v1;
 
 import "google/protobuf/timestamp.proto";
 import "korelink/v1/auth.proto";
 import "korelink/v1/org.proto";
 
-option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 // ===================================================================
 // BillingService — self-serve subscription lifecycle for an organisation

@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package korelink.v1;
+package toevan.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/kore-services/api-server/gen/korelink/v1;korelinkv1";
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 // AI usage telemetry read surface over ai_usage_events — one row per completed
 // agentloop run (PRD_ORG_BYOK_MULTIPROVIDER_AI §11). Best-effort observability,
