@@ -140,6 +140,10 @@ message AttentionItem {
   string action_url = 5;                 // deep link in the UI
   string entity_id = 6;                  // ID of the related entity
   google.protobuf.Timestamp created_at = 7;
+  // The repository this item belongs to, as its own field: the client
+  // renders it as a badge. Empty when the item has no repo affiliation
+  // (blueprint updates, compliance checklist). Never composed into title.
+  string repo_name = 8;
 }
 
 enum AttentionItemType {
