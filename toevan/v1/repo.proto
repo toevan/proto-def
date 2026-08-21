@@ -28,6 +28,11 @@ service RepoService {
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
   rpc StreamIndexProgress(StreamIndexProgressRequest) returns (stream IndexProgressUpdate);
   rpc StreamBatchIndexProgress(StreamBatchIndexProgressRequest) returns (stream IndexProgressUpdate);
+  // ListActiveIndexJobs returns every IN-FLIGHT index job for the caller's
+  // org — the discovery surface the activity panel uses to pick up
+  // server-triggered runs (push webhooks, catch-up sweeps) it never
+  // dispatched itself and would otherwise never see.
+  rpc ListActiveIndexJobs(ListActiveIndexJobsRequest) returns (ListActiveIndexJobsResponse);
   rpc GetRepoProgressMetrics(GetRepoProgressMetricsRequest) returns (GetRepoProgressMetricsResponse);
 
   // Server-stream of repo-state changes for an ORG, wrapped in a frame envelope
@@ -431,6 +436,21 @@ message StreamIndexProgressRequest { string job_id = 1; }
 
 message StreamBatchIndexProgressRequest {
   repeated string job_ids = 1;          // track multiple jobs over a single stream
+}
+
+message ListActiveIndexJobsRequest {}
+message ListActiveIndexJobsResponse { repeated ActiveIndexJob jobs = 1; }
+
+// One in-flight index job, with enough identity to track it live
+// (StreamBatchIndexProgress by job_id) and render it (repo name, trigger).
+message ActiveIndexJob {
+  string job_id = 1;
+  string repo_id = 2;
+  string repo_name = 3;                 // repositories.full_name
+  string phase = 4;                     // index_job_phase value
+  float progress = 5;
+  string trigger = 6;                   // user | push | catch_up | onboard | ...
+  google.protobuf.Timestamp started_at = 7;
 }
 
 message GetRepoProgressMetricsRequest {}
