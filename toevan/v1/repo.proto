@@ -178,6 +178,8 @@ enum IndexPhase {
   INDEX_PHASE_DIFFING = 10;
   INDEX_PHASE_RIPPLE_ANALYSIS = 11;
   INDEX_PHASE_INCREMENTAL_INDEXING = 12;
+  // Terminal: a newer run took over; this run's results were discarded. Not a failure.
+  INDEX_PHASE_SUPERSEDED = 13;
 }
 
 message LanguageLspStatus {
