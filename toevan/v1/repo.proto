@@ -438,7 +438,7 @@ message StreamBatchIndexProgressRequest {
   repeated string job_ids = 1;          // track multiple jobs over a single stream
 }
 
-message ListActiveIndexJobsRequest {}
+message ListActiveIndexJobsRequest { string org_id = 1; }
 message ListActiveIndexJobsResponse { repeated ActiveIndexJob jobs = 1; }
 
 // One in-flight index job, with enough identity to track it live
