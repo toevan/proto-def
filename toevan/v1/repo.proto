@@ -448,7 +448,7 @@ message ListActiveIndexJobsResponse { repeated ActiveIndexJob jobs = 1; }
 message ActiveIndexJob {
   string job_id = 1;
   string repo_id = 2;
-  string repo_name = 3;                 // repositories.full_name
+  string repo_name = 3;                 // repositories.name (SHORT org-unique handle; the panel is org-scoped so the owner is implicit)
   string phase = 4;                     // index_job_phase value
   float progress = 5;
   string trigger = 6;                   // user | push | catch_up | onboard | ...
