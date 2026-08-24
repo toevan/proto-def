@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// EnterpriseLeadsService — super-admin read + CRM-lite triage
+// ============================================
+//
+// Backs the platform-admin view of enterprise "contact sales" leads captured
+// from the public marketing site (POST /v1/public/contact). Deliberately its
+// own service, not folded into PlatformConfigService (which is runtime config
+// knobs) or PlatformStatsService (aggregate metrics): a lead is a business
+// record with its own read + lifecycle-mutation surface, so a purpose-built,
+// super-admin-gated service is the honest home.
+//
+// ALL RPCs require the platform SUPER-ADMIN role (the handler enforces
+// guards.RequireSuperAdmin) — lead PII (names, work emails, messages) is
+// staff-only.
+//
+// The enum-ish fields (engineer_count, driver, status, source) are carried as
+// STRINGS, not proto enums, mirroring the store's text columns and its
+// documented allowed-set: it keeps one source of truth for the vocabulary (the
+// Go allowed-set + the DB CHECK) instead of a third copy that can drift, the
+// same choice the public pricing surface made for axis/plan.
+service EnterpriseLeadsService {
+  // List captured leads, newest-first, paginated, optionally filtered by status.
+  rpc ListEnterpriseLeads(ListEnterpriseLeadsRequest) returns (ListEnterpriseLeadsResponse);
+  // Transition a lead's CRM-lite lifecycle status.
+  rpc UpdateEnterpriseLeadStatus(UpdateEnterpriseLeadStatusRequest) returns (UpdateEnterpriseLeadStatusResponse);
+  // Set (or clear) a lead's internal CRM-lite notes.
+  rpc UpdateEnterpriseLeadNotes(UpdateEnterpriseLeadNotesRequest) returns (UpdateEnterpriseLeadNotesResponse);
+}
+
+// EnterpriseLead is one captured lead. There is deliberately NO submitter IP /
+// user-agent field: the IP is a transient rate-limit key at the edge only and
+// is never stored (GDPR data minimisation).
+message EnterpriseLead {
+  string id = 1;
+  string name = 2;
+  string work_email = 3;
+  string company = 4;
+  string engineer_count = 5;                 // ICP bucket: lt_20 | 20_50 | 50_100 | 100_plus
+  string driver = 6;                         // dora | eu_ai_act | soc2 | other, or "" when omitted
+  string message = 7;
+  bool free_email = 8;                        // tagged (never rejected) when work_email is a free provider
+  string source = 9;                         // controlled vocab: landing_pricing
+  string status = 10;                        // new | contacted | qualified | converted | rejected
+  string notes = 11;                         // internal CRM-lite notes, "" when unset
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+message ListEnterpriseLeadsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string status_filter = 3;                  // optional: "" = every status
+}
+message ListEnterpriseLeadsResponse {
+  repeated EnterpriseLead leads = 1;
+  int32 total = 2;
+}
+
+message UpdateEnterpriseLeadStatusRequest {
+  string id = 1;
+  string status = 2;                         // one of the lifecycle statuses
+}
+message UpdateEnterpriseLeadStatusResponse {
+  EnterpriseLead lead = 1;
+}
+
+message UpdateEnterpriseLeadNotesRequest {
+  string id = 1;
+  string notes = 2;                          // "" clears the notes
+}
+message UpdateEnterpriseLeadNotesResponse {
+  EnterpriseLead lead = 1;
+}
