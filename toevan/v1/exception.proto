@@ -14,6 +14,7 @@ service ExceptionService {
   rpc CreateException(CreateExceptionRequest) returns (CreateExceptionResponse);
   rpc GetException(GetExceptionRequest) returns (GetExceptionResponse);
   rpc ListExceptions(ListExceptionsRequest) returns (ListExceptionsResponse);
+  rpc GetExceptionMetrics(GetExceptionMetricsRequest) returns (GetExceptionMetricsResponse); // org-wide metric-strip aggregates
   rpc ApproveException(ApproveExceptionRequest) returns (ApproveExceptionResponse);
   rpc RejectException(RejectExceptionRequest) returns (RejectExceptionResponse);
   rpc EscalateException(EscalateExceptionRequest) returns (EscalateExceptionResponse); // [NEW — audit fix]
@@ -188,6 +189,24 @@ message ListExceptionsResponse {
   repeated ExceptionRequest exceptions = 1;
   int32 total = 2;
 }
+
+// Org-wide aggregate counts for the exceptions metric strip. Computed
+// server-side over ALL of an org's exceptions (not the paginated list page), so
+// the headline numbers are true totals rather than a per-page approximation.
+message GetExceptionMetricsRequest { string org_id = 1; }
+message ExceptionMetrics {
+  int32 total = 1;
+  int32 pending = 2;
+  int32 approved = 3;
+  int32 rejected = 4;
+  // Denominator for the average: exceptions with a resolved_at and an
+  // approved/rejected status. Zero means the average is not yet meaningful.
+  int32 resolved_count = 5;
+  // Mean review time (resolved_at - created_at) over the resolved exceptions,
+  // in whole seconds. Zero when resolved_count is zero.
+  int64 avg_review_seconds = 6;
+}
+message GetExceptionMetricsResponse { ExceptionMetrics metrics = 1; }
 
 message ApproveExceptionRequest {
   string exception_id = 1;
