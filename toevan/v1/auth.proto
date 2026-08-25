@@ -43,6 +43,21 @@ service AuthService {
   // SeedUserLocale records the locale a user arrived through, and takes effect only if they
   // have never expressed a preference. Idempotent and safe to call on every sign-in.
   rpc SeedUserLocale(SeedUserLocaleRequest) returns (SeedUserLocaleResponse);
+
+  // Appearance theme
+  // SetUserTheme records the user's explicit appearance-theme choice (system follows the
+  // device; light/dark are overrides). Authenticated; scoped to the caller.
+  rpc SetUserTheme(SetUserThemeRequest) returns (SetUserThemeResponse);
+}
+
+// User appearance theme. SYSTEM follows the device colour scheme; LIGHT and DARK are
+// explicit overrides. UNSPECIFIED is the wire default only and is treated as SYSTEM; the
+// server never stores or returns it (the column defaults to 'system').
+enum ThemeMode {
+  THEME_MODE_UNSPECIFIED = 0;
+  THEME_MODE_SYSTEM = 1;
+  THEME_MODE_LIGHT = 2;
+  THEME_MODE_DARK = 3;
 }
 
 // User-level plan — governs individual user access and personal feature limits.
@@ -140,6 +155,11 @@ message AuthUser {
   // without a second resolver round-trip. Empty unless this RPC populates
   // it (same "zero unless populated" convention as organizations/pr_count).
   string personal_account_id = 19;
+
+  // The user's stored appearance-theme preference, so the client can adopt the
+  // account's choice on login and have it follow the user across devices. Always
+  // set (defaults to SYSTEM); UNSPECIFIED never appears on the wire.
+  ThemeMode theme_mode = 20;
 }
 
 // One team-org membership, as seen from the platform-admin Users listing
@@ -322,4 +342,13 @@ message SeedUserLocaleResponse {
   bool seeded = 1;
   string locale = 2;                                // the stored preference after this call
   string effective_locale = 3;                      // what to render
+}
+
+// ---- Appearance theme ----
+
+message SetUserThemeRequest {
+  ThemeMode theme_mode = 1;                         // system | light | dark (UNSPECIFIED is rejected)
+}
+message SetUserThemeResponse {
+  ThemeMode theme_mode = 1;                         // the stored preference, echoed back
 }
