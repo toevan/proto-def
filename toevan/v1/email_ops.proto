@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// EmailOpsService — super-admin OPERATIONS surface for the transactional email
+// system (distinct from EmailTemplateAdminService, which authors template
+// content). This is the diagnose-and-remediate surface: read the send log to see
+// why an email did not arrive, re-drive a terminally-failed send after the cause
+// is fixed, and manage the local suppression mirror — all without hand-written
+// SQL in production.
+// ============================================
+//
+// ALL RPCs require the platform SUPER-ADMIN role (the handler enforces
+// guards.RequireSuperAdmin). The send projection is deliberately MINIMISED: it
+// carries status / error / timings / recipient, never the interpolation vars or
+// the webhook events payload (data minimisation — those can hold third-party
+// personal data and are not needed to operate the system).
+service EmailOpsService {
+  // List recent sends (the email_log queue + audit trail), newest-first,
+  // optionally filtered by status. The operator's "why didn't this email
+  // arrive?" read.
+  rpc ListEmailSends(ListEmailSendsRequest) returns (ListEmailSendsResponse);
+  // Re-drive a terminally-failed send ('dead' or 'failed') after its cause is
+  // fixed: reset to queued and due now, with a fresh attempt budget. A send in
+  // any other state is refused (FailedPrecondition).
+  rpc RequeueEmailSend(RequeueEmailSendRequest) returns (RequeueEmailSendResponse);
+  // List the local suppression mirror (addresses a bounce/complaint blocked from
+  // future sends), newest-first, paginated.
+  rpc ListEmailSuppressions(ListEmailSuppressionsRequest) returns (ListEmailSuppressionsResponse);
+  // Remove an address from the suppression mirror (a recovered mailbox), so sends
+  // to it resume. The corresponding provider-side removal is handled separately.
+  rpc DeleteEmailSuppression(DeleteEmailSuppressionRequest) returns (DeleteEmailSuppressionResponse);
+}
+
+// EmailSend is the MINIMISED operator view of one email_log row: enough to
+// diagnose a delivery problem, without the interpolation vars or events payload.
+message EmailSend {
+  string id = 1;
+  string recipient = 2;
+  string template_key = 3;
+  string locale = 4;
+  string account_id = 5;          // "" when the send is account-less
+  string status = 6;              // queued/sending/accepted/delivered/bounced/complained/failed/suppressed/dead
+  string mailgun_message_id = 7;  // "" when unset (no provider id yet)
+  int32 attempts = 8;
+  string last_error = 9;          // "" when none
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  google.protobuf.Timestamp next_attempt_at = 12;
+}
+
+message ListEmailSendsRequest {
+  string status = 1;  // optional filter; "" = all statuses. A non-empty value must be a known status.
+  int32 limit = 2;    // page size; the server clamps to a sane default/max.
+  int32 offset = 3;
+}
+message ListEmailSendsResponse {
+  repeated EmailSend sends = 1;
+}
+
+message RequeueEmailSendRequest {
+  string id = 1;  // the email_log row id
+}
+message RequeueEmailSendResponse {
+  EmailSend send = 1;  // the re-queued send
+}
+
+message EmailSuppression {
+  string address = 1;
+  string reason = 2;  // bounce/complaint/unsubscribe/manual
+  google.protobuf.Timestamp created_at = 3;
+}
+message ListEmailSuppressionsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+message ListEmailSuppressionsResponse {
+  repeated EmailSuppression suppressions = 1;
+}
+
+message DeleteEmailSuppressionRequest {
+  string address = 1;
+}
+message DeleteEmailSuppressionResponse {
+  bool deleted = 1;
+}
