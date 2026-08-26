@@ -35,6 +35,12 @@ service EmailOpsService {
   // Remove an address from the suppression mirror (a recovered mailbox), so sends
   // to it resume. The corresponding provider-side removal is handled separately.
   rpc DeleteEmailSuppression(DeleteEmailSuppressionRequest) returns (DeleteEmailSuppressionResponse);
+  // Fulfil a GDPR Art.17 erasure for one address: de-identify every send to it in
+  // the send log (recipient / vars / events / idempotency-key scrubbed; the audit
+  // skeleton — template, status, timings — is kept). The suppression mirror is
+  // intentionally left in place (honouring a bounce/complaint is a separate lawful
+  // basis); clear it separately via DeleteEmailSuppression if also requested.
+  rpc EraseEmailRecipient(EraseEmailRecipientRequest) returns (EraseEmailRecipientResponse);
 }
 
 // EmailSend is the MINIMISED operator view of one email_log row: enough to
@@ -88,4 +94,11 @@ message DeleteEmailSuppressionRequest {
 }
 message DeleteEmailSuppressionResponse {
   bool deleted = 1;
+}
+
+message EraseEmailRecipientRequest {
+  string address = 1;
+}
+message EraseEmailRecipientResponse {
+  int64 redacted = 1;  // number of send-log rows de-identified
 }
