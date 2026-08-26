@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// ============================================
+// EmailTemplateAdminService — super-admin management + translation of the
+// transactional email templates.
+// ============================================
+//
+// The transactional email system renders a CODE-owned branded shell around
+// per-template, per-locale CONTENT (subject / HTML body / plaintext body) stored
+// in the DB. This service is the platform-admin surface that manages that
+// content: list the catalog, edit or TRANSLATE a locale, reset a locale back to
+// the shipped code default, toggle a whole type on/off, and live-preview a
+// render.
+//
+// ALL RPCs require the platform SUPER-ADMIN role (the handler enforces
+// guards.RequireSuperAdmin): template content is spliced into the trusted shell
+// and mailed to users, so only staff may author it.
+//
+// The template STRUCTURE (which templates exist, their required interpolation
+// variables) is code-owned and refreshed on every boot; this service does NOT
+// create or delete templates, only their editable content and the active flag.
+service EmailTemplateAdminService {
+  // List the template catalog: each entry with its structure + the locales that
+  // currently have content.
+  rpc ListEmailTemplates(google.protobuf.Empty) returns (ListEmailTemplatesResponse);
+  // Get one template plus every locale's content (the editor's load).
+  rpc GetEmailTemplate(GetEmailTemplateRequest) returns (GetEmailTemplateResponse);
+  // Create or replace one locale's content (an edit or a translation). Stamps
+  // the editing super-admin as updated_by.
+  rpc UpsertEmailTemplateLocale(UpsertEmailTemplateLocaleRequest) returns (UpsertEmailTemplateLocaleResponse);
+  // Reset one locale to the shipped seed: 'en' is restored to the code default;
+  // any other locale's override is removed (reverting to the 'en' fallback).
+  rpc ResetEmailTemplateLocale(ResetEmailTemplateLocaleRequest) returns (ResetEmailTemplateLocaleResponse);
+  // Enable or disable a whole email type without touching its content.
+  rpc SetEmailTemplateActive(SetEmailTemplateActiveRequest) returns (SetEmailTemplateActiveResponse);
+  // Render a live preview (subject / HTML / plaintext) of DRAFT content — the
+  // subject/body the admin is editing, not necessarily what is stored — without
+  // sending anything. `key` resolves the template's required vars; any required
+  // var the caller omits is filled with a readable placeholder so the preview
+  // always renders. Doubles as a dry-run validator: a syntactically broken or
+  // bad-variable template returns an error here.
+  rpc PreviewEmailTemplate(PreviewEmailTemplateRequest) returns (PreviewEmailTemplateResponse);
+}
+
+// EmailTemplate is one catalog entry. Structure (description, required_vars) is
+// code-owned; `active` is operator-owned.
+message EmailTemplate {
+  string key = 1;
+  string description = 2;
+  bool active = 3;
+  repeated string required_vars = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// EmailTemplateLocale is the admin-editable content for a template in one locale.
+message EmailTemplateLocale {
+  string template_key = 1;
+  string locale = 2;
+  string subject = 3;
+  string body_html = 4;
+  string body_text = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  string updated_by = 7;  // user id of the last editor; "" = the seeded default
+}
+
+// EmailTemplateSummary is a list-row: the template plus which locales have content.
+message EmailTemplateSummary {
+  EmailTemplate template = 1;
+  repeated string locales = 2;  // locale codes that currently have content
+}
+
+message ListEmailTemplatesResponse {
+  repeated EmailTemplateSummary templates = 1;
+}
+
+message GetEmailTemplateRequest {
+  string key = 1;
+}
+message GetEmailTemplateResponse {
+  EmailTemplate template = 1;
+  repeated EmailTemplateLocale locales = 2;  // locale-ordered
+}
+
+message UpsertEmailTemplateLocaleRequest {
+  string key = 1;
+  string locale = 2;
+  string subject = 3;
+  string body_html = 4;
+  string body_text = 5;
+}
+message UpsertEmailTemplateLocaleResponse {
+  EmailTemplateLocale locale = 1;
+}
+
+message ResetEmailTemplateLocaleRequest {
+  string key = 1;
+  string locale = 2;
+}
+message ResetEmailTemplateLocaleResponse {
+  // The restored content when 'en' was reset to the code default; unset (and
+  // deleted=true) when a non-en override was removed to revert to the fallback.
+  EmailTemplateLocale locale = 1;
+  bool deleted = 2;
+}
+
+message SetEmailTemplateActiveRequest {
+  string key = 1;
+  bool active = 2;
+}
+message SetEmailTemplateActiveResponse {
+  EmailTemplate template = 1;
+}
+
+message PreviewEmailTemplateRequest {
+  string key = 1;         // resolves the template's required vars (for placeholder-filling)
+  string subject = 2;     // DRAFT content to render (the editor's current values)
+  string body_html = 3;
+  string body_text = 4;
+  map<string, string> sample_vars = 5;  // any missing required var is filled with a placeholder
+}
+message PreviewEmailTemplateResponse {
+  string subject = 1;
+  string html = 2;
+  string text = 3;
+}
