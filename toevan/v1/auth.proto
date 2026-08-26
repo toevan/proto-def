@@ -79,7 +79,7 @@ enum PlatformRole {
 
 // AuthUser is the user profile returned in auth responses.
 message AuthUser {
-  string id = 1;                                    // internal KoreLink user ID
+  string id = 1;                                    // internal Toevan user ID
   string email = 2;
   string name = 3;
   string avatar_url = 4;
@@ -95,11 +95,11 @@ message AuthUser {
 
   // platform role and permissions
   PlatformRole platform_role = 9;                   // [RENAMED from "role"] "user", "admin", "super-admin"
-                                                    // NOTE: This is the PLATFORM-LEVEL role (KoreLink account).
+                                                    // NOTE: This is the PLATFORM-LEVEL role (Toevan account).
                                                     // Distinct from OrgRole which is per-organization.
                                                     // "user" = regular user
-                                                    // "admin" = KoreLink staff
-                                                    // "super-admin" = KoreLink platform owner
+                                                    // "admin" = Toevan staff
+                                                    // "super-admin" = Toevan platform owner
                                                     // No "author" role — blueprint publishing is a capability,
                                                     // not a role. Any user can create/publish blueprints.
   repeated string permissions = 10;                 // permissions assigned to the user (e.g. "project.create", "project.read", "project.update", "project.delete")

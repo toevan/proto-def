@@ -39,7 +39,7 @@ service EvidenceService {
   rpc EraseDataSubject(EraseDataSubjectRequest) returns (EraseDataSubjectResponse);
 
   // Signed supply-chain attestations for one evaluated commit — the
-  // distribution read behind "verify without KoreLink". Envelopes are
+  // distribution read behind "verify without Toevan". Envelopes are
   // returned VERBATIM (in-toto SLSA-VSA statement in a DSSE envelope);
   // verification runs against exactly these bytes with stock cosign and the
   // published public key. Authorization derives the owning org from the REPO
@@ -306,7 +306,7 @@ message GenerateControlMappingResponse {
 message EraseDataSubjectRequest {
   string org_id = 1;
   // The data subject's GitHub login as recorded in `author` across the evidence
-  // and PR-gate stores. There is no mapping from this login to a KoreLink user
+  // and PR-gate stores. There is no mapping from this login to a Toevan user
   // account — it is the only identifier held for the developer.
   string github_login = 2;
 }

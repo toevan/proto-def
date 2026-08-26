@@ -46,7 +46,7 @@ service SupportAccessService {
   // log, which carries the grant/revoke rows.)
   rpc ListSupportAccessGrants(ListSupportAccessGrantsRequest) returns (ListSupportAccessGrantsResponse);
 
-  // GetSupportAccessStatus is the TENANT-facing read: whether KoreLink
+  // GetSupportAccessStatus is the TENANT-facing read: whether Toevan
   // support currently holds an active grant on the given org, with which
   // scope, until when. Gated at org MEMBERSHIP (any member may see it —
   // that visibility IS the feature; the client banner is built on this).

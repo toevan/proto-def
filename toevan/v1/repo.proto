@@ -137,7 +137,7 @@ message GitHubRepo {
   // Project information if assigned to a project
   RepoProjectRef project = 8;
 
-  // Whether KoreLink can index this repository's language today. False only for
+  // Whether Toevan can index this repository's language today. False only for
   // a language the registry does not yet support; a repository with no detected
   // language is left true, since an empty primary language is GitHub declining
   // to classify it rather than a positive "unsupported". The client gates

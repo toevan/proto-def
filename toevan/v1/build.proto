@@ -317,7 +317,7 @@ message GetRepositoryGraphReply {
   repeated SuggestedAction suggested_actions = 7; // contextual quick actions for the chat panel
   repeated FileViolation file_violations = 8;     // file-level violations not attached to any node
 
-  // Human-readable name of the repository (e.g. "korelink/api-server"
+  // Human-readable name of the repository (e.g. "toevan/api-server"
   // or "payment-service") — sourced from repositories.name on the
   // server. The client uses this in the canvas breadcrumb, the
   // exception-cart subtitle, and anywhere else the repo identity
@@ -2200,7 +2200,7 @@ message ClearCanvasChatHistoryReply {
 // ── Fix ChangeSet Architecture ──
 //
 // The ChangeSet is the structured plan the canvas violation-fix
-// pipeline (docs/architecture/KoreLink_Fix_ChangeSet_Architecture.md)
+// pipeline (docs/architecture/Toevan_Fix_ChangeSet_Architecture.md)
 // produces in Stage 3 (plan) and consumes in Stages 4–7 (validate_plan
 // → generate → validate_diffs → apply). It carries a typed-Operations
 // vocabulary that downstream stages can validate (cluster coverage,

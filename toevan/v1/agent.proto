@@ -260,7 +260,7 @@ message AgentProgressUpdate {
   // Lets the canvas client render structured operator-readable
   // detail (renamed symbol, uncovered callers, build errors)
   // instead of a generic toast — load-bearing for the
-  // KoreLink value proposition: a fix the agent rejects MUST
+  // Toevan value proposition: a fix the agent rejects MUST
   // surface WHY at file:line precision, not just "blast-radius
   // exceeded."
   BlastRadiusFailureMetadata blast_radius_metadata = 8;

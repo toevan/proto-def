@@ -72,7 +72,7 @@ service PRGateService {
   // Premium pre-merge deep-check per-repo opt-in (T5/Phase 5b). The deep-check
   // indexes a PR's merged state into an isolated graph and blocks on the
   // base-graph-only compliance families the cheap PR-head gate cannot soundly
-  // check pre-merge ("KoreLink Deep Check" check-run). The toggle is PER-REPO
+  // check pre-merge ("Toevan Deep Check" check-run). The toggle is PER-REPO
   // (the index cost is per-repo) and gated to Enterprise/Platform plans.
   //
   // Auth: Get is org-member (read); Set is admin/owner (it turns on an

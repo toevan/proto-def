@@ -105,7 +105,7 @@ enum BlueprintScope {
 // Blueprint source: who maintains it
 enum BlueprintSource {
   BLUEPRINT_SOURCE_UNSPECIFIED = 0;
-  BLUEPRINT_SOURCE_SYSTEM = 1;       // KoreLink-maintained essentials
+  BLUEPRINT_SOURCE_SYSTEM = 1;       // Toevan-maintained essentials
   BLUEPRINT_SOURCE_COMMUNITY = 2;    // user-created, shared publicly
   BLUEPRINT_SOURCE_MARKETPLACE = 3;  // curated/paid blueprints
 }
@@ -168,7 +168,7 @@ message Blueprint {
   repeated string validation_errors = 31;
   string blueprint_type = 32;      // "compliance", "structural", "design", "security"
   string visibility = 33;          // "public" (marketplace) or "org_private" (org-only)
-  string source = 34;              // "system" (KoreLink-maintained), "community" (user-created), "marketplace" (curated/paid)
+  string source = 34;              // "system" (Toevan-maintained), "community" (user-created), "marketplace" (curated/paid)
   string documentation = 35;       // markdown documentation: implementation guides, best practices, usage instructions
   google.protobuf.Timestamp deprecated_at = 36;  // when the blueprint was deprecated (null = active)
   string successor_id = 37;                       // ID of the successor blueprint (null = no successor)

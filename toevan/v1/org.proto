@@ -159,7 +159,7 @@ enum OrgPlan {
   ORG_PLAN_FREE = 1;                     // 2 repos, 3 seats
   ORG_PLAN_TEAM = 2;                     // 10 repos, 15 seats
   ORG_PLAN_ENTERPRISE = 3;              // unlimited repos, unlimited seats, SSO, audit
-  ORG_PLAN_PLATFORM = 4;                // KoreLink HQ internal — not user-facing
+  ORG_PLAN_PLATFORM = 4;                // Toevan HQ internal — not user-facing
 }
 
 message OrgMember {
@@ -183,7 +183,7 @@ enum OrgRole {
   ORG_ROLE_COMPLIANCE = 4;              // exception approval, evidence trail, risk
   ORG_ROLE_CISO = 5;                    // escalated exception approval
   ORG_ROLE_VIEWER = 6;                  // read-only
-  ORG_ROLE_PLATFORM = 8;               // [NEW] KoreLink HQ superadmin
+  ORG_ROLE_PLATFORM = 8;               // [NEW] Toevan HQ superadmin
   // NOTE: No "author" role — blueprint publishing is a capability, not a role.
   // Any user can create/publish blueprints.
 }
@@ -220,22 +220,22 @@ message GitHubOrg {
   string handle = 1;                      // "acme-corp"
   string name = 2;                       // "Acme Corporation"
   string avatar_url = 3;
-  bool already_connected = 4;            // true if already linked to a KoreLink org
-  string existing_org_id = 5;            // KoreLink org ID if already connected
+  bool already_connected = 4;            // true if already linked to a Toevan org
+  string existing_org_id = 5;            // Toevan org ID if already connected
   int64 github_id = 6;                   // numeric GitHub org ID (for installation deep-link)
-  bool app_installed = 7;                // true if KoreLink GitHub App is installed on this org
+  bool app_installed = 7;                // true if Toevan GitHub App is installed on this org
 
   // How many repositories the installation can actually reach.
   //
   // app_installed answers "does an installation record exist on GitHub", which
   // stays true when every repository has been deselected — so it cannot be used
-  // to decide whether KoreLink has anything to work with. This is that fact.
+  // to decide whether Toevan has anything to work with. This is that fact.
   // 0 with app_installed=true means the app is installed but shares no repos.
   int32 accessible_repo_count = 8;
 
   // True when the CALLER is a member of existing_org_id. Meaningful only
   // when already_connected — it is what separates "switch to your
-  // workspace" from "this org is on KoreLink, ask an admin for an invite"
+  // workspace" from "this org is on Toevan, ask an admin for an invite"
   // (invitations are the ONLY join path). already_connected alone is
   // account-EXISTENCE, resolved by GitHub handle globally, and says
   // nothing about the caller's access.
@@ -366,7 +366,7 @@ message ListGitHubOrgsResponse {
   //
   // A personal account is installable exactly like an organisation — the App is
   // installed on it, shares repositories with it, and can already have a
-  // KoreLink workspace. Onboarding could not say any of that about it, so the
+  // Toevan workspace. Onboarding could not say any of that about it, so the
   // personal option had no install state to show and no gate to apply, while
   // the organisation beside it had both.
   //
