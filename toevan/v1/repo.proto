@@ -98,6 +98,13 @@ message Repo {
   // Timestamps
   google.protobuf.Timestamp created_at = 18;
   google.protobuf.Timestamp updated_at = 19;
+
+  // Public status badge (README embed). badge_url is the .svg endpoint; embed
+  // markdown is the ready-to-paste snippet. Populated by GetRepo (not the list
+  // RPCs). Empty when the repo has no token yet. Whether the badge actually renders
+  // is gated by the org-level Org.badges_enabled master switch.
+  string badge_url = 25;
+  string badge_embed_markdown = 26;
 }
 
 enum RepoStatus {

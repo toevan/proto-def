@@ -23,6 +23,12 @@ service OrgService {
   // commercial decision), while UpdateOrg edits presentation fields.
   rpc AssignOrgPlan(AssignOrgPlanRequest) returns (AssignOrgPlanResponse);
 
+  // Org-level master switch for public README status badges. Admin-only. Flips
+  // accounts.badges_enabled, which the public badge endpoint gates on, so turning it
+  // off makes every one of the org's repo badges read "unknown" while their per-repo
+  // URLs stay stable for when it is turned back on.
+  rpc SetBadgesEnabled(SetBadgesEnabledRequest) returns (SetBadgesEnabledResponse);
+
   // GetBillingOverview is what the billing page renders: the org's REAL plan, and
   // usage measured against what that plan advertises. Everything here is
   // usage-visibility, which every tier includes; cost/spend breakdowns are a
@@ -130,6 +136,11 @@ message Org {
   // members should not learn they're under quiet review, mirroring
   // AuthUser.moderation_status's own non-leaky projection for the user axis.
   // ListUserOrgs (the platform-admin surface) reports the raw status.
+  // Org-level master switch for public README status badges (accounts.badges_enabled).
+  // Defaults true. The Status-badges settings toggle flips it; the public badge
+  // endpoint gates every one of the org's repo badges on it.
+  bool badges_enabled = 21;
+
   ModerationStatus moderation_status = 18;
   // Required (non-empty) whenever moderation_status is SUSPENDED or BANNED;
   // empty otherwise — same convention as AuthUser.moderation_reason.
@@ -281,6 +292,16 @@ message AssignOrgPlanResponse {
   // False when the org already held the requested plan. The call is idempotent:
   // a retried delivery succeeds without writing a second audit row.
   bool changed = 3;
+}
+
+message SetBadgesEnabledRequest {
+  string org_id = 1;
+  bool enabled = 2;
+}
+
+message SetBadgesEnabledResponse {
+  // The persisted value, echoed back so the client confirms the write.
+  bool enabled = 1;
 }
 
 message GetBillingOverviewRequest { string org_id = 1; }
