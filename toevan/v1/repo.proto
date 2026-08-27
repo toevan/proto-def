@@ -33,6 +33,10 @@ service RepoService {
   // Open a pull request that adds the status badge to the repo's README, if it is
   // not already present. Repo owner/admin only; never a silent direct commit.
   rpc AddBadgeToReadme(AddBadgeToReadmeRequest) returns (AddBadgeToReadmeResponse);
+  // Current state of the badge in the repo's README: already present, an open PR
+  // awaiting approval, or neither. Read-only (a live GitHub read); Repo owner/admin
+  // only. Drives the repo-detail card's persistent PR note and the Add button state.
+  rpc GetBadgeReadmeStatus(GetBadgeReadmeStatusRequest) returns (GetBadgeReadmeStatusResponse);
   rpc BatchReindexRepos(BatchReindexReposRequest) returns (BatchReindexReposResponse);
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
   rpc StreamIndexProgress(StreamIndexProgressRequest) returns (stream IndexProgressUpdate);
@@ -420,10 +424,38 @@ message SetRepoBadgeEnabledResponse {
 
 message AddBadgeToReadmeRequest { string repo_id = 1; }
 message AddBadgeToReadmeResponse {
-  // The opened PR's URL. Empty when already_present is true (nothing to do).
+  reserved 2;                              // was bool already_present (folded into outcome)
+  reserved "already_present";
+  // The badge PR's URL + number. Empty/0 only when outcome is ALREADY_PRESENT.
   string pull_request_url = 1;
-  // True when the badge was already in the README, so no PR was opened.
-  bool already_present = 2;
+  int32 pr_number = 3;
+  // Which of the three idempotent paths this call took.
+  BadgeReadmeOutcome outcome = 4;
+}
+
+// BadgeReadmeOutcome distinguishes a freshly opened PR from a reused open one and
+// from the no-op case where the badge was already in the README.
+enum BadgeReadmeOutcome {
+  BADGE_README_OUTCOME_UNSPECIFIED = 0;
+  BADGE_README_OUTCOME_OPENED = 1;          // a new PR was opened
+  BADGE_README_OUTCOME_REUSED = 2;          // an already-open PR was reused
+  BADGE_README_OUTCOME_ALREADY_PRESENT = 3; // badge already in the default-branch README
+}
+
+message GetBadgeReadmeStatusRequest { string repo_id = 1; }
+message GetBadgeReadmeStatusResponse {
+  BadgeReadmeStatus status = 1;
+  // The open badge PR's URL + number. Set only when status is PR_OPEN.
+  string pull_request_url = 2;
+  int32 pr_number = 3;
+}
+
+// BadgeReadmeStatus is the live state of the badge in a repo's default-branch README.
+enum BadgeReadmeStatus {
+  BADGE_README_STATUS_UNSPECIFIED = 0;
+  BADGE_README_STATUS_NONE = 1;      // not in README, no open PR: Add is available
+  BADGE_README_STATUS_PR_OPEN = 2;   // an open PR is awaiting approval: show the note
+  BADGE_README_STATUS_IN_README = 3; // badge already in the default-branch README
 }
 
 message ReindexRepoRequest {
