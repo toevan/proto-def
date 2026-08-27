@@ -24,6 +24,15 @@ service RepoService {
 
   // Indexing
   rpc ReindexRepo(ReindexRepoRequest) returns (ReindexRepoResponse);
+
+  // Per-repo status-badge on/off, composed with the org-level Org.badges_enabled
+  // master switch at serve time (the public endpoint gates on BOTH). Repo
+  // owner/admin only, audited.
+  rpc SetRepoBadgeEnabled(SetRepoBadgeEnabledRequest) returns (SetRepoBadgeEnabledResponse);
+
+  // Open a pull request that adds the status badge to the repo's README, if it is
+  // not already present. Repo owner/admin only; never a silent direct commit.
+  rpc AddBadgeToReadme(AddBadgeToReadmeRequest) returns (AddBadgeToReadmeResponse);
   rpc BatchReindexRepos(BatchReindexReposRequest) returns (BatchReindexReposResponse);
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
   rpc StreamIndexProgress(StreamIndexProgressRequest) returns (stream IndexProgressUpdate);
@@ -105,6 +114,9 @@ message Repo {
   // is gated by the org-level Org.badges_enabled master switch.
   string badge_url = 25;
   string badge_embed_markdown = 26;
+  // Per-repo badge on/off (composed with the org-level Org.badges_enabled). Defaults
+  // true. The repo-detail Status-badge toggle flips it.
+  bool badge_enabled = 27;
 }
 
 enum RepoStatus {
@@ -396,6 +408,22 @@ message DisconnectRepoRequest { string repo_id = 1; }
 message DisconnectRepoResponse {
   bool success = 1;
   string error = 2;
+}
+
+message SetRepoBadgeEnabledRequest {
+  string repo_id = 1;
+  bool enabled = 2;
+}
+message SetRepoBadgeEnabledResponse {
+  bool enabled = 1;                      // the persisted value, echoed back
+}
+
+message AddBadgeToReadmeRequest { string repo_id = 1; }
+message AddBadgeToReadmeResponse {
+  // The opened PR's URL. Empty when already_present is true (nothing to do).
+  string pull_request_url = 1;
+  // True when the badge was already in the README, so no PR was opened.
+  bool already_present = 2;
 }
 
 message ReindexRepoRequest {
