@@ -47,6 +47,13 @@ service EmailTemplateAdminService {
   // always renders. Doubles as a dry-run validator: a syntactically broken or
   // bad-variable template returns an error here.
   rpc PreviewEmailTemplate(PreviewEmailTemplateRequest) returns (PreviewEmailTemplateResponse);
+  // Render the admin's CURRENT DRAFT (the selected locale's content) with
+  // GENERATED sample org variables and SEND it, synchronously, to the
+  // authenticated super-admin's own email via the live transport. The recipient
+  // is taken from the caller's claims (never client-supplied). Returns delivery
+  // success + the transport message id. FailedPrecondition when the transport is
+  // unconfigured (e.g. a dev environment without a Mailgun key).
+  rpc SendTestEmailTemplate(SendTestEmailTemplateRequest) returns (SendTestEmailTemplateResponse);
 }
 
 // EmailTemplate is one catalog entry. Structure (description, required_vars) is
@@ -133,4 +140,17 @@ message PreviewEmailTemplateResponse {
   string subject = 1;
   string html = 2;
   string text = 3;
+}
+
+message SendTestEmailTemplateRequest {
+  string key = 1;         // resolves the template's required vars (for sample-value generation)
+  string subject = 2;     // DRAFT content to render + send (the editor's current values)
+  string body_html = 3;
+  string body_text = 4;
+  map<string, string> sample_vars = 5;  // optional overrides of the generated sample values
+}
+message SendTestEmailTemplateResponse {
+  bool sent = 1;          // the provider accepted the message
+  string message_id = 2;  // the transport message id (correlation handle)
+  string to = 3;          // the super-admin address the test was sent to (echo of claims.Email)
 }
