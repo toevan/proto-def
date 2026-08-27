@@ -58,6 +58,9 @@ message EmailTemplate {
   repeated string required_vars = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
+  // Code-owned grouping for the admin catalog (e.g. onboarding / security /
+  // team). Like key/description/required_vars it is not operator-editable.
+  string category = 7;
 }
 
 // EmailTemplateLocale is the admin-editable content for a template in one locale.
