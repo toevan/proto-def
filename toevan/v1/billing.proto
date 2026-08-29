@@ -81,6 +81,21 @@ service BillingService {
   // has_subscription = false when they are on the free plan with none.
   rpc GetPersonalSubscription(GetPersonalSubscriptionRequest) returns (GetPersonalSubscriptionResponse);
 
+  // ── hosted Checkout / Customer Portal (Model B) ───────────────────────────
+  //
+  // Under Stripe Billing (BILLING_GATEWAY=stripe) the inline mutations above are
+  // superseded by two hosted-page handoffs: Checkout starts a NEW subscription;
+  // the Customer Portal makes every subsequent change (plan, seats, interval,
+  // cancel, resume, card). Both return a short-lived Stripe URL the client opens;
+  // the subscription then materializes via WEBHOOK, so the client REFETCHES
+  // (GetSubscription) on return rather than reading a Subscription back here.
+  rpc CreateCheckoutSession(CreateCheckoutSessionRequest) returns (CreateCheckoutSessionResponse);
+  rpc CreateBillingPortalSession(CreateBillingPortalSessionRequest) returns (CreateBillingPortalSessionResponse);
+
+  // Personal-axis twins — no owner on the wire; the owner is the authenticated user.
+  rpc CreatePersonalCheckoutSession(CreatePersonalCheckoutSessionRequest) returns (CreateCheckoutSessionResponse);
+  rpc CreatePersonalBillingPortalSession(CreatePersonalBillingPortalSessionRequest) returns (CreateBillingPortalSessionResponse);
+
   // ── billing records ───────────────────────────────────────────────────────
 
   // ListInvoices returns the org's invoices, newest first, with their line
@@ -223,6 +238,51 @@ message GetPersonalSubscriptionResponse {
   PersonalSubscription subscription = 2;
 }
 
+// ── hosted Checkout / Portal (Model B) ──────────────────────────────────────
+
+// BillingReturnContext tells the server which surface Stripe's hosted page must
+// return to, so it bakes the correct success/return URL. NATIVE returns via an
+// api-server https bounce that 302s to the toevan:// deep link (Stripe rejects a
+// custom-scheme URL); WEB returns to the app callback page. UNSPECIFIED = WEB.
+enum BillingReturnContext {
+  BILLING_RETURN_CONTEXT_UNSPECIFIED = 0;
+  BILLING_RETURN_CONTEXT_WEB = 1;
+  BILLING_RETURN_CONTEXT_NATIVE = 2;
+}
+
+message CreateCheckoutSessionRequest {
+  string org_id = 1;
+  OrgPlan plan = 2;
+  BillingInterval interval = 3;
+  int32 seats = 4;
+  BillingReturnContext return_context = 5;
+}
+
+message CreatePersonalCheckoutSessionRequest {
+  UserPlan plan = 1; // pro or max; single-seat by definition
+  BillingInterval interval = 2;
+  BillingReturnContext return_context = 3;
+}
+
+message CreateCheckoutSessionResponse {
+  // Stripe-hosted Checkout URL — single-use, short-lived. The client opens it and
+  // refetches GetSubscription on return; the webhook is the source of truth.
+  string checkout_url = 1;
+}
+
+message CreateBillingPortalSessionRequest {
+  string org_id = 1;
+  BillingReturnContext return_context = 2;
+}
+
+message CreatePersonalBillingPortalSessionRequest {
+  BillingReturnContext return_context = 1;
+}
+
+message CreateBillingPortalSessionResponse {
+  string portal_url = 1;
+}
+
 // Invoice is one billing document, exactly as the biller recorded it.
 //
 // `status` uses the biller's states verbatim: draft | open | paid | void |
@@ -243,6 +303,11 @@ message Invoice {
   int64 paid_at_unix = 12;
   int64 created_at_unix = 13;
   repeated InvoiceLine lines = 14;
+  // hosted_invoice_url is Stripe's hosted invoice page (view + pay). Empty for
+  // legacy/simulator invoices that predate Stripe. Opened with launchExternalUrl.
+  string hosted_invoice_url = 15;
+  // invoice_pdf_url is Stripe's downloadable PDF. Empty when none.
+  string invoice_pdf_url = 16;
 }
 
 // InvoiceLine is one line item on an invoice — the human-readable breakdown
