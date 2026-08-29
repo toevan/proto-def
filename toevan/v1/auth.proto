@@ -66,8 +66,8 @@ enum ThemeMode {
 enum UserPlan {
   USER_PLAN_UNSPECIFIED = 0;
   USER_PLAN_FREE = 1;                               // basic access, 1 personal repo
-  USER_PLAN_PRO = 2;                                // advanced features, 5 personal repos, priority indexing
-  USER_PLAN_MAX = 3;                                // power user, 15 personal repos, AI suggestions, priority support
+  USER_PLAN_PRO = 2;                                // advanced features, 5 personal repos (fair-use to 10), BYOK (bring your own LLM keys)
+  USER_PLAN_MAX = 3;                                // power user, 10 personal repos (fair-use to 20), + Priority Processing
 }
 
 enum PlatformRole {

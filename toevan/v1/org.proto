@@ -168,8 +168,8 @@ enum BillingStatus {
 enum OrgPlan {
   ORG_PLAN_UNSPECIFIED = 0;
   ORG_PLAN_FREE = 1;                     // 2 repos, 3 seats
-  ORG_PLAN_TEAM = 2;                     // 10 repos, 15 seats
-  ORG_PLAN_ENTERPRISE = 3;              // unlimited repos, unlimited seats, SSO, audit
+  ORG_PLAN_TEAM = 2;                     // 25 repos, 10 seats
+  ORG_PLAN_ENTERPRISE = 3;              // 200 repos, 500 seats, 5000 AI ops (contractual defaults); DeepCheck + AutoFix + RBAC + SelfHosted + PriorityProcessing (SSO planned)
   ORG_PLAN_PLATFORM = 4;                // Toevan HQ internal — not user-facing
 }
 
