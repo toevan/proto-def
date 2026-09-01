@@ -29,6 +29,12 @@ service OrgService {
   // URLs stay stable for when it is turned back on.
   rpc SetBadgesEnabled(SetBadgesEnabledRequest) returns (SetBadgesEnabledResponse);
 
+  // SetOrgBillingEmail sets (or clears) the org's Stripe billing email — the address
+  // receipts/invoices are sent to and the Stripe customer's email. Admin-only. An org
+  // must set one before checkout (checkout fails closed with
+  // ERR_ORG_BILLING_EMAIL_REQUIRED otherwise); the Notifications settings tab edits it.
+  rpc SetOrgBillingEmail(SetOrgBillingEmailRequest) returns (SetOrgBillingEmailResponse);
+
   // GetBillingOverview is what the billing page renders: the org's REAL plan, and
   // usage measured against what that plan advertises. Everything here is
   // usage-visibility, which every tier includes; cost/spend breakdowns are a
@@ -304,6 +310,17 @@ message SetBadgesEnabledResponse {
   bool enabled = 1;
 }
 
+message SetOrgBillingEmailRequest {
+  string org_id = 1;
+  // The new billing email. Empty CLEARS it; a non-empty value must be a valid address.
+  string billing_email = 2;
+}
+
+message SetOrgBillingEmailResponse {
+  // The persisted value, echoed back (empty when cleared/unset) so the client confirms.
+  string billing_email = 1;
+}
+
 message GetBillingOverviewRequest { string org_id = 1; }
 
 // One usage meter: consumption against what the plan ADVERTISES. The included
@@ -327,9 +344,11 @@ message GetBillingOverviewResponse {
   BillingUsageMeter ai_operations = 4;
   // First day of the AI metering period (YYYY-MM-DD).
   string ai_period_start = 5;
-  // Payment method and invoices are DELIBERATELY ABSENT: no payment provider
-  // exists, so there is nothing true to return. Clients render honest empty
-  // states rather than fabricated records.
+  // The org's configured Stripe billing email (empty when unset). The settings UI
+  // shows it and the upgrade flow pre-checks it (an org must set one before checkout).
+  string billing_email = 6;
+  // Payment method and invoices are DELIBERATELY ABSENT here: under Model B they live
+  // on the billing subscription/invoice surface, not this usage-overview message.
 }
 
 // Authenticated user's own orgs — no input needed, identity from JWT
