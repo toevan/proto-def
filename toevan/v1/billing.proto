@@ -273,10 +273,21 @@ message CreateCheckoutSessionResponse {
 message CreateBillingPortalSessionRequest {
   string org_id = 1;
   BillingReturnContext return_context = 2;
+  // Optional pre-filled change target: when plan != UNSPECIFIED the server opens the portal on a
+  // pre-filled subscription_update_confirm flow (a one-click confirm of this plan/interval/seats) instead
+  // of the portal home. UNSPECIFIED (the default) keeps the plain "manage billing" home entry point, so
+  // old callers and a generic manage affordance are unaffected.
+  OrgPlan plan = 3;
+  BillingInterval interval = 4;
+  int32 seats = 5;
 }
 
 message CreatePersonalBillingPortalSessionRequest {
   BillingReturnContext return_context = 1;
+  // Optional pre-filled change target (see CreateBillingPortalSessionRequest). Personal is single-seat,
+  // so no seats field. UNSPECIFIED keeps the portal-home entry point.
+  UserPlan plan = 2;
+  BillingInterval interval = 3;
 }
 
 message CreateBillingPortalSessionResponse {
