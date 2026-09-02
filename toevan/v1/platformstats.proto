@@ -22,11 +22,13 @@ import "toevan/v1/blueprint.proto";
 //
 // GetOverviewStatsResponse grows ONE FIELD AT A TIME, and only once its own
 // real query exists — never a placeholder for a number nobody computes yet.
-// A metric with no real backing (e.g. MRR, which has no payment gateway
-// behind it as of this writing) does not get a field here; it stays absent
+// A metric with no real backing does not get a field here; it stays absent
 // from the contract until it has real data to report, and the client shows
 // "not yet available" rather than a wire zero that reads as "we checked and
-// it's zero."
+// it's zero." total_users, prs_scanned, and mrr_cents all now have real
+// backing (the users table, the concluded pr_checks log, and Stripe Model B
+// billing respectively), so each carries a field; a genuine 0 (e.g. no paid
+// subscriptions) is a real answer the client renders, not "unavailable."
 service PlatformStatsService {
   // GetOverviewStats returns platform-wide aggregate metrics for the admin
   // overview dashboard. Admin-only.
@@ -60,6 +62,21 @@ message GetOverviewStatsResponse {
   // accounts.created_at/deleted_at, not a snapshot table, so history is
   // correct from day one rather than only accumulating from deploy forward.
   repeated WeeklyOrgCount weekly_org_growth = 3;
+
+  // Every non-deleted platform user (users table, deleted_at IS NULL). The raw
+  // people count, distinct from total_orgs (accounts): one org has many users.
+  int32 total_users = 4;
+
+  // All-time PRs scanned platform-wide: concluded pr_checks rows
+  // (status passed/warning/blocked). The same figure the Analytics dashboard
+  // reports as prs_scanned_total, so the two surfaces always agree.
+  int32 prs_scanned = 5;
+
+  // Monthly Recurring Revenue in minor units (EUR cents). Summed over ACTIVE
+  // subscriptions from the catalogue price (entitlement.ShippedPrice) x seats,
+  // with annual subscriptions normalized to monthly (period total / 12). Money
+  // stays integer cents on the wire; the client formats to EUR at the edge.
+  int64 mrr_cents = 6;
 }
 
 message PlanCount {
