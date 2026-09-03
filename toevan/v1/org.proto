@@ -35,6 +35,12 @@ service OrgService {
   // ERR_ORG_BILLING_EMAIL_REQUIRED otherwise); the Notifications settings tab edits it.
   rpc SetOrgBillingEmail(SetOrgBillingEmailRequest) returns (SetOrgBillingEmailResponse);
 
+  // SendOrgBillingEmailVerification mails a signed, time-limited link to the org's CURRENT billing
+  // email; clicking it verifies the address. Admin-only. Verification is required before checkout when
+  // the feature is configured. Rate-limited server-side (one link per minute per address). Fails closed
+  // (FailedPrecondition) if no billing email is set or verification is unconfigured.
+  rpc SendOrgBillingEmailVerification(SendOrgBillingEmailVerificationRequest) returns (SendOrgBillingEmailVerificationResponse);
+
   // GetBillingOverview is what the billing page renders: the org's REAL plan, and
   // usage measured against what that plan advertises. Everything here is
   // usage-visibility, which every tier includes; cost/spend breakdowns are a
@@ -321,6 +327,16 @@ message SetOrgBillingEmailResponse {
   string billing_email = 1;
 }
 
+message SendOrgBillingEmailVerificationRequest { string org_id = 1; }
+
+message SendOrgBillingEmailVerificationResponse {
+  // Whether the verification email was queued (or already queued within the rate-limit window).
+  bool sent = 1;
+  // The address the link was mailed to (the org's billing email), so the client can say
+  // "we emailed <address>". Server-side value, never one the client supplies.
+  string to = 2;
+}
+
 message GetBillingOverviewRequest { string org_id = 1; }
 
 // One usage meter: consumption against what the plan ADVERTISES. The included
@@ -347,6 +363,14 @@ message GetBillingOverviewResponse {
   // The org's configured Stripe billing email (empty when unset). The settings UI
   // shows it and the upgrade flow pre-checks it (an org must set one before checkout).
   string billing_email = 6;
+  // Whether the billing email has been VERIFIED (its owner clicked the mailed link). Only meaningful
+  // when billing_email_verification_required is true. Setting/changing the address resets it. The
+  // upgrade flow blocks checkout on an unverified address and the settings row badges it.
+  bool billing_email_verified = 7;
+  // Whether billing-email verification is ENABLED for this deployment (a signing key is configured).
+  // When false the feature is off: no badge, no gate, no verify action. When true the client requires a
+  // verified billing email before checkout and offers a Verify action.
+  bool billing_email_verification_required = 8;
   // Payment method and invoices are DELIBERATELY ABSENT here: under Model B they live
   // on the billing subscription/invoice surface, not this usage-overview message.
 }
