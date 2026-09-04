@@ -1,0 +1,142 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// AnnouncementService — platform-wide announcements
+// ============================================
+//
+// Two audiences, one service, gated PER-RPC (the platformstats precedent):
+//
+//   ADMIN surface (guards.RequireAdmin) — platform admins author and manage
+//   announcements: List (all, any status), Create (draft), Update (edit),
+//   SetStatus (publish / unpublish), Delete.
+//
+//   USER surface (authenticated org member) — end users read the announcements
+//   that are LIVE for them (published, not expired, audience-matched on BOTH
+//   the plan tier AND the org-role class of their active account) and haven't
+//   already been dismissed, and dismiss one for themselves.
+//
+// Deliberately its own service, not folded into PlatformStatsService (aggregate
+// metrics) — an announcement is a durable business record with its own lifecycle
+// and a public read surface, so a purpose-built service is the honest home
+// (same reasoning as EnterpriseLeadsService).
+//
+// The enum-ish fields (type, audience_plan, audience_role, status) are carried
+// as STRINGS, not proto enums — one vocabulary source of truth (the Go
+// allowed-set in internal/announcement + the DB CHECK constraints), never a
+// third proto-enum copy that can drift. Same choice EnterpriseLeadsService and
+// the public pricing surface made.
+service AnnouncementService {
+  // --- Admin surface (RequireAdmin) ---
+
+  // List every announcement newest-first, paginated, optionally filtered by
+  // status — the admin management queue (drafts AND published).
+  rpc ListAnnouncements(ListAnnouncementsRequest) returns (ListAnnouncementsResponse);
+  // Create a new announcement. It is born as a DRAFT (status = "draft"); a
+  // separate SetStatus publishes it.
+  rpc CreateAnnouncement(CreateAnnouncementRequest) returns (CreateAnnouncementResponse);
+  // Edit an announcement's content and targeting (any status). Does NOT change
+  // status — publish/unpublish is SetStatus.
+  rpc UpdateAnnouncement(UpdateAnnouncementRequest) returns (UpdateAnnouncementResponse);
+  // Publish or unpublish an announcement (status = "published" | "draft"). The
+  // first publish stamps published_at; unpublish keeps it.
+  rpc SetAnnouncementStatus(SetAnnouncementStatusRequest) returns (SetAnnouncementStatusResponse);
+  // Permanently delete an announcement (cascades its dismissals).
+  rpc DeleteAnnouncement(DeleteAnnouncementRequest) returns (DeleteAnnouncementResponse);
+
+  // --- User surface (authenticated org member) ---
+
+  // List the announcements live for the calling user's active account:
+  // published, not expired, audience-matched (plan tier AND role class), and
+  // not already dismissed by this user. account_id is the caller's active
+  // account (org or personal); the handler verifies membership.
+  rpc ListLiveAnnouncements(ListLiveAnnouncementsRequest) returns (ListLiveAnnouncementsResponse);
+  // Dismiss an announcement for the CALLING USER only (idempotent). A dismissed
+  // announcement never reappears in ListLiveAnnouncements for that user.
+  rpc DismissAnnouncement(DismissAnnouncementRequest) returns (DismissAnnouncementResponse);
+}
+
+// Announcement is one platform-wide announcement.
+//
+// audience_plan and audience_role are two INDEPENDENT targeting axes: a user
+// sees the announcement only when BOTH match (an axis of "all" matches every
+// user). published_at is absent until the first publish; expires_at absent means
+// no expiry.
+message Announcement {
+  string id = 1;
+  string title = 2;
+  string body = 3;                             // markdown
+  string type = 4;                             // info | warning | critical | maintenance | feature
+  string audience_plan = 5;                    // all | free | pro | max | team | enterprise
+  string audience_role = 6;                    // all | admins | members
+  string status = 7;                           // draft | published
+  google.protobuf.Timestamp published_at = 8;  // absent until first published
+  google.protobuf.Timestamp expires_at = 9;    // absent = no expiry
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message ListAnnouncementsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string status_filter = 3;                    // optional: "" = every status
+}
+message ListAnnouncementsResponse {
+  repeated Announcement announcements = 1;
+  int32 total = 2;
+}
+
+message CreateAnnouncementRequest {
+  string title = 1;
+  string body = 2;
+  string type = 3;
+  string audience_plan = 4;
+  string audience_role = 5;
+  google.protobuf.Timestamp expires_at = 6;    // absent = no expiry
+}
+message CreateAnnouncementResponse {
+  Announcement announcement = 1;
+}
+
+message UpdateAnnouncementRequest {
+  string id = 1;
+  string title = 2;
+  string body = 3;
+  string type = 4;
+  string audience_plan = 5;
+  string audience_role = 6;
+  google.protobuf.Timestamp expires_at = 7;    // absent = clears expiry
+}
+message UpdateAnnouncementResponse {
+  Announcement announcement = 1;
+}
+
+message SetAnnouncementStatusRequest {
+  string id = 1;
+  string status = 2;                           // "published" | "draft"
+}
+message SetAnnouncementStatusResponse {
+  Announcement announcement = 1;
+}
+
+message DeleteAnnouncementRequest {
+  string id = 1;
+}
+message DeleteAnnouncementResponse {}
+
+message ListLiveAnnouncementsRequest {
+  string account_id = 1;                       // caller's active account (org or personal)
+}
+message ListLiveAnnouncementsResponse {
+  repeated Announcement announcements = 1;
+}
+
+message DismissAnnouncementRequest {
+  string id = 1;
+}
+message DismissAnnouncementResponse {}
