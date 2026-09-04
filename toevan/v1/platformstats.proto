@@ -41,6 +41,13 @@ service PlatformStatsService {
   // time, only once real" discipline stated above, which applies here too.
   // Admin-only.
   rpc GetPlatformAnalytics(GetPlatformAnalyticsRequest) returns (GetPlatformAnalyticsResponse);
+
+  // GetRevenueStats returns platform-wide revenue metrics for the admin
+  // Revenue dashboard: subscription MRR/ARR + a per-plan breakdown + churn,
+  // the accruing MRR history, and blueprint-marketplace sales. A distinct RPC
+  // from the two above — same "grow one field at a time, only once real"
+  // discipline applies. Admin-only.
+  rpc GetRevenueStats(GetRevenueStatsRequest) returns (GetRevenueStatsResponse);
 }
 
 message GetOverviewStatsRequest {}
@@ -159,4 +166,97 @@ message TopAdoptedBlueprint {
   // 0.12 = +12%). Absent when there were zero adoptions in the prior week
   // (no baseline to compare against), same zero-denominator rule as above.
   optional double growth_pct = 5;
+}
+
+message GetRevenueStatsRequest {}
+
+// GetRevenueStatsResponse backs the platform-admin Revenue dashboard. Same
+// "grow one field at a time, only once real" discipline as the sibling
+// responses: every figure here has a real query behind it (Stripe Model B
+// subscriptions for MRR/ARR/plan/churn, the mrr_snapshots table a periodic job
+// records for history, blueprint_purchases for marketplace sales). Money is
+// integer EUR cents on the wire; the client formats it at the edge. Rates that
+// have no denominator (no paying base) are absent, not a fabricated zero.
+message GetRevenueStatsResponse {
+  // Monthly Recurring Revenue in minor units (EUR cents), current — the SAME
+  // reporter GetOverviewStats.mrr_cents uses, so the two surfaces agree.
+  int64 mrr_cents = 1;
+
+  // Annual Recurring Revenue = mrr_cents x 12, in minor units. Precomputed so
+  // both cards format from one source rather than the client re-deriving it.
+  int64 arr_cents = 2;
+
+  // MRR broken down by self-serve plan over the SAME active subscriptions,
+  // each with its paying-subscriber count. Only plans that carry catalogue
+  // prices appear (team + personal pro/max); negotiated (enterprise) and free
+  // are not self-serve MRR and are omitted rather than shown as a fake zero.
+  repeated PlanRevenue revenue_by_plan = 3;
+
+  // Trailing-30-day subscription churn as a fraction (0.018 = 1.8%): paid
+  // subscriptions canceled in the window over the paying base (active plus
+  // those cancellations). Absent (not zero) when there is no paying base — a
+  // churn rate with no denominator is not a rate.
+  optional double churn_rate = 4;
+  // The same metric over the PRIOR 30-day window — powers the trend delta.
+  // Absent under the same no-denominator rule.
+  optional double churn_rate_prev = 5;
+
+  // Monthly MRR snapshots, oldest first — the growth chart. Derived from the
+  // mrr_snapshots table a periodic job records, so history accrues from the
+  // first snapshot forward (sparse at first) and is never fabricated.
+  repeated MrrSnapshotPoint mrr_history = 6;
+
+  // Blueprint-marketplace gross sales for the current calendar month, in minor
+  // units (sum of blueprint_purchases.price_paid_minor). 0 is a real answer
+  // (no sales this month), not "unavailable".
+  int64 blueprint_sales_mtd_cents = 7;
+  // The same gross sales over the PRIOR full calendar month — powers the
+  // month-over-month delta.
+  int64 blueprint_sales_prev_month_cents = 8;
+  // Per-blueprint marketplace sales for the current calendar month, highest
+  // revenue first.
+  repeated BlueprintSaleRow blueprint_sales = 9;
+
+  // The platform commission applied to marketplace sales, as a fraction
+  // (0.20 = 20%). A live platform-config knob, sent so the client labels the
+  // fee column with the current rate instead of a hardcoded percentage.
+  double marketplace_commission_rate = 10;
+}
+
+message PlanRevenue {
+  // Display name of the plan tier ("Team", "Pro", "Max"). A plain label, not
+  // an enum: the breakdown spans both the org axis (team) and the personal
+  // axis (pro/max), which are distinct plan enums, so one label string is the
+  // only shape that carries both uniformly.
+  string plan_name = 1;
+  // This plan's contribution to MRR, in minor units (EUR cents).
+  int64 mrr_cents = 2;
+  // Number of active paying subscriptions on this plan.
+  int32 subscriber_count = 3;
+}
+
+message MrrSnapshotPoint {
+  // First day (UTC) of the snapshot's calendar month.
+  google.protobuf.Timestamp period_month = 1;
+  // MRR captured for that month, in minor units (EUR cents).
+  int64 mrr_cents = 2;
+}
+
+message BlueprintSaleRow {
+  string blueprint_id = 1;
+  string name = 2;
+  // The blueprint author — the display name of the creating user
+  // (blueprints.created_by -> users.name), the same identity the marketplace
+  // shows as the author. There is no separate publisher entity.
+  string author = 3;
+  // The blueprint's current list price, in minor units (EUR cents).
+  int64 unit_price_cents = 4;
+  // Number of purchases this calendar month.
+  int32 sales_count = 5;
+  // Gross revenue this calendar month (sum of price_paid_minor), minor units.
+  int64 revenue_cents = 6;
+  // The platform's cut = revenue_cents x marketplace_commission_rate, minor
+  // units, rounded. Precomputed so the table never re-derives money on the
+  // client.
+  int64 platform_fee_cents = 7;
 }
