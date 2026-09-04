@@ -168,7 +168,22 @@ message TopAdoptedBlueprint {
   optional double growth_pct = 5;
 }
 
-message GetRevenueStatsRequest {}
+// RevenuePeriod is the aggregation window the Revenue dashboard's WINDOWED
+// metrics use (churn, blueprint sales, and the growth-chart granularity). The
+// MRR/ARR rate cards and the per-plan breakdown are point-in-time rates and do
+// NOT change with the period. UNSPECIFIED is treated as MONTHLY.
+enum RevenuePeriod {
+  REVENUE_PERIOD_UNSPECIFIED = 0;
+  REVENUE_PERIOD_MONTHLY = 1;     // trailing 1 month
+  REVENUE_PERIOD_QUARTERLY = 2;   // trailing 3 months
+  REVENUE_PERIOD_SIX_MONTHS = 3;  // trailing 6 months
+  REVENUE_PERIOD_ANNUAL = 4;      // trailing 12 months
+}
+
+message GetRevenueStatsRequest {
+  // The aggregation window for the windowed metrics. UNSPECIFIED => MONTHLY.
+  RevenuePeriod period = 1;
+}
 
 // GetRevenueStatsResponse backs the platform-admin Revenue dashboard. Same
 // "grow one field at a time, only once real" discipline as the sibling
@@ -192,28 +207,29 @@ message GetRevenueStatsResponse {
   // are not self-serve MRR and are omitted rather than shown as a fake zero.
   repeated PlanRevenue revenue_by_plan = 3;
 
-  // Trailing-30-day subscription churn as a fraction (0.018 = 1.8%): paid
-  // subscriptions canceled in the window over the paying base (active plus
-  // those cancellations). Absent (not zero) when there is no paying base — a
-  // churn rate with no denominator is not a rate.
+  // Subscription churn over the request's trailing PERIOD as a fraction (0.018 =
+  // 1.8%): paid subscriptions canceled in the window over the paying base at the
+  // window start. Absent (not zero) when there is no paying base — a churn rate
+  // with no denominator is not a rate.
   optional double churn_rate = 4;
-  // The same metric over the PRIOR 30-day window — powers the trend delta.
+  // The same metric over the PRIOR equal-length window — powers the trend delta.
   // Absent under the same no-denominator rule.
   optional double churn_rate_prev = 5;
 
-  // Monthly MRR snapshots, oldest first — the growth chart. Derived from the
-  // mrr_snapshots table a periodic job records, so history accrues from the
-  // first snapshot forward (sparse at first) and is never fabricated.
+  // MRR snapshots bucketed to the request's period granularity (one point per
+  // month/quarter/half/year, the latest snapshot in each bucket), oldest first —
+  // the growth chart. Derived from the mrr_snapshots table a periodic job
+  // records, so history accrues from the first snapshot forward (sparse at first)
+  // and is never fabricated.
   repeated MrrSnapshotPoint mrr_history = 6;
 
-  // Blueprint-marketplace gross sales for the current calendar month, in minor
-  // units (sum of blueprint_purchases.price_paid_minor). 0 is a real answer
-  // (no sales this month), not "unavailable".
-  int64 blueprint_sales_mtd_cents = 7;
-  // The same gross sales over the PRIOR full calendar month — powers the
-  // month-over-month delta.
-  int64 blueprint_sales_prev_month_cents = 8;
-  // Per-blueprint marketplace sales for the current calendar month, highest
+  // Blueprint-marketplace gross sales over the request's trailing PERIOD, in
+  // minor units (sum of blueprint_purchases.price_paid_minor). 0 is a real answer
+  // (no sales in the window), not "unavailable".
+  int64 blueprint_sales_period_cents = 7;
+  // The same gross sales over the PRIOR equal-length window — powers the delta.
+  int64 blueprint_sales_prev_period_cents = 8;
+  // Per-blueprint marketplace sales over the request's trailing PERIOD, highest
   // revenue first.
   repeated BlueprintSaleRow blueprint_sales = 9;
 
