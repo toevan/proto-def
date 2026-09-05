@@ -79,6 +79,7 @@ message Announcement {
   google.protobuf.Timestamp expires_at = 9;    // absent = no expiry
   google.protobuf.Timestamp created_at = 10;
   google.protobuf.Timestamp updated_at = 11;
+  bool dismissable = 12;                       // may a user close the banner? default false = no close button
 }
 
 message ListAnnouncementsRequest {
@@ -98,6 +99,7 @@ message CreateAnnouncementRequest {
   string audience_plan = 4;
   string audience_role = 5;
   google.protobuf.Timestamp expires_at = 6;    // absent = no expiry
+  bool dismissable = 7;                        // default false = banner has no close button
 }
 message CreateAnnouncementResponse {
   Announcement announcement = 1;
@@ -111,6 +113,7 @@ message UpdateAnnouncementRequest {
   string audience_plan = 5;
   string audience_role = 6;
   google.protobuf.Timestamp expires_at = 7;    // absent = clears expiry
+  bool dismissable = 8;                        // default false = banner has no close button
 }
 message UpdateAnnouncementResponse {
   Announcement announcement = 1;
