@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+// ServiceKind (the worker kinds) is defined in platformhealth.proto; a
+// cross-file type reference needs an explicit import even within one package.
+import "toevan/v1/platformhealth.proto";
+
+// ===================================================================
+// PlatformQueueService — operator dead-letter management for the worker
+// job queues (inspect / re-drive / purge). Admin-gated; every MUTATION
+// (re-drive, purge) requires super-admin. A queue is named by ServiceKind
+// (the worker kinds) from platformhealth.proto — same package, no import.
+//
+// A dead-letter is a job that failed after every retry. Re-driving is a
+// deliberate operator decision (investigate the failure, fix the cause,
+// then retry); the client warns per job type on the idempotency risk.
+// ===================================================================
+
+service PlatformQueueService {
+  // ListDeadLetterJobs returns the failed jobs for one worker queue,
+  // newest first, plus the total dead-letter depth. Admin-only.
+  rpc ListDeadLetterJobs(ListDeadLetterJobsRequest) returns (ListDeadLetterJobsResponse);
+
+  // RedriveDeadLetterJob moves ONE dead-lettered job back to pending for a
+  // fresh retry. Super-admin only. found=false when no such job.
+  rpc RedriveDeadLetterJob(RedriveDeadLetterJobRequest) returns (RedriveDeadLetterJobResponse);
+
+  // RedriveAllDeadLetterJobs re-drives every decodable dead-lettered job for
+  // a queue. Super-admin only.
+  rpc RedriveAllDeadLetterJobs(RedriveAllDeadLetterJobsRequest) returns (RedriveAllDeadLetterJobsResponse);
+
+  // PurgeDeadLetterJob discards ONE dead-lettered job without re-running it.
+  // Super-admin only.
+  rpc PurgeDeadLetterJob(PurgeDeadLetterJobRequest) returns (PurgeDeadLetterJobResponse);
+
+  // PurgeAllDeadLetterJobs empties a queue's dead-letter list. Super-admin only.
+  rpc PurgeAllDeadLetterJobs(PurgeAllDeadLetterJobsRequest) returns (PurgeAllDeadLetterJobsResponse);
+}
+
+// DeadLetterJob is one failed job as the inspector shows it.
+message DeadLetterJob {
+  string id = 1;
+  string type = 2;
+  int32 attempt = 3;
+  int32 max_retry = 4;
+  int64 created_at = 5;        // unix seconds
+  int32 priority = 6;
+  string fail_reason = 7;      // why it dead-lettered (may be empty for legacy/poison entries)
+  int64 failed_at = 8;         // unix seconds
+  string payload_preview = 9;  // truncated payload JSON, for the inspector
+}
+
+message ListDeadLetterJobsRequest {
+  ServiceKind queue = 1;       // a worker kind (agent/prgate/repo/webhook)
+  int32 limit = 2;             // 0 → server default
+}
+message ListDeadLetterJobsResponse {
+  repeated DeadLetterJob jobs = 1;
+  int64 failed_depth = 2;      // total dead-letter list depth (may exceed len(jobs) under the limit)
+}
+
+message RedriveDeadLetterJobRequest {
+  ServiceKind queue = 1;
+  string job_id = 2;
+}
+message RedriveDeadLetterJobResponse {
+  bool found = 1;
+}
+
+message RedriveAllDeadLetterJobsRequest {
+  ServiceKind queue = 1;
+}
+message RedriveAllDeadLetterJobsResponse {
+  int32 count = 1;
+}
+
+message PurgeDeadLetterJobRequest {
+  ServiceKind queue = 1;
+  string job_id = 2;
+}
+message PurgeDeadLetterJobResponse {
+  bool found = 1;
+}
+
+message PurgeAllDeadLetterJobsRequest {
+  ServiceKind queue = 1;
+}
+message PurgeAllDeadLetterJobsResponse {
+  int64 count = 1;
+}
