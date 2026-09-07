@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+// ===================================================================
+// PlatformTeamService — the Toevan-team roster + invitation onboarding.
+//
+// The four functional access levels (super_admin / moderator / support /
+// infrastructure) are ENFORCEABLE capabilities (internal/platformcap), not UI
+// labels: enforcement checks a capability, so the levels grant orthogonal sets
+// decoupled from the user/admin/super-admin privilege ladder.
+//
+// Authorization:
+//   - READS (ListPlatformTeam) are platform-staff-gated (admin+).
+//   - MUTATIONS (Invite/UpdateAccess/Remove/Revoke/Resend) require the
+//     platform.team.manage capability (super_admin).
+//   - GetPlatformInvitation + AcceptPlatformInvitation are plain-auth gated: the
+//     invitee is NOT yet staff, and the authenticated-email match (the invitation
+//     UUID is the only token) is the authorization.
+// ===================================================================
+
+service PlatformTeamService {
+  // ListPlatformTeam returns the active roster, the pending invitations, and the
+  // access-level legend (the server-of-truth for the four levels). Staff-gated.
+  rpc ListPlatformTeam(ListPlatformTeamRequest) returns (ListPlatformTeamResponse);
+
+  // InvitePlatformMember creates a pending invitation and emails the invitee an
+  // accept link. Requires platform.team.manage.
+  rpc InvitePlatformMember(InvitePlatformMemberRequest) returns (InvitePlatformMemberResponse);
+
+  // UpdatePlatformMemberAccess changes a member's access level (and title).
+  // Requires platform.team.manage. Refuses demoting the last Super Admin.
+  rpc UpdatePlatformMemberAccess(UpdatePlatformMemberAccessRequest) returns (UpdatePlatformMemberAccessResponse);
+
+  // RemovePlatformMember removes a member from the team. Requires
+  // platform.team.manage. Refuses removing the last Super Admin.
+  rpc RemovePlatformMember(RemovePlatformMemberRequest) returns (RemovePlatformMemberResponse);
+
+  // RevokePlatformInvitation cancels a pending invitation. Requires
+  // platform.team.manage.
+  rpc RevokePlatformInvitation(RevokePlatformInvitationRequest) returns (RevokePlatformInvitationResponse);
+
+  // ResendPlatformInvitation refreshes a pending invitation's expiry and re-sends
+  // the email. Requires platform.team.manage.
+  rpc ResendPlatformInvitation(ResendPlatformInvitationRequest) returns (ResendPlatformInvitationResponse);
+
+  // GetPlatformInvitation previews an invitation for the AUTHENTICATED invitee
+  // (email must match). Plain-auth gated.
+  rpc GetPlatformInvitation(GetPlatformInvitationRequest) returns (GetPlatformInvitationResponse);
+
+  // AcceptPlatformInvitation onboards the authenticated invitee (email must
+  // match). Plain-auth gated.
+  rpc AcceptPlatformInvitation(AcceptPlatformInvitationRequest) returns (AcceptPlatformInvitationResponse);
+}
+
+// PlatformTeamMember is one active roster member.
+message PlatformTeamMember {
+  string id = 1;
+  string user_id = 2;
+  string access_level = 3; // super_admin / moderator / support / infrastructure
+  string title = 4;        // job title (display only)
+  string name = 5;
+  string email = 6;
+  int64 joined_at = 7;     // unix seconds
+}
+
+// PlatformInvitation is one platform-team invitation.
+message PlatformInvitation {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  string access_level = 4;
+  string title = 5;
+  string status = 6;       // pending / accepted / expired / revoked
+  string inviter_name = 7;
+  int64 sent_at = 8;       // unix seconds
+  int64 expires_at = 9;    // unix seconds
+}
+
+// PlatformAccessLevel is one access-level legend entry (server-of-truth).
+message PlatformAccessLevel {
+  string level = 1;                 // the enum value (super_admin / ...)
+  string label = 2;                 // "Super Admin"
+  string description = 3;           // the legend copy
+  repeated string capabilities = 4; // granted capability ids (for tooltips)
+}
+
+message ListPlatformTeamRequest {}
+message ListPlatformTeamResponse {
+  repeated PlatformTeamMember members = 1;
+  repeated PlatformInvitation invitations = 2; // pending
+  repeated PlatformAccessLevel access_levels = 3;
+}
+
+message InvitePlatformMemberRequest {
+  string email = 1;
+  string name = 2;
+  string access_level = 3;
+  string title = 4;
+}
+message InvitePlatformMemberResponse {
+  PlatformInvitation invitation = 1;
+}
+
+message UpdatePlatformMemberAccessRequest {
+  string user_id = 1;
+  string access_level = 2;
+  string title = 3;
+}
+message UpdatePlatformMemberAccessResponse {
+  PlatformTeamMember member = 1;
+}
+
+message RemovePlatformMemberRequest {
+  string user_id = 1;
+}
+message RemovePlatformMemberResponse {}
+
+message RevokePlatformInvitationRequest {
+  string invitation_id = 1;
+}
+message RevokePlatformInvitationResponse {}
+
+message ResendPlatformInvitationRequest {
+  string invitation_id = 1;
+}
+message ResendPlatformInvitationResponse {
+  PlatformInvitation invitation = 1;
+}
+
+message GetPlatformInvitationRequest {
+  string invitation_id = 1;
+}
+message GetPlatformInvitationResponse {
+  PlatformInvitation invitation = 1;
+}
+
+message AcceptPlatformInvitationRequest {
+  string invitation_id = 1;
+}
+message AcceptPlatformInvitationResponse {
+  PlatformTeamMember member = 1;
+}
