@@ -15,6 +15,13 @@ service ExceptionService {
   rpc GetException(GetExceptionRequest) returns (GetExceptionResponse);
   rpc ListExceptions(ListExceptionsRequest) returns (ListExceptionsResponse);
   rpc GetExceptionMetrics(GetExceptionMetricsRequest) returns (GetExceptionMetricsResponse); // org-wide metric-strip aggregates
+  // Reviewer-facing scope disclosure: which current findings (files +
+  // per-file violation counts) this exception's coverage predicate spans.
+  // Computed live from current evidence at call time — the same three
+  // lineages the suppression views honor (anchored / path-subtree /
+  // rule-scope) — so an approver weighs the ACTUAL blast radius, not the
+  // creation-time snapshot.
+  rpc GetExceptionImpact(GetExceptionImpactRequest) returns (GetExceptionImpactResponse);
   rpc ApproveException(ApproveExceptionRequest) returns (ApproveExceptionResponse);
   rpc RejectException(RejectExceptionRequest) returns (RejectExceptionResponse);
   rpc EscalateException(EscalateExceptionRequest) returns (EscalateExceptionResponse); // [NEW — audit fix]
@@ -257,4 +264,27 @@ message EscalateExceptionResponse {
   bool success = 1;
   string error = 2;
   ExceptionRequest exception = 3;       // updated with new approval step
+}
+// ── Impact (reviewer-facing scope disclosure) ──
+
+message GetExceptionImpactRequest {
+  string exception_id = 1;
+}
+
+// One file the exception's coverage predicate currently spans.
+message ExceptionImpactFile {
+  string file_path = 1;
+  int32 violation_count = 2;
+}
+
+message GetExceptionImpactResponse {
+  // Total CURRENT violations covered by this exception's predicate
+  // (open or already excepted — "what does this waiver span right now").
+  int32 total_violations = 1;
+  // Total distinct files spanned — the full count even when [files] is
+  // capped, so the client can render "…and N more".
+  int32 total_files = 2;
+  // Path-sorted, capped server-side; [truncated] says the cap bit.
+  repeated ExceptionImpactFile files = 3;
+  bool truncated = 4;
 }
