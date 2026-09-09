@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+// ===================================================================
+// UserInvitationService — pre-provisioned onboarding benefits by login
+// ===================================================================
+//
+// A platform admin records WHO (GitHub login + full name for bookkeeping)
+// should receive WHICH account tags before the person ever signs up. When a
+// user whose FRESH GitHub login matches signs in, the invitation is claimed
+// and its tags land on their PERSONAL account — the established "tagging a
+// user" convention — from where the tag-gated benefits (feature-flag gates,
+// entitlement tag-grants) apply on their own. The stored users.username is
+// deliberately NOT matched (variably cased, stale after GitHub renames):
+// the OAuth login is the only authoritative identity, so claims happen at
+// login time only. To grant an ALREADY-onboarded user benefits immediately,
+// use AccountTagsService on their personal account instead.
+//
+// This is NOT an access invitation: no accept link, no token, no email.
+// Same fence as account tags: a tag never grants access to another tenant's
+// customer org. All RPCs require platform.flags.manage — the invitation's
+// only power is tag assignment, so it gates exactly like AccountTagsService.
+service UserInvitationService {
+  // CreateUserInvitation records a pending invitation. At most one PENDING
+  // invitation may exist per login (case-insensitive); tags must match the
+  // account-tags namespace pattern.
+  rpc CreateUserInvitation(CreateUserInvitationRequest) returns (CreateUserInvitationResponse);
+
+  // ListUserInvitations pages invitations newest-first, with optional
+  // status filter and login/name search.
+  rpc ListUserInvitations(ListUserInvitationsRequest) returns (ListUserInvitationsResponse);
+
+  // RevokeUserInvitation cancels a PENDING invitation. A claimed one has
+  // already applied its tags — undoing those is AccountTagsService's
+  // revoke, not this.
+  rpc RevokeUserInvitation(RevokeUserInvitationRequest) returns (RevokeUserInvitationResponse);
+}
+
+message UserInvitation {
+  string id = 1;
+  // Normalized (lowercase) GitHub login the claim matches on.
+  string github_username = 2;
+  string full_name = 3;
+  repeated string tags = 4;
+  // The assignment reason rendered into the account audit trail at claim.
+  string reason = 5;
+  // pending | claimed | revoked.
+  string status = 6;
+  string created_by = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp claimed_at = 9;
+  string claimed_by_user_id = 10;
+  // The personal account the tags landed on — the claim's receipt.
+  string claimed_account_id = 11;
+  google.protobuf.Timestamp revoked_at = 12;
+}
+
+message CreateUserInvitationRequest {
+  string github_username = 1;
+  string full_name = 2;
+  repeated string tags = 3;
+  string reason = 4;
+}
+
+message CreateUserInvitationResponse {
+  UserInvitation invitation = 1;
+}
+
+message ListUserInvitationsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  // Optional: pending | claimed | revoked. Empty = all.
+  string status = 3;
+  // Optional substring match on login or full name.
+  string search = 4;
+}
+
+message ListUserInvitationsResponse {
+  repeated UserInvitation invitations = 1;
+  int32 total = 2;
+}
+
+message RevokeUserInvitationRequest {
+  string id = 1;
+}
+
+message RevokeUserInvitationResponse {
+  UserInvitation invitation = 1;
+}
