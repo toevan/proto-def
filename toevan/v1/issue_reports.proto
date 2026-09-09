@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+// ===================================================================
+// IssueReportService — in-app issue reports (beta feedback channel)
+// ===================================================================
+//
+// Any authenticated user can submit a report (the beta-mode top bar's
+// "Report issue" affordance); the reporter identity is stamped SERVER-side
+// from claims, never trusted from the request. Reading and triaging the
+// queue requires platform.support.respond (the Support role's remit).
+//
+// Reports carry lightweight client context (route, environment) for
+// reproduction — no IP, no user agent (the enterprise-leads
+// data-minimisation stance).
+service IssueReportService {
+  // SubmitIssueReport records one report from the signed-in user.
+  rpc SubmitIssueReport(SubmitIssueReportRequest) returns (SubmitIssueReportResponse);
+
+  // ListIssueReports pages the triage queue newest-first, with optional
+  // status and severity filters.
+  rpc ListIssueReports(ListIssueReportsRequest) returns (ListIssueReportsResponse);
+
+  // UpdateIssueReportStatus moves a report through the triage lifecycle
+  // (new | triaged | resolved | dismissed) and can attach staff notes.
+  rpc UpdateIssueReportStatus(UpdateIssueReportStatusRequest) returns (UpdateIssueReportStatusResponse);
+}
+
+message IssueReport {
+  string id = 1;
+  string reporter_user_id = 2;
+  // Denormalized for the triage queue's display; the user row remains the
+  // authority.
+  string reporter_email = 3;
+  string title = 4;
+  string description = 5;
+  // low | medium | high.
+  string severity = 6;
+  // The in-app route the reporter was on when they opened the form.
+  string context_route = 7;
+  // Client environment label (e.g. production | staging | dev).
+  string environment = 8;
+  // new | triaged | resolved | dismissed.
+  string status = 9;
+  // Staff-only triage notes.
+  string notes = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message SubmitIssueReportRequest {
+  string title = 1;
+  string description = 2;
+  // low | medium | high; blank = medium.
+  string severity = 3;
+  string context_route = 4;
+  string environment = 5;
+}
+
+message SubmitIssueReportResponse {
+  IssueReport report = 1;
+}
+
+message ListIssueReportsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  // Optional: new | triaged | resolved | dismissed. Empty = all.
+  string status = 3;
+  // Optional: low | medium | high. Empty = all.
+  string severity = 4;
+}
+
+message ListIssueReportsResponse {
+  repeated IssueReport reports = 1;
+  int32 total = 2;
+}
+
+message UpdateIssueReportStatusRequest {
+  string id = 1;
+  string status = 2;
+  // Replaces the staff notes when set_notes is true (an empty string then
+  // clears them); otherwise notes are left untouched.
+  string notes = 3;
+  bool set_notes = 4;
+}
+
+message UpdateIssueReportStatusResponse {
+  IssueReport report = 1;
+}
