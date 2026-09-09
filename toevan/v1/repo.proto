@@ -604,6 +604,14 @@ enum RepoChangeReason {
   REPO_CHANGE_REASON_PROJECT_CHANGED = 4;     // re-parented; regroups project-scoped surfaces
   REPO_CHANGE_REASON_METRICS_UPDATED = 5;     // indexer symbol/edge/file/layer counts
   REPO_CHANGE_REASON_DESCRIPTION_CHANGED = 6; // GitHub "About" text backfilled
+  // An exception DECISION (approve / revoke / expiry) changed which of this
+  // repo's findings count as OPEN — no file content moved, no evaluation
+  // ran, but every violation-derived surface (canvas included) is stale.
+  // Published by the exception store's rollup seam alongside the recomputed
+  // repositories.violation_count; carries no status (the decision seam does
+  // not read the repositories row). Clients that predate this value degrade
+  // to UNSPECIFIED and still converge via their reason-agnostic re-fetch.
+  REPO_CHANGE_REASON_EXCEPTIONS_CHANGED = 7;
 }
 
 message RepoChange {
