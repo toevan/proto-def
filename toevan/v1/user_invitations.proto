@@ -21,7 +21,11 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 // login time only. To grant an ALREADY-onboarded user benefits immediately,
 // use AccountTagsService on their personal account instead.
 //
-// This is NOT an access invitation: no accept link, no token, no email.
+// This is NOT an access invitation: no accept link, no token. When an email
+// address is known (admin-entered, else the login's public GitHub profile
+// email resolved at create time), a courtesy notification email is sent —
+// "sign in with GitHub to activate" — but access never depends on it: the
+// claim happens at OAuth login whether or not any email existed.
 // Same fence as account tags: a tag never grants access to another tenant's
 // customer org. All RPCs require platform.flags.manage — the invitation's
 // only power is tag assignment, so it gates exactly like AccountTagsService.
@@ -58,6 +62,10 @@ message UserInvitation {
   // The personal account the tags landed on — the claim's receipt.
   string claimed_account_id = 11;
   google.protobuf.Timestamp revoked_at = 12;
+  // Where the courtesy invitation email went (admin-entered, else the
+  // login's public GitHub profile email). Empty = none known: the person
+  // gets access silently at their first GitHub sign-in.
+  string email = 13;
 }
 
 message CreateUserInvitationRequest {
@@ -65,6 +73,10 @@ message CreateUserInvitationRequest {
   string full_name = 2;
   repeated string tags = 3;
   string reason = 4;
+  // Optional notification address. Blank = fall back to the login's public
+  // GitHub profile email; if neither exists, no email is sent (the claim
+  // itself never depends on email).
+  string email = 5;
 }
 
 message CreateUserInvitationResponse {
