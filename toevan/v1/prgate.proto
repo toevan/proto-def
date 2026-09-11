@@ -313,6 +313,28 @@ message EnrichedViolation {
   // collapsed view. Resolved read-time from blueprint metadata;
   // empty when the rule/blueprint can't be resolved.
   string explanation = 29;
+
+  // Gate outcome axis (block vs advisory), ORTHOGONAL to severity. Records what
+  // the gate DID with this violation this run — computed once at verdict time
+  // from the single blocking-truth source (internal/prgate
+  // enforcementPolicy.blocks) and PERSISTED per PR-scoped violation, so the
+  // client renders the same block/advisory verdict the GitHub check-run shows
+  // without re-deriving policy. UNSPECIFIED in non-gate contexts (canvas /
+  // repo-scoped reuse) and for legacy rows written before this field existed;
+  // the "pre-existing" vs "introduced" reason for an advisory is composed
+  // client-side from is_new_in_pr (field 20), which is already carried here.
+  GateEffect gate_effect = 30;
+}
+
+// GateEffect is the block-vs-advisory axis of a SURFACED violation's gate
+// outcome, orthogonal to severity. One source of blocking truth
+// (enforcementPolicy.blocks, stamped once at verdict time) feeds persistence,
+// the check-run annotation, and this wire field, so they can never disagree.
+// Append new values; never rename.
+enum GateEffect {
+  GATE_EFFECT_UNSPECIFIED = 0;  // not evaluated in a gate context / legacy row
+  GATE_EFFECT_BLOCK = 1;        // fails the gate: net-new AND block-eligible
+  GATE_EFFECT_ADVISORY = 2;     // surfaced but does not block the merge
 }
 
 // AutoFixLifecycleState mirrors
