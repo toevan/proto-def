@@ -1948,7 +1948,7 @@ message ApplyFixViaAgentRequest {
 
   // Optional client-provided deep-link URL pointing back at the
   // violation in the canvas (e.g.,
-  // `https://app.toevan.dev/canvas/<project>?violation_id=<id>`).
+  // `https://app.toevan.com/canvas/<project>?violation_id=<id>`).
   // The server forwards this verbatim into the auto-generated PR
   // body so reviewers can click through from GitHub to the
   // violation's full context (rule definition, evidence trail,
