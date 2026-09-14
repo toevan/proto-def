@@ -247,7 +247,7 @@ message APIKeyInfo {
   string id = 1;
   string org_id = 2;
   string name = 3;
-  string key_prefix = 4;                              // "kl_xxxx" (display only, not full key)
+  string key_prefix = 4;                              // "tv_xxxx" (display only, not full key)
   repeated string scopes = 5;
   google.protobuf.Timestamp expires_at = 6;
   google.protobuf.Timestamp last_used_at = 7;

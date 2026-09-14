@@ -10,8 +10,8 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 // AccountTagsService — a platform-managed attribute layer on accounts
 // ===================================================================
 //
-// Attribute tags are additive, namespaced labels on an account (`kl:insider`,
-// `kl:qa`, `beta:launch-2026`, `promo:*`) that drive feature exposure,
+// Attribute tags are additive, namespaced labels on an account (`tv:insider`,
+// `tv:qa`, `beta:launch-2026`, `promo:*`) that drive feature exposure,
 // internal/QA access, and segmentation. They are an INPUT to the systems that
 // already gate (feature_flags.targeting_rules, entitlement) — never a parallel
 // gate (PRD: docs/architecture/PRD_ACCOUNT_TAGS.md).
@@ -29,7 +29,7 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 service AccountTagsService {
   // AssignAccountTag adds (or re-adds) an attribute tag to an account.
   // ttl_minutes <= 0 makes the tag PERMANENT (unlike a support grant, a staff
-  // tag like kl:insider legitimately never expires); ttl_minutes > 0 time-boxes
+  // tag like tv:insider legitimately never expires); ttl_minutes > 0 time-boxes
   // it (expires_at = now + ttl), self-expiring with no reaper. Re-assigning a
   // live (account, tag) refreshes its reason/expiry in place; re-assigning a
   // revoked one revives it. Platform-admin only; the tag must be namespaced.
@@ -45,7 +45,7 @@ service AccountTagsService {
   rpc ListAccountTags(ListAccountTagsRequest) returns (ListAccountTagsResponse);
 
   // ListAccountsByTag enumerates the accounts that carry a given tag — the
-  // "who has kl:qa" operator query. Newest first.
+  // "who has tv:qa" operator query. Newest first.
   rpc ListAccountsByTag(ListAccountsByTagRequest) returns (ListAccountsByTagResponse);
 
   // ListKnownTags enumerates the DISTINCT live tag labels in use across the
@@ -63,7 +63,7 @@ service AccountTagsService {
 message AccountTag {
   string id = 1;
   string account_id = 2;
-  // Namespaced label, e.g. 'kl:qa'. The namespace before ':' authorizes who may
+  // Namespaced label, e.g. 'tv:qa'. The namespace before ':' authorizes who may
   // set it and keeps operator/marketing/experiment tags from colliding.
   string tag = 3;
   string reason = 4;
@@ -80,9 +80,9 @@ message AccountTag {
 
 message AssignAccountTagRequest {
   // The account the tag attaches to. Both org and personal accounts are valid —
-  // a staffer's PERSONAL account carries kl:insider/kl:qa.
+  // a staffer's PERSONAL account carries tv:insider/tv:qa.
   string account_id = 1;
-  // Namespaced, non-empty after trimming (e.g. 'kl:qa'). The caller must be
+  // Namespaced, non-empty after trimming (e.g. 'tv:qa'). The caller must be
   // authorized for the namespace.
   string tag = 2;
   // Required, non-empty after trimming. Lands verbatim in the audit row.
