@@ -11,8 +11,14 @@ import "toevan/v1/platformhealth.proto";
 // ===================================================================
 // PlatformQueueService — operator dead-letter management for the worker
 // job queues (inspect / re-drive / purge). Admin-gated; every MUTATION
-// (re-drive, purge) requires super-admin. A queue is named by ServiceKind
-// (the worker kinds) from platformhealth.proto — same package, no import.
+// (re-drive, purge) requires super-admin. A queue is named by its owning
+// ServiceKind (the worker kinds, from platformhealth.proto) plus an
+// optional queue_label: a worker process can own more than one named queue
+// (worker-repo owns both its index/deep-check lane and the interactive
+// gitfix fix-dispatch lane), and the label picks the secondary one. Empty
+// label = that service's sole/primary queue. This mirrors
+// ServiceJobQueueHealth.queue_label so a dead-letter deep-link from a
+// System Health queue card round-trips the exact same identity.
 //
 // A dead-letter is a job that failed after every retry. Re-driving is a
 // deliberate operator decision (investigate the failure, fix the cause,
@@ -56,6 +62,7 @@ message DeadLetterJob {
 message ListDeadLetterJobsRequest {
   ServiceKind queue = 1;       // a worker kind (agent/prgate/repo/webhook)
   int32 limit = 2;             // 0 → server default
+  string queue_label = 3;      // "" = the service's primary queue; e.g. "gitfix" for worker-repo's secondary lane
 }
 message ListDeadLetterJobsResponse {
   repeated DeadLetterJob jobs = 1;
@@ -65,6 +72,7 @@ message ListDeadLetterJobsResponse {
 message RedriveDeadLetterJobRequest {
   ServiceKind queue = 1;
   string job_id = 2;
+  string queue_label = 3;      // "" = the service's primary queue; see ListDeadLetterJobsRequest.queue_label
 }
 message RedriveDeadLetterJobResponse {
   bool found = 1;
@@ -72,6 +80,7 @@ message RedriveDeadLetterJobResponse {
 
 message RedriveAllDeadLetterJobsRequest {
   ServiceKind queue = 1;
+  string queue_label = 2;      // "" = the service's primary queue; see ListDeadLetterJobsRequest.queue_label
 }
 message RedriveAllDeadLetterJobsResponse {
   int32 count = 1;
@@ -80,6 +89,7 @@ message RedriveAllDeadLetterJobsResponse {
 message PurgeDeadLetterJobRequest {
   ServiceKind queue = 1;
   string job_id = 2;
+  string queue_label = 3;      // "" = the service's primary queue; see ListDeadLetterJobsRequest.queue_label
 }
 message PurgeDeadLetterJobResponse {
   bool found = 1;
@@ -87,6 +97,7 @@ message PurgeDeadLetterJobResponse {
 
 message PurgeAllDeadLetterJobsRequest {
   ServiceKind queue = 1;
+  string queue_label = 2;      // "" = the service's primary queue; see ListDeadLetterJobsRequest.queue_label
 }
 message PurgeAllDeadLetterJobsResponse {
   int64 count = 1;
