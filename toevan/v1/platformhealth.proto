@@ -81,11 +81,13 @@ message GetSystemHealthResponse {
   // future field from reusing this tag with an incompatible wire type.
   reserved 4;
   reserved "webhook_queue";
-  // One entry per worker's Redis job queue (repo/webhook/prgate/agent —
-  // every non-server ServiceKind that actually owns a queue). A queue
-  // whose own Redis stats read fails this request is simply absent from
-  // the list — never fabricated, and never taking the other queues or
-  // any other part of this response down with it.
+  // One entry per Redis job queue. Usually one per worker ServiceKind
+  // (repo/webhook/prgate/agent — every non-server kind that owns a queue),
+  // but a single worker process can own more than one named queue: see
+  // ServiceJobQueueHealth.queue_label. A queue whose own Redis stats read
+  // fails this request is simply absent from the list — never fabricated,
+  // and never taking the other queues or any other part of this response
+  // down with it.
   repeated ServiceJobQueueHealth job_queues = 5;
 }
 
@@ -126,10 +128,20 @@ message Neo4jGraphSize {
 
 // Mirrors redisqueue.Queue.Stats' own return shape (pkg/db/redis/queue) —
 // every worker's real, already-tested queue-introspection call, not a new
-// mechanism. One instance per worker queue (repo/webhook/prgate/agent).
+// mechanism. One instance per named Redis queue; a worker process can own
+// more than one (worker-repo owns both its index/deep-check lane and the
+// interactive gitfix lane), which is why the queue's own label is carried
+// here rather than inferred 1:1 from the owning service.
 message ServiceJobQueueHealth {
+  // The worker process that owns this queue. Used for grouping/sort order;
+  // several queues may share one service.
   ServiceKind service = 1;
   int64 pending = 2;
   int64 processing = 3;
   int64 failed = 4;
+  // Human-facing label for this specific queue. Empty for a service's sole
+  // or primary queue (the client labels that card by the service name);
+  // set (e.g. "gitfix") for a secondary named queue so two queues owned by
+  // the same worker render as distinct cards instead of collapsing.
+  string queue_label = 5;
 }
