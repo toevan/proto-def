@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+// ============================================
+// SearchService — org-scoped global search across entities
+// ============================================
+
+service SearchService {
+  // GlobalSearch runs an org-scoped text search across repos, projects,
+  // blueprints, violations, exceptions and evidence, returning grouped,
+  // pre-titled hits. Authenticated and org-member gated. Each hit carries a
+  // routing key the client maps to a route: the client owns URL and
+  // org-prefix construction, so the server never emits a route string.
+  rpc GlobalSearch(GlobalSearchRequest) returns (GlobalSearchResponse);
+}
+
+// Entity kind a search hit belongs to. Drives the client's grouping, icon and
+// route mapping.
+enum SearchCategory {
+  SEARCH_CATEGORY_UNSPECIFIED = 0;
+  SEARCH_CATEGORY_REPO = 1;
+  SEARCH_CATEGORY_PROJECT = 2;
+  SEARCH_CATEGORY_BLUEPRINT = 3;
+  SEARCH_CATEGORY_VIOLATION = 4;
+  SEARCH_CATEGORY_EXCEPTION = 5;
+  SEARCH_CATEGORY_EVIDENCE = 6;
+}
+
+message GlobalSearchRequest {
+  string query = 1;
+  string org_id = 2;
+  // Categories to search. Empty means all categories.
+  repeated SearchCategory categories = 3;
+  // Max hits PER category (the server clamps to a sane ceiling). 0 means the
+  // server default.
+  int32 limit = 4;
+}
+
+message GlobalSearchResponse {
+  repeated SearchGroup groups = 1;
+}
+
+message SearchGroup {
+  SearchCategory category = 1;
+  repeated SearchHit hits = 2;
+  // Total matches for this category before the per-category limit, for a
+  // "N more" affordance. Equals hits length when not separately counted.
+  int32 total = 3;
+}
+
+message SearchHit {
+  SearchCategory category = 1;
+  // Canonical entity id (uuid, or slug for blueprints).
+  string id = 2;
+  // Primary display: repo/project/blueprint name, or a violation rule.
+  string title = 3;
+  // Secondary display: file path, owning repo, or a description snippet.
+  string subtitle = 4;
+  // Primary routing segment the client maps to a route:
+  //   repo -> repo short handle; project -> project id; blueprint -> slug;
+  //   violation/exception/evidence -> owning repo short handle.
+  string routing_key = 5;
+  // Secondary routing datum, e.g. a violation id for the canvas deep-link.
+  // Empty when not applicable.
+  string secondary_key = 6;
+}
