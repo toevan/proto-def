@@ -316,6 +316,28 @@ message GetRepositoryGraphRequest {
   bool include_tests = 6;   // include test file symbols (default false)
 }
 
+// Server-supplied tuning for the CLIENT-SIDE force-directed canvas layout.
+// These are platform-config knobs (category "canvas") so an operator can tune
+// how the graph lays out for ideal results without shipping a client release.
+// The client falls back to its own built-in defaults when this message is
+// absent (an older server, or the unary mock), which is why this is a nested
+// message rather than bare scalars: proto3 tracks message presence, so
+// "absent" is distinguishable from a real 0 value (0 legitimately disables
+// the spread).
+message GraphLayoutConfig {
+  // Node count below which repulsion is boosted so a sparse graph fans out
+  // instead of clustering on itself; the boost tapers to 1.0 at this cap, so
+  // larger graphs are untouched. 0 disables the small-graph spread.
+  // (platform config canvas.layout.spread_node_cap; server default 30)
+  int32 spread_node_cap = 1;
+
+  // Peak extra repulsion multiplier for the smallest graphs: repulsion is
+  // scaled by 1 + spread_max_boost * (1 - n / spread_node_cap), so at a couple
+  // of nodes it is ~(1 + spread_max_boost)x and tapers to 1.0 at the cap.
+  // (platform config canvas.layout.spread_max_boost; server default 1.0)
+  double spread_max_boost = 2;
+}
+
 message GetRepositoryGraphReply {
   repeated CanvasNode nodes = 1;
   repeated CanvasEdge edges = 2;
@@ -339,6 +361,11 @@ message GetRepositoryGraphReply {
   // resolve the repo (rare; would mean the row was deleted between
   // the auth check and the graph build).
   string repo_name = 9;
+
+  // Server-supplied tuning for the client-side force-directed layout
+  // (platform config, category "canvas"). Absent -> the client uses its
+  // built-in defaults.
+  GraphLayoutConfig layout_config = 10;
 }
 
 // A single frame of a StreamRepositoryGraph stream. The full graph is the
@@ -375,6 +402,9 @@ message GraphStreamHeader {
   repeated SuggestedAction suggested_actions = 4;
   int32 total_nodes = 5; // for a real (not faked) load-progress readout
   int32 total_edges = 6;
+
+  // Client-side layout tuning, same value as GetRepositoryGraphReply.layout_config.
+  GraphLayoutConfig layout_config = 7;
 }
 
 // SuggestedAction is a contextual quick action derived from the repo's
