@@ -36,6 +36,15 @@ service BuildService {
   // Canvas graph snapshot (static load for existing repos)
   rpc GetRepositoryGraph(GetRepositoryGraphRequest) returns (GetRepositoryGraphReply);
 
+  // Server-streaming form of GetRepositoryGraph: the SAME graph, delivered in
+  // pages so a large repo's canvas load never decodes one huge reply in a
+  // single synchronous burst on the client. This matters most on web /
+  // mobile-web, where the client runtime is single-threaded (no isolates): the
+  // client decodes + maps each small page and yields to the event loop between
+  // them, so the load animations keep painting instead of freezing. Same
+  // request as GetRepositoryGraph; the payload is identical, just re-framed.
+  rpc StreamRepositoryGraph(GetRepositoryGraphRequest) returns (stream GraphStreamChunk);
+
   // Source code viewer — serves file content for selected canvas nodes
   rpc GetFileContent(GetFileContentRequest) returns (GetFileContentReply);
 
@@ -330,6 +339,42 @@ message GetRepositoryGraphReply {
   // resolve the repo (rare; would mean the row was deleted between
   // the auth check and the graph build).
   string repo_name = 9;
+}
+
+// A single frame of a StreamRepositoryGraph stream. The full graph is the
+// concatenation of every frame's fields, reassembled into the same shape as
+// GetRepositoryGraphReply.
+//
+// Frame contract:
+//   - The FIRST frame carries `header` (graph-wide metadata + totals) and no
+//     page fields.
+//   - Every subsequent frame carries exactly ONE kind of page (one of the
+//     repeated fields populated).
+//   - ORDER IS A CONTRACT the client relies on to attach violations to nodes
+//     as it maps them incrementally: header, then all `violations` pages, then
+//     `nodes` pages, then `edges`, then `file_violations`, then `file_tree`.
+//     Sending every violation before any node lets the client build the
+//     node->violation index before it maps a node, so it never needs a second
+//     full pass over the nodes (which would reintroduce the very stall this
+//     RPC exists to remove).
+message GraphStreamChunk {
+  GraphStreamHeader header = 1; // first frame only; absent on page frames
+  repeated CanvasNode nodes = 2;
+  repeated CanvasEdge edges = 3;
+  repeated ViolationSummary violations = 4;
+  repeated FileViolation file_violations = 5;
+  repeated FileTreeNode file_tree = 6;
+}
+
+// One-time metadata for a StreamRepositoryGraph stream — the singleton and
+// small fields of GetRepositoryGraphReply that do not page.
+message GraphStreamHeader {
+  string repo_name = 1;
+  GraphMetrics metrics = 2;
+  repeated CanvasCluster clusters = 3;
+  repeated SuggestedAction suggested_actions = 4;
+  int32 total_nodes = 5; // for a real (not faked) load-progress readout
+  int32 total_edges = 6;
 }
 
 // SuggestedAction is a contextual quick action derived from the repo's
