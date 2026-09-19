@@ -183,6 +183,15 @@ service BuildService {
   // Canvas chat history — persisted AI conversations per repository
   rpc GetCanvasChatHistory(GetCanvasChatHistoryRequest) returns (GetCanvasChatHistoryReply);
   rpc ClearCanvasChatHistory(ClearCanvasChatHistoryRequest) returns (ClearCanvasChatHistoryReply);
+
+  // Ask Toevan (in-product AI help)
+  //
+  // Assist answers a user's product/onboarding question grounded in curated
+  // Toevan product knowledge. Org-scoped: the caller is authorized against the
+  // account's membership, the AI spend is metered to that account, and the turn
+  // is routed through the sensitivity-aware model resolver so a question that
+  // quotes code still stays in-boundary (fail closed, never US).
+  rpc Assist(AssistRequest) returns (AssistReply);
 }
 
 // ── AI Code Generation ──
@@ -2270,6 +2279,31 @@ message ClearCanvasChatHistoryRequest {
 
 message ClearCanvasChatHistoryReply {
   bool success = 1;
+}
+
+// Ask Toevan (in-product AI help)
+
+// AssistTurn is one prior message in the Ask Toevan conversation, replayed so
+// the model has continuity. role is "user" or "assistant".
+message AssistTurn {
+  string role = 1;
+  string content = 2;
+}
+
+message AssistRequest {
+  // account_id scopes the request: the caller must be a member of this org,
+  // and the AI spend is metered to it.
+  string account_id = 1;
+  // message is the user's current question.
+  string message = 2;
+  // history carries prior turns (oldest first) for multi-turn continuity; the
+  // server bounds how many it replays.
+  repeated AssistTurn history = 3;
+}
+
+message AssistReply {
+  // text is the assistant's answer, rendered as Markdown by the client.
+  string text = 1;
 }
 
 // ── Fix ChangeSet Architecture ──
