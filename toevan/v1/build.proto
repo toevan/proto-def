@@ -192,6 +192,12 @@ service BuildService {
   // is routed through the sensitivity-aware model resolver so a question that
   // quotes code still stays in-boundary (fail closed, never US).
   rpc Assist(AssistRequest) returns (AssistReply);
+
+  // AssistStream is the streaming form of Assist: the same answer and the same
+  // request and governance, delivered as text deltas so the panel renders it
+  // token by token. The proposed action (if any) and a done marker arrive on
+  // the final AssistUpdate frame.
+  rpc AssistStream(AssistRequest) returns (stream AssistUpdate);
 }
 
 // ── AI Code Generation ──
@@ -2320,6 +2326,21 @@ message AssistAction {
   string label = 2;
   string description = 3;
   map<string, string> args = 4;
+}
+
+// AssistUpdate is one frame of a streamed assist answer (AssistStream).
+message AssistUpdate {
+  // text_delta is an incremental chunk of the answer text; the client appends
+  // deltas in arrival order to render the answer as it is generated. Empty on
+  // the final frame (and on an action-only turn, which streams no text).
+  string text_delta = 1;
+  // proposed_action, when set, is the action the assistant suggests — delivered
+  // on the final frame only (tool calls are known only when generation
+  // completes). Same semantics as AssistReply.proposed_action.
+  AssistAction proposed_action = 2;
+  // done marks the terminal frame of the stream. The client finalizes the
+  // in-flight message (and applies proposed_action) when it arrives.
+  bool done = 3;
 }
 
 // ── Fix ChangeSet Architecture ──
