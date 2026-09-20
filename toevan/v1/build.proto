@@ -2304,6 +2304,22 @@ message AssistRequest {
 message AssistReply {
   // text is the assistant's answer, rendered as Markdown by the client.
   string text = 1;
+  // proposed_action, when set, is an action the assistant suggests taking (e.g.
+  // navigate to a page). The client renders a confirmation card and executes it
+  // through the existing authorized flows only after the user confirms; the
+  // server never acts on the user's behalf. Optional.
+  AssistAction proposed_action = 2;
+}
+
+// AssistAction is a client-executed action the assistant proposes. tool is the
+// discriminator ("navigate" in Phase 2; create_project / adopt_blueprint /
+// request_exception in later phases). label + description drive the confirmation
+// card; args carries the tool-specific parameters (navigate: {"route": "/repos"}).
+message AssistAction {
+  string tool = 1;
+  string label = 2;
+  string description = 3;
+  map<string, string> args = 4;
 }
 
 // ── Fix ChangeSet Architecture ──
