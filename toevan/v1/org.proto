@@ -23,6 +23,29 @@ service OrgService {
   // commercial decision), while UpdateOrg edits presentation fields.
   rpc AssignOrgPlan(AssignOrgPlanRequest) returns (AssignOrgPlanResponse);
 
+  // DeleteOrg soft-deletes the organisation: it becomes immediately invisible and
+  // inert (every read filters deleted_at), its active Stripe subscription is
+  // cancelled and its plan reverts to free, and its data enters a recoverable grace
+  // window before an async purge sweeps it. STRICT org-admin only: a support-access
+  // session is rejected (staff use ForceDeleteOrg), and platform role alone does not
+  // qualify. Team accounts only. The caller echoes the org handle to confirm.
+  rpc DeleteOrg(DeleteOrgRequest) returns (DeleteOrgResponse);
+
+  // ForceDeleteOrg is the platform-staff takedown for non-payment / abuse / legal
+  // requests. Gated on the platform CapOrgsManage capability (NOT the org-admin
+  // path), and REQUIRES a reason code that is written to the audit trail. Same
+  // soft-delete + grace + purge lifecycle as DeleteOrg.
+  rpc ForceDeleteOrg(ForceDeleteOrgRequest) returns (ForceDeleteOrgResponse);
+
+  // RestoreOrg un-deletes a soft-deleted org within its grace window and re-indexes
+  // its repositories (source-derived data is purged at delete time and rebuilt from
+  // GitHub). Keyed on the org's IMMUTABLE GitHub numeric id, never the handle
+  // (handles can be renamed and reclaimed): the caller supplies github_org_id and it
+  // MUST match the soft-deleted org, or the restore is refused. Verified org-admin
+  // only. Billing does not come back: the org returns on the free plan and must
+  // re-subscribe.
+  rpc RestoreOrg(RestoreOrgRequest) returns (RestoreOrgResponse);
+
   // Org-level master switch for public README status badges. Admin-only. Flips
   // accounts.badges_enabled, which the public badge endpoint gates on, so turning it
   // off makes every one of the org's repo badges read "unknown" while their per-repo
@@ -305,6 +328,38 @@ message AssignOrgPlanResponse {
   // a retried delivery succeeds without writing a second audit row.
   bool changed = 3;
 }
+
+message DeleteOrgRequest {
+  string org_id = 1;
+  // The org's handle, typed by the operator to confirm the destructive action. Must
+  // match the org's current handle exactly, or the call is rejected.
+  string confirm_handle = 2;
+}
+message DeleteOrgResponse {
+  // When the soft-deleted data is scheduled to be purged (the end of the recoverable
+  // grace window). Until then the org can be restored.
+  google.protobuf.Timestamp purge_after = 1;
+}
+
+message ForceDeleteOrgRequest {
+  string org_id = 1;
+  // A short, machine-parseable reason for the platform takedown (e.g. NON_PAYMENT,
+  // ABUSE, LEGAL_REQUEST). Required, written to the audit trail. Optional free-text
+  // detail accompanies it.
+  string reason_code = 2;
+  string detail = 3;
+}
+message ForceDeleteOrgResponse {
+  google.protobuf.Timestamp purge_after = 1;
+}
+
+message RestoreOrgRequest {
+  string org_id = 1;
+  // The org's immutable GitHub numeric id (org / installation), which restore is
+  // keyed on rather than the mutable handle. Must match the soft-deleted org.
+  int64 github_org_id = 2;
+}
+message RestoreOrgResponse { Org org = 1; }
 
 message SetBadgesEnabledRequest {
   string org_id = 1;
