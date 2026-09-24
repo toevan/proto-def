@@ -334,6 +334,40 @@ message GetRepoResponse {
   repeated IndexRun index_runs = 2;                  // recent indexing runs
   repeated BlueprintAssignment blueprint_assignments = 3; // enriched assignments with violation/rule counts
   repeated RepoActivity recent_activity = 4;          // unified timeline of repo events
+  // deep_check_requests is the per-PR premium deep-check lifecycle (newest per PR).
+  // Present from the moment a deep-check is requested — including queued, waiting on
+  // capacity, waiting on GitHub mergeability, and failed-to-start states that the
+  // internal graph scope (created only once indexing begins) cannot surface.
+  repeated DeepCheckRequest deep_check_requests = 5;
+}
+
+// DeepCheckRequest is the org-visible lifecycle of a premium pre-merge deep-check for one
+// PR head. Unlike the internal graph scope (created only once indexing starts), this
+// exists from the moment the deep-check is REQUESTED, so a deep-check that is queued,
+// waiting on a concurrency slot, waiting on GitHub to compute mergeability, or that failed
+// to start is visible to the org instead of silent.
+message DeepCheckRequest {
+  int32 pr_number = 1;
+  string head_sha = 2;
+  DeepCheckState state = 3;
+  string detail = 4;                                  // human-readable note (why it is waiting / failed)
+  google.protobuf.Timestamp requested_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+enum DeepCheckState {
+  DEEP_CHECK_STATE_UNSPECIFIED = 0;
+  DEEP_CHECK_STATE_QUEUED = 1;                        // enqueued, not yet started
+  DEEP_CHECK_STATE_DEFERRED_CAPACITY = 2;             // waiting for a concurrency slot
+  DEEP_CHECK_STATE_SKIPPED_CAPACITY = 3;              // gave up waiting for a slot (system busy); next push re-runs
+  DEEP_CHECK_STATE_DEFERRED_MERGE_REF = 4;            // waiting for GitHub to compute mergeability
+  DEEP_CHECK_STATE_MERGE_REF_TIMEOUT = 5;             // GitHub never finished computing mergeability in time
+  DEEP_CHECK_STATE_RUNNING = 6;                       // cloning + indexing the merged state
+  DEEP_CHECK_STATE_EVALUATING = 7;                    // evaluating base-graph-only families
+  DEEP_CHECK_STATE_PASSED = 8;                        // ran; gate decision = pass
+  DEEP_CHECK_STATE_BLOCKED = 9;                       // ran; gate decision = block
+  DEEP_CHECK_STATE_CONFLICTED = 10;                   // PR has merge conflicts; no merge ref to check
+  DEEP_CHECK_STATE_FAILED = 11;                       // infra / index / evaluation failure
 }
 
 // RepoActivity represents a single event in a repository's timeline.
@@ -359,6 +393,10 @@ enum RepoActivityType {
   REPO_ACTIVITY_PR_WARNING = 8;                       // PR check passed with warnings
   REPO_ACTIVITY_PR_PENDING = 9;                       // PR check scanning
   REPO_ACTIVITY_PR_ERROR = 10;                        // PR check errored
+  REPO_ACTIVITY_DEEP_CHECK_PASSED = 11;               // premium deep-check passed
+  REPO_ACTIVITY_DEEP_CHECK_BLOCKED = 12;              // premium deep-check blocked (net-new base-graph violation)
+  REPO_ACTIVITY_DEEP_CHECK_FAILED = 13;               // premium deep-check could not complete
+  REPO_ACTIVITY_DEEP_CHECK_SKIPPED = 14;              // premium deep-check skipped (system at capacity)
 }
 
 // IndexRun represents a single completed or in-progress indexing run.
