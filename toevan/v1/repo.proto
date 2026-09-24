@@ -381,6 +381,15 @@ message IndexRun {
   // legitimately-long indexes. For a not-yet-picked-up job it is the row's creation
   // time (DB default), so a job that never gets a worker still goes stale correctly.
   google.protobuf.Timestamp last_heartbeat_at = 10;
+
+  // deep_checked is true when this run's commit is the merge commit of a pull request
+  // that was deep-checked before it merged — a provenance stamp shown in the Indexing
+  // Status history ("this commit passed a pre-merge deep-check"). It is set only for a
+  // main-branch merge of a deep-checked PR; a direct push or a non-deep-checked PR merge
+  // leaves it false. deep_check_pr_number is that PR (for the badge tooltip); 0 when
+  // deep_checked is false.
+  bool deep_checked = 11;
+  int32 deep_check_pr_number = 12;
 }
 
 message ListReposRequest {
