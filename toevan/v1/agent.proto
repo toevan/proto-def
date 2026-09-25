@@ -298,6 +298,44 @@ message AgentProgressUpdate {
   // servers ⇒ clients treat it as LIFECYCLE (the only frames that
   // existed before this field).
   AgentProgressKind kind = 12;
+
+  // Per-violation apply outcomes, set on the terminal frame of a
+  // (possibly batch) Apply Fix run so the canvas can flag EACH fix
+  // entry independently: applied vs skipped-resolve-manually with a
+  // reason. A batch fix is ONE run → ONE PR, but it may ship only a
+  // SUBSET of the requested bumps — an un-installable dependency
+  // upgrade (an unreleased fix version, a dependency-graph conflict)
+  // is dropped so the resolvable ones can land, and a plan-unresolvable
+  // or merge-conflicting cluster is left out. This list reports which
+  // requested violations the PR actually fixed and, for each one it did
+  // not, why. Empty on non-terminal frames, on failure frames, and from
+  // runners that do not fix per-violation (clients then fall back to the
+  // overall status). Not every requested violation need appear; a
+  // violation absent from the list has no reported per-entry outcome.
+  repeated ApplyFixViolationOutcome violation_outcomes = 13;
+}
+
+// ApplyFixViolationOutcome reports whether one violation in an Apply Fix
+// run was fixed by the PR, and if not, why — so the canvas flags each
+// batch entry as applied or "resolve manually" without parsing prose.
+message ApplyFixViolationOutcome {
+  string violation_id = 1;
+  ApplyFixOutcomeKind outcome = 2;
+  // Human-readable reason the violation was NOT fixed, set only when
+  // outcome == SKIPPED (e.g. "the dependency upgrade is not installable
+  // — <toolchain reason>"). Empty for APPLIED.
+  string reason = 3;
+}
+
+// ApplyFixOutcomeKind is the per-violation verdict of an Apply Fix run.
+enum ApplyFixOutcomeKind {
+  // Older servers / non-fix runs — the client keeps the entry's prior
+  // (generation-phase) state.
+  APPLY_FIX_OUTCOME_KIND_UNSPECIFIED = 0;
+  // The opened/updated PR fixes this violation.
+  APPLY_FIX_OUTCOME_KIND_APPLIED = 1;
+  // The PR does NOT fix this violation — resolve it manually (reason set).
+  APPLY_FIX_OUTCOME_KIND_SKIPPED = 2;
 }
 
 // AgentProgressKind classifies a progress frame for rendering.
