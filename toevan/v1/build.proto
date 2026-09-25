@@ -2423,6 +2423,19 @@ message ChangeSet {
   // byte-identical to what Apply produces. Empty when no file could be
   // rendered (e.g. the source drifted out from under the plan).
   repeated FileDiff file_diffs = 11;
+
+  // base_commit_sha is the exact commit the plan's anchors + file_diffs
+  // were computed against — for a MainHead (canvas "against the default
+  // branch") target, the repo's last_indexed_commit; empty for a PR-head
+  // target (that path applies against the PR's authoritative head, not a
+  // pinned SHA). The client echoes this ChangeSet verbatim into
+  // DispatchApplyFixRequest.change_set, so Apply Fix clones+splices into
+  // the SAME commit the preview was rendered on — closing the drift where
+  // a re-index between preview and apply moved last_indexed_commit and the
+  // hint's line anchors no longer matched the cloned bytes (an empty-diff
+  // no-op fix). Empty ⇒ the server falls back to the repo's current
+  // last_indexed_commit at dispatch time.
+  string base_commit_sha = 12;
 }
 
 // FileDiff is the per-file before→after change a ChangeSet produces — the
