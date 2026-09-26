@@ -6,6 +6,7 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 import "google/protobuf/timestamp.proto";
 import "toevan/v1/types.proto";
+import "toevan/v1/repo.proto"; // DeepCheckRequest (per-PR deep-check summary)
 
 // ============================================
 // PRGateService — PR Enforcement & Violations
@@ -210,6 +211,16 @@ message PullRequest {
   PRLifecycleState lifecycle_state = 26;
   google.protobuf.Timestamp merged_at = 27;  // set when lifecycle_state = MERGED
   google.protobuf.Timestamp closed_at = 28;  // set when MERGED or CLOSED
+
+  // Per-PR premium deep-check summary (state, reason, evaluated head) for the
+  // PR-history deep-check badge and the PR-gate detail's deep-check section. It is
+  // backed by the DURABLE deep-check verdict-of-record, which survives PR close and
+  // merge (so it shows on the merged/closed PRs that dominate history), with the live
+  // serving state overlaid while a check is in flight on an open PR. UNSET only when a
+  // PR has no verdict and none in flight: deep-check not enabled for the repo, or no
+  // blocking base-graph-only family applied. The client shows no badge then. Reuses the
+  // repo.proto DeepCheckRequest shape so a PR's deep-check state has one representation.
+  DeepCheckRequest deep_check = 29;
 }
 
 enum PRStatus {
