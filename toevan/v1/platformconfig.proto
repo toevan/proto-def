@@ -18,8 +18,11 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 //
 // Knobs can be coupled by relationships (for example one knob must not exceed
 // another): ListConfig reports every relationship with whether the stored
-// settings satisfy it, and every write is validated against the stored
-// settings so a change that breaks a relationship is refused.
+// settings satisfy it, and every write is validated so a change that breaks a
+// relationship is refused. With the relationship model on (the knob
+// platformconfig.relation_model_enabled, the default) a write is validated
+// against the stored settings; with it off, against the answering server's
+// running configuration.
 service PlatformConfigService {
   // ListConfig returns every catalogued knob with its live value, default,
   // tier, and whether it is currently overridden.
@@ -33,10 +36,15 @@ service PlatformConfigService {
   // default, then propagates. Returns the (now default) knob view.
   rpc ResetConfig(ResetConfigRequest) returns (ResetConfigResponse);
 
-  // UpdateConfigs validates every change as one candidate against the stored
-  // rows and the answering server's environment, then writes and audits them in
-  // one transaction, or writes nothing. validate_only runs the validation and
-  // writes nothing. Each change needs the write capability of its own knob.
+  // UpdateConfigs validates every change as one candidate, then writes and
+  // audits them in one transaction, or writes nothing. With the relationship
+  // model on (platformconfig.relation_model_enabled, the default) the candidate
+  // is the stored rows over the answering server's environment with the
+  // changes applied; with it off, the answering server's running configuration
+  // plus the changes (a write of that knob alone is always decided by the
+  // relationship model, so it can be turned back on). validate_only runs the
+  // validation and writes nothing. Each change needs the write capability of
+  // its own knob.
   rpc UpdateConfigs(UpdateConfigsRequest) returns (UpdateConfigsResponse);
 
   // GetConfigConvergence reports, per live process, which config revision it has
@@ -270,6 +278,15 @@ message ConfigKnob {
   // JSON of the stored override row. Empty when there is no row. Masked when
   // the knob is sensitive.
   string stored_value = 13;
+  // Names of the relationships (ConfigRelationship.name) that keep this knob's
+  // stored value from applying on the answering server: while the stored
+  // settings break a relationship that the environment satisfies, every
+  // process keeps its last good configuration, so the value is stored and
+  // audited but not applied until the relationship is fixed. Empty when the
+  // stored value applies. A client keys its localized notice on these names;
+  // the English note the server appends to description is the fallback for
+  // clients that do not read this field.
+  repeated string not_applied_by = 14;
 }
 
 message ListConfigRequest {}
