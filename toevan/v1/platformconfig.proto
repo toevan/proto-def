@@ -13,6 +13,13 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 // restart. Platform-global (not org-scoped); all RPCs require the platform
 // admin role. A knob's tier records how live a change is: A = applies
 // immediately, B = applies via a reconfigure seam, C = applies on restart.
+// A tier C knob that lists boot_roles applies when a process of one of those
+// roles restarts.
+//
+// Knobs can be coupled by relationships (for example one knob must not exceed
+// another): ListConfig reports every relationship with whether the stored
+// settings satisfy it, and every write is validated against the stored
+// settings so a change that breaks a relationship is refused.
 service PlatformConfigService {
   // ListConfig returns every catalogued knob with its live value, default,
   // tier, and whether it is currently overridden.
@@ -25,6 +32,12 @@ service PlatformConfigService {
   // ResetConfig removes a knob's override so it reverts to the env/struct
   // default, then propagates. Returns the (now default) knob view.
   rpc ResetConfig(ResetConfigRequest) returns (ResetConfigResponse);
+
+  // UpdateConfigs validates every change as one candidate against the stored
+  // rows and the answering server's environment, then writes and audits them in
+  // one transaction, or writes nothing. validate_only runs the validation and
+  // writes nothing. Each change needs the write capability of its own knob.
+  rpc UpdateConfigs(UpdateConfigsRequest) returns (UpdateConfigsResponse);
 
   // GetConfigConvergence reports, per live process, which config revision it has
   // applied (plus per-process apply/failure counts) — so an admin can confirm an
@@ -247,12 +260,61 @@ message ConfigKnob {
   // masked placeholder as a new value (the server rejects it).
   bool sensitive = 10;
   int64 version = 9;         // override row version (0 when not overridden)
+  // Names of the relationships (ConfigRelationship.name) this knob takes part
+  // in. A client edits a linked knob together with its partners through
+  // UpdateConfigs.
+  repeated string relationships = 11;
+  // The process roles whose restart applies this knob (tier C knobs read once
+  // at boot). Empty when the knob is not read at boot.
+  repeated string boot_roles = 12;
+  // JSON of the stored override row. Empty when there is no row. Masked when
+  // the knob is sensitive.
+  string stored_value = 13;
 }
 
 message ListConfigRequest {}
 
 message ListConfigResponse {
   repeated ConfigKnob knobs = 1;
+  // Every relationship between knobs, evaluated on the stored rows over the
+  // answering server's environment.
+  repeated ConfigRelationship relationships = 2;
+}
+
+// ConfigEnvInput is an environment value a relationship reads that is not a
+// knob (it changes only when the process is recreated with a new env file).
+message ConfigEnvInput {
+  string name = 1;   // env var name, e.g. DEEP_CHECK_WORKER_CONCURRENCY
+  string value = 2;  // the answering server's effective value
+}
+
+// ConfigRelationship is a rule that couples knobs (and environment values).
+message ConfigRelationship {
+  string name = 1;                         // stable identifier, e.g. deep_check_max_concurrent_within_lane
+  string rule = 2;                         // formula of key names, env names and operators (an identifier, not translated)
+  repeated string keys = 3;                // the knobs it couples
+  repeated ConfigEnvInput env_inputs = 4;  // the environment values it reads
+  bool satisfied = 5;                      // evaluated on the stored rows over the answering server's environment
+  string violation = 6;                    // the reason when not satisfied
+}
+
+// ConfigChange is one change of an UpdateConfigs batch.
+message ConfigChange {
+  string key = 1;
+  oneof change {
+    string value = 2;  // JSON-encoded value for the knob's type, as in UpdateConfigRequest
+    bool reset = 3;    // true: remove the override so the knob reverts to its default (as ResetConfig)
+  }
+}
+
+message UpdateConfigsRequest {
+  repeated ConfigChange changes = 1;  // 1 to 16 changes, each to a distinct key
+  bool validate_only = 2;             // validate the whole batch and write nothing
+}
+
+message UpdateConfigsResponse {
+  repeated ConfigKnob knobs = 1;  // one view per change, in request order
+  bool applied = 2;               // false for validate_only or when every change was a no-op
 }
 
 message UpdateConfigRequest {
@@ -287,6 +349,27 @@ message ProcessConfigStatus {
   int64 invariant_rejections = 10;
   int64 started_at_unix_ms = 11;          // process start (uptime)
   int64 revision_applied_at_unix_ms = 12; // when this process LIVE-adopted its current revision; 0 = adopted on boot only (no edit since start)
+  // Boot-read knobs (ConfigKnob.boot_roles contains this process's role): key
+  // to the JSON value this process booted with.
+  map<string, string> boot_values = 13;
+  // Where boot_values came from: db, env_fallback or env_disabled. Empty from
+  // older binaries.
+  string boot_source = 14;
+}
+
+// PendingProcess is one live process that runs a boot-read knob at a value
+// other than the one it would boot with now.
+message PendingProcess {
+  string instance_id = 1;
+  string role = 2;
+  string running_value = 3;  // JSON the process booted with
+  string desired_value = 4;  // JSON it would boot with now
+}
+
+// PendingRestart lists the processes that must restart to apply a boot-read knob.
+message PendingRestart {
+  string key = 1;
+  repeated PendingProcess processes = 2;
 }
 
 message GetConfigConvergenceRequest {}
@@ -303,6 +386,9 @@ message GetConfigConvergenceResponse {
   int64 total_applied = 5;
   int64 total_failures = 6;                     // refresh + publish + invariant rejections, summed across all reporters
   int64 convergence_spread_ms = 7;             // gap between earliest & latest LIVE adoption of current_revision; 0 when <2 reporters have live-adopted it (e.g. a freshly restarted fleet with no edit yet)
+  // Boot-read knobs whose stored value differs from what some live process
+  // booted with: those processes must restart to apply it.
+  repeated PendingRestart pending_restarts = 8;
 }
 
 message ListConfigAuditRequest {
