@@ -22,7 +22,11 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 // relationship is refused. With the relationship model on (the knob
 // platformconfig.relation_model_enabled, the default) a write is validated
 // against the stored settings; with it off, against the answering server's
-// running configuration.
+// running configuration. An accepted write can be stored but not applied:
+// while the stored settings break a relationship and the answering server's
+// environment satisfies every relationship, every process keeps its last good
+// configuration, and each knob whose stored value is therefore not running
+// carries an English note naming those relationships on its description.
 service PlatformConfigService {
   // ListConfig returns every catalogued knob with its live value, default,
   // tier, and whether it is currently overridden.
@@ -278,15 +282,6 @@ message ConfigKnob {
   // JSON of the stored override row. Empty when there is no row. Masked when
   // the knob is sensitive.
   string stored_value = 13;
-  // Names of the relationships (ConfigRelationship.name) that keep this knob's
-  // stored value from applying on the answering server: while the stored
-  // settings break a relationship that the environment satisfies, every
-  // process keeps its last good configuration, so the value is stored and
-  // audited but not applied until the relationship is fixed. Empty when the
-  // stored value applies. A client keys its localized notice on these names;
-  // the English note the server appends to description is the fallback for
-  // clients that do not read this field.
-  repeated string not_applied_by = 14;
 }
 
 message ListConfigRequest {}
