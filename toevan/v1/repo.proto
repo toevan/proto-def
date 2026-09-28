@@ -368,6 +368,10 @@ enum DeepCheckState {
   DEEP_CHECK_STATE_BLOCKED = 9;                       // ran; gate decision = block
   DEEP_CHECK_STATE_CONFLICTED = 10;                   // PR has merge conflicts; no merge ref to check
   DEEP_CHECK_STATE_FAILED = 11;                       // infra / index / evaluation failure
+  DEEP_CHECK_STATE_SUPERSEDED = 12;                   // a newer commit replaced this head; its check-run concluded neutral
+  DEEP_CHECK_STATE_CANCELLED = 13;                    // the PR was merged or closed first; its check-run concluded neutral
+  DEEP_CHECK_STATE_CAPACITY_TIMEOUT = 14;             // gave up waiting for capacity; its check-run concluded action_required
+  DEEP_CHECK_STATE_HEAD_UNRESOLVED = 15;              // GitHub never confirmed the requested head in time; nothing posted
 }
 
 // RepoActivity represents a single event in a repository's timeline.
