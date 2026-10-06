@@ -353,6 +353,9 @@ message DeepCheckRequest {
   string detail = 4;                                  // human-readable note (why it is waiting / failed)
   google.protobuf.Timestamp requested_at = 5;
   google.protobuf.Timestamp updated_at = 6;
+  // The run whose state `state` reports: the head's newest requested run. Set only while
+  // deep_check.run_identity_enabled is on.
+  string run_id = 15;
 }
 
 enum DeepCheckState {
@@ -368,10 +371,12 @@ enum DeepCheckState {
   DEEP_CHECK_STATE_BLOCKED = 9;                       // ran; gate decision = block
   DEEP_CHECK_STATE_CONFLICTED = 10;                   // PR has merge conflicts; no merge ref to check
   DEEP_CHECK_STATE_FAILED = 11;                       // infra / index / evaluation failure
-  DEEP_CHECK_STATE_SUPERSEDED = 12;                   // a newer commit replaced this head; its check-run concluded neutral
-  DEEP_CHECK_STATE_CANCELLED = 13;                    // the PR was merged or closed first; its check-run concluded neutral
+  DEEP_CHECK_STATE_SUPERSEDED = 12;                   // a newer commit replaced this head; its check-run concluded cancelled
+  DEEP_CHECK_STATE_CANCELLED = 13;                    // the PR was merged or closed first; its check-run concluded cancelled (neutral when merged)
   DEEP_CHECK_STATE_CAPACITY_TIMEOUT = 14;             // gave up waiting for capacity; its check-run concluded action_required
-  DEEP_CHECK_STATE_HEAD_UNRESOLVED = 15;              // GitHub never confirmed the requested head in time; nothing posted
+  // GitHub never confirmed the requested head in time; nothing posted, except that with
+  // per-run check-runs a run that had posted its own concludes it cancelled.
+  DEEP_CHECK_STATE_HEAD_UNRESOLVED = 15;
 }
 
 // RepoActivity represents a single event in a repository's timeline.
