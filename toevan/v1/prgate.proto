@@ -688,8 +688,8 @@ message DeepCheckProgressEvent {
   bool completed = 12;                    // terminal frame (phase DONE or FAILED)
   string error = 13;
   string error_code = 14;
-  // The run this event belongs to. Set while deep_check.run_identity_enabled is on, or when the
-  // request named a run.
+  // The run this event belongs to. Set only while deep_check.run_identity_enabled is on, or when
+  // the request named a run.
   string run_id = 15;
 }
 
@@ -698,8 +698,8 @@ message StreamDeepCheckProgressRequest {
   int32 pr_number = 2;
   string head_sha = 3;
   // A non-empty run id streams that run's events whatever the knobs say. Empty: the head's
-  // events as before while deep_check.run_identity_enabled is off; with it on, the head's
-  // newest requested run, bound once for the stream.
+  // events as before while deep_check.run_identity_enabled is off, or when the head's newest
+  // request names no run; otherwise the head's newest requested run, bound once for the stream.
   string run_id = 4;
 }
 

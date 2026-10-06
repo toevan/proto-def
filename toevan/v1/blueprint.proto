@@ -368,7 +368,9 @@ message ListPendingReviewsResponse {
 }
 
 message ListBlueprintDraftsRequest {
-  string org_id = 1;  // the organization whose drafts are listed; the caller must be a member
+  // The organization whose drafts are listed; the caller must be a member of it. The reply also
+  // holds the caller's own drafts that belong to no organization.
+  string org_id = 1;
   int32 limit = 2;
   int32 offset = 3;
 }
