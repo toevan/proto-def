@@ -28,6 +28,9 @@ service BlueprintService {
   rpc ApproveBlueprintSubmission(ApproveBlueprintRequest) returns (ApproveBlueprintResponse);
   rpc RejectBlueprintSubmission(RejectBlueprintRequest) returns (RejectBlueprintResponse);
   rpc ListPendingBlueprintReviews(ListPendingReviewsRequest) returns (ListPendingReviewsResponse);
+  // ListBlueprintDrafts lists an organization's draft blueprints to its members, and the
+  // caller's own drafts that belong to no organization.
+  rpc ListBlueprintDrafts(ListBlueprintDraftsRequest) returns (ListBlueprintDraftsResponse);
   rpc GetBlueprintReviewHistory(GetReviewHistoryRequest) returns (GetReviewHistoryResponse);
 
   // Versioning
@@ -236,7 +239,12 @@ message ValidationIssue {
 
 // ── CRUD Request/Response ──
 
-message CreateBlueprintRequest { Blueprint blueprint = 1; }
+message CreateBlueprintRequest {
+  Blueprint blueprint = 1;
+  // The organization the blueprint is created in: the blueprint is private to it. The caller
+  // must be able to write in it. An older client sends none.
+  string org_id = 2;
+}
 message CreateBlueprintResponse {
   Blueprint blueprint = 1;
   repeated ValidationIssue validation_issues = 2;
@@ -355,6 +363,16 @@ message ListPendingReviewsRequest {
   int32 offset = 2;
 }
 message ListPendingReviewsResponse {
+  repeated Blueprint blueprints = 1;
+  int32 total = 2;
+}
+
+message ListBlueprintDraftsRequest {
+  string org_id = 1;  // the organization whose drafts are listed; the caller must be a member
+  int32 limit = 2;
+  int32 offset = 3;
+}
+message ListBlueprintDraftsResponse {
   repeated Blueprint blueprints = 1;
   int32 total = 2;
 }
