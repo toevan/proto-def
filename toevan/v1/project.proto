@@ -93,6 +93,9 @@ message Project {
   // of its governing rules, so compliance_rate is a real number. False means
   // "not evaluated yet" (compliance_rate is then 0.0, not 0%).
   bool evaluated = 20;
+  // Governed rules of (repo, blueprint) pairs not evaluated yet, summed over the
+  // project's repos. compliance_rate covers evaluated rules only.
+  int32 rules_pending = 21;
 }
 
 enum ProjectStatus {

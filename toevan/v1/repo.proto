@@ -131,6 +131,10 @@ message Repo {
   // blueprint with rules and a default-branch evaluation of it. False means
   // "not evaluated yet" (compliance_rate is then 0.0 and must not be shown as 0%).
   bool evaluated = 28;
+  // Governed rules of blueprints this repo has not had evaluated yet. They are not in
+  // compliance_rate (it covers evaluated rules only) and never count as passing, so a
+  // client can say "100% of evaluated rules, 3 pending".
+  int32 rules_pending = 29;
 }
 
 enum RepoStatus {
