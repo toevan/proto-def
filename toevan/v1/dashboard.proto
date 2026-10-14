@@ -70,7 +70,7 @@ message GetDashboardResponse {
   // predicate the Repositories page sums — the two surfaces cannot disagree.
   // compliance_rate is DERIVED on read (api view repo_blueprint_compliance):
   // the governing rules with no open finding over all governing rules,
-  // summed across the org's evaluated repos — the same number the per-repo
+  // summed across the org's evaluated repos, the same number the per-repo
   // cards are built from, never a windowed variant they cannot reproduce.
 
   // Repos with violation_count > 0, same predicate as open_violations —

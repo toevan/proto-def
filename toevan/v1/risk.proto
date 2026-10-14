@@ -80,7 +80,7 @@ message RiskMetrics {
   int32 high_risk_open = 2;
   // Derived on read, org-wide: governing rules with no open finding over all
   // governing rules, summed across the org's evaluated repos (api view
-  // repo_blueprint_compliance) — the same number every repo card is built from.
+  // repo_blueprint_compliance), the same number every repo card is built from.
   // Meaningful only when evaluated is true; otherwise 0.0 means "not evaluated".
   float compliance_rate = 3;
   int32 blueprints_enforced = 4;

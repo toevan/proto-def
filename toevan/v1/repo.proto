@@ -103,13 +103,13 @@ message Repo {
   int32 violation_count = 17;
   int32 layer_count = 23;
 
-  // Compliance metrics — derived on read: the share of the rules the repo is
+  // Compliance metrics, derived on read: the share of the rules the repo is
   // governed by that have no open finding on the default branch (api view
   // repo_blueprint_compliance). compliance_rate is meaningful ONLY when
   // evaluated is true; when evaluated is false (no governing blueprint, or no
   // main evaluation yet) compliance_rate is 0.0 and means "not evaluated",
   // never "0% compliant". Render "Not evaluated yet" in that case.
-  float compliance_rate = 20;                          // 0.0–1.0; read together with evaluated
+  float compliance_rate = 20;                          // 0.0 to 1.0; read together with evaluated
   google.protobuf.Timestamp last_scan_at = 21;         // last constraint evaluation; absent when never scanned
   RepoHealthLabel health_label = 22;                   // computed from violation_count: healthy/warning/critical
 
