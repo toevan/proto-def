@@ -825,11 +825,9 @@ message SetRepoDeepCheckEnabledResponse { bool enabled = 1; }
 enum GateFamilyCategory {
   GATE_FAMILY_CATEGORY_UNSPECIFIED = 0;
   GATE_FAMILY_CATEGORY_ARCHITECTURE = 1;         // layer, import, role, naming, annotation rules
-  GATE_FAMILY_CATEGORY_SECRETS = 2;              // secret detection, forbidden (secret container) files
-  GATE_FAMILY_CATEGORY_DEPENDENCIES = 3;         // vulnerable dependencies (CVEs), licenses
-  GATE_FAMILY_CATEGORY_IAC = 4;                  // infrastructure as code and encryption at rest
-  GATE_FAMILY_CATEGORY_COMPLIANCE_DATA_FLOW = 5; // data flow, data tags, compliance handlers
-  GATE_FAMILY_CATEGORY_GRAPH_STRUCTURE = 6;      // cycles, depth budgets, god components
+  GATE_FAMILY_CATEGORY_SECURITY_SUPPLY_CHAIN = 2; // secrets, forbidden files, vulnerable dependencies, licenses, IaC, encryption at rest
+  GATE_FAMILY_CATEGORY_COMPLIANCE_DATA_FLOW = 3; // data flow, data tags, compliance handlers
+  GATE_FAMILY_CATEGORY_GRAPH_STRUCTURE = 4;      // cycles, depth budgets, god components
 }
 
 // GateBeforeMerge is what the PR gate does with a family before merge.
