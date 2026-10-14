@@ -130,6 +130,40 @@ message DismissOnboardingResponse {}
 
 message AttentionItemsResponse {
   repeated AttentionItem items = 1;
+  // Under ATTENTION_SCOPE_PRODUCTION: the open items left out because their
+  // file is not production code, counted per class over ALL of the account's
+  // open items (never capped by the request's limit). Empty under ALL.
+  repeated AttentionHiddenCount hidden = 2;
+}
+
+// How many open items of one non-production file class a production-scoped
+// read left out: `items` findings in `groups` distinct rules.
+message AttentionHiddenCount {
+  FileClass file_class = 1;
+  int32 items = 2;
+  int32 groups = 3;
+}
+
+// Which findings an attention read returns.
+enum AttentionScope {
+  ATTENTION_SCOPE_UNSPECIFIED = 0;  // treated as ALL (clients that predate the field)
+  ATTENTION_SCOPE_ALL = 1;
+  // Only items whose file is FILE_CLASS_SOURCE, plus items with no file
+  // (blueprint updates, pending exceptions, index failures).
+  ATTENTION_SCOPE_PRODUCTION = 2;
+}
+
+// What kind of file a finding sits in, from ONE server-side path classifier.
+enum FileClass {
+  FILE_CLASS_UNSPECIFIED = 0;      // no file, or the class is unknown
+  FILE_CLASS_SOURCE = 1;           // production code, manifests, build and deploy config
+  FILE_CLASS_TEST = 2;
+  FILE_CLASS_DOCS = 3;
+  FILE_CLASS_FIXTURE = 4;          // test data and fixtures
+  FILE_CLASS_EXAMPLE = 5;          // examples, samples, demos
+  FILE_CLASS_GENERATED = 6;
+  FILE_CLASS_VENDOR = 7;           // vendored or third-party trees
+  FILE_CLASS_BLUEPRINT_ASSET = 8;  // blueprint definitions and their assets
 }
 
 message AttentionItem {
@@ -144,6 +178,14 @@ message AttentionItem {
   // renders it as a badge. Empty when the item has no repo affiliation
   // (blueprint updates, compliance checklist). Never composed into title.
   string repo_name = 8;
+  // Where the finding sits (repo-relative path and 1-based line; empty / 0
+  // when the item has no file) and the path's class.
+  string file_path = 9;
+  int32 line = 10;
+  FileClass file_class = 11;
+  // The rule the finding breaks (empty for non-violation items): the stable
+  // key a client groups by, never the title.
+  string rule_id = 12;
 }
 
 enum AttentionItemType {
@@ -204,6 +246,7 @@ message GetDashboardRequest { string org_id = 1; }
 message GetAttentionItemsRequest {
   string org_id = 1;
   int32 limit = 2;
+  AttentionScope scope = 3;  // UNSPECIFIED = ALL
 }
 message GetCompliancePostureRequest { string org_id = 1; }
 
