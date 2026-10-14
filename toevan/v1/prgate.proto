@@ -90,6 +90,15 @@ service PRGateService {
   // from repo_id and the membership/role check is scoped to it.
   rpc GetRepoDeepCheckEnabled(GetRepoDeepCheckEnabledRequest) returns (GetRepoDeepCheckEnabledResponse);
   rpc SetRepoDeepCheckEnabled(SetRepoDeepCheckEnabledRequest) returns (SetRepoDeepCheckEnabledResponse);
+  // What the PR gate does with each rule family BEFORE merge and what the default
+  // branch does AFTER merge, for one repo, computed by the gate's own policy
+  // functions (the same ones the verdict is made with), so a page can never claim
+  // a behaviour the gate does not have. Per repo (the Deep Check toggle and the
+  // adopted blueprints are per repo).
+  //
+  // Auth: org member (read), scoped to the repo's OWNING org, resolved server-side
+  // from repo_id.
+  rpc GetRepoGateCoverage(GetRepoGateCoverageRequest) returns (GetRepoGateCoverageResponse);
   // Triggers an on-demand PR-branch CANVAS index (index-only: no verdict, no
   // check-run, no plan gate) so any member can view a PR's branch graph.
   // Idempotent: already-serving or already-building returns that state without
@@ -807,6 +816,76 @@ message SetRepoDeepCheckEnabledRequest {
 // non-entitled plan fails with FailedPrecondition (the org must upgrade);
 // disabling is always allowed.
 message SetRepoDeepCheckEnabledResponse { bool enabled = 1; }
+
+// ── Gate coverage: what the gate does per rule family, before and after merge ──
+
+// GateFamilyCategory groups the rule families into the rows a page shows. Defined
+// once, server side, beside the family registry (constraint.CategoryOf); a new
+// family cannot be added without one. Append new values; never rename.
+enum GateFamilyCategory {
+  GATE_FAMILY_CATEGORY_UNSPECIFIED = 0;
+  GATE_FAMILY_CATEGORY_ARCHITECTURE = 1;         // layer, import, role, naming, annotation rules
+  GATE_FAMILY_CATEGORY_SECRETS = 2;              // secret detection, forbidden (secret container) files
+  GATE_FAMILY_CATEGORY_DEPENDENCIES = 3;         // vulnerable dependencies (CVEs), licenses
+  GATE_FAMILY_CATEGORY_IAC = 4;                  // infrastructure as code and encryption at rest
+  GATE_FAMILY_CATEGORY_COMPLIANCE_DATA_FLOW = 5; // data flow, data tags, compliance handlers
+  GATE_FAMILY_CATEGORY_GRAPH_STRUCTURE = 6;      // cycles, depth budgets, god components
+}
+
+// GateBeforeMerge is what the PR gate does with a family before merge.
+enum GateBeforeMerge {
+  GATE_BEFORE_MERGE_UNSPECIFIED = 0;
+  GATE_BEFORE_MERGE_BLOCKS = 1;          // an introduced violation fails the gate
+  GATE_BEFORE_MERGE_WARNS = 2;           // surfaced, never fails the gate
+  GATE_BEFORE_MERGE_OFF = 3;             // the org muted the family; not surfaced
+  GATE_BEFORE_MERGE_DEEP_CHECK_ONLY = 4; // the fast gate cannot block it; only Deep Check can
+  GATE_BEFORE_MERGE_NOT_EVALUATED = 5;   // no adopted rule of this family
+}
+
+// GateAfterMerge is what the default branch does with a family after merge.
+enum GateAfterMerge {
+  GATE_AFTER_MERGE_UNSPECIFIED = 0;
+  GATE_AFTER_MERGE_RE_EVALUATED = 1; // judged before merge, evaluated again on main
+  GATE_AFTER_MERGE_EVALUATED = 2;    // first evaluated on main
+  GATE_AFTER_MERGE_NOT_EVALUATED = 3; // no adopted rule of this family
+}
+
+// GateDeepCheckState is Deep Check for one repo right now.
+enum GateDeepCheckState {
+  GATE_DEEP_CHECK_STATE_UNSPECIFIED = 0;
+  GATE_DEEP_CHECK_STATE_UNAVAILABLE = 1;   // not available to the org (plan, rollout, cohort)
+  GATE_DEEP_CHECK_STATE_AVAILABLE_OFF = 2; // available, the repo has not turned it on
+  GATE_DEEP_CHECK_STATE_ON = 3;            // on for the repo
+  GATE_DEEP_CHECK_STATE_PAUSED = 4;        // on for the repo, the platform paused dispatch
+}
+
+message FamilyGateCoverage {
+  string family = 1; // the server's family key (constraint type)
+  GateFamilyCategory category = 2;
+  GateBeforeMerge before_merge = 3;
+  GateAfterMerge after_merge = 4;
+}
+
+message GetRepoGateCoverageRequest {
+  string repo_id = 1;
+  // Optional. With a PR number the response carries that PR's last Deep Check.
+  int32 pr_number = 2;
+}
+message GetRepoGateCoverageResponse {
+  // The org's plan tier as entitlements report it: free, team, enterprise, platform.
+  string plan = 1;
+  GateDeepCheckState deep_check_state = 2;
+  // The PR's last Deep Check (the same message PullRequest.deep_check carries). Unset
+  // without a pr_number or when the PR has none.
+  DeepCheckRequest last_deep_check = 3;
+  // The org's severity gate. A BLOCKS family fails the gate on an introduced violation of
+  // a severity these allow (critical always does).
+  bool block_on_error = 4;
+  bool block_on_warning = 5;
+  // One row per known family, sorted by family key. A family with no adopted rule is
+  // NOT_EVALUATED both before and after merge; the page omits it.
+  repeated FamilyGateCoverage families = 6;
+}
 
 // ── Auto-fix Loop Cap (KA-244 step 4) ──
 
