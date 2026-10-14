@@ -838,6 +838,7 @@ enum GateBeforeMerge {
   GATE_BEFORE_MERGE_OFF = 3;             // the org muted the family; not surfaced
   GATE_BEFORE_MERGE_DEEP_CHECK_ONLY = 4; // the fast gate cannot block it; only Deep Check can
   GATE_BEFORE_MERGE_NOT_EVALUATED = 5;   // no adopted rule of this family
+  GATE_BEFORE_MERGE_MIXED = 6;           // a category row only: its evaluated families differ
 }
 
 // GateAfterMerge is what the default branch does with a family after merge.
@@ -846,6 +847,7 @@ enum GateAfterMerge {
   GATE_AFTER_MERGE_RE_EVALUATED = 1; // judged before merge, evaluated again on main
   GATE_AFTER_MERGE_EVALUATED = 2;    // first evaluated on main
   GATE_AFTER_MERGE_NOT_EVALUATED = 3; // no adopted rule of this family
+  GATE_AFTER_MERGE_MIXED = 4;         // a category row only: its evaluated families differ
 }
 
 // GateDeepCheckState is Deep Check for one repo right now.
@@ -864,13 +866,24 @@ message FamilyGateCoverage {
   GateAfterMerge after_merge = 4;
 }
 
+// CategoryGateCoverage is one row of the page's matrix, stated by the server: the value its
+// EVALUATED families (those with an adopted rule) all share, or MIXED when they differ (the
+// page expands the category into its family rows). A category with no evaluated family is
+// NOT_EVALUATED on both sides and the page omits it.
+message CategoryGateCoverage {
+  GateFamilyCategory category = 1;
+  GateBeforeMerge before_merge = 2;
+  GateAfterMerge after_merge = 3;
+}
+
 message GetRepoGateCoverageRequest {
   string repo_id = 1;
   // Optional. With a PR number the response carries that PR's last Deep Check.
   int32 pr_number = 2;
 }
 message GetRepoGateCoverageResponse {
-  // The org's plan tier as entitlements report it: free, team, enterprise, platform.
+  // The org's plan tier on the axis entitlements resolve it from: a personal account's
+  // owner plan (free, pro, max) or a team account's own plan (free, team, enterprise, platform).
   string plan = 1;
   GateDeepCheckState deep_check_state = 2;
   // The PR's last Deep Check (the same message PullRequest.deep_check carries). Unset
@@ -883,6 +896,10 @@ message GetRepoGateCoverageResponse {
   // One row per known family, sorted by family key. A family with no adopted rule is
   // NOT_EVALUATED both before and after merge; the page omits it.
   repeated FamilyGateCoverage families = 6;
+  // One row per category (in category order): the server's own aggregation of its families.
+  repeated CategoryGateCoverage categories = 7;
+  // The account kind the plan is on: personal or team.
+  string account_kind = 8;
 }
 
 // ── Auto-fix Loop Cap (KA-244 step 4) ──
