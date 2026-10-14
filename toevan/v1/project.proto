@@ -73,6 +73,9 @@ message Project {
 
   // Aggregated metrics
   int32 violation_count = 12;
+  // Share of the governing rules, summed over the project's evaluated repos,
+  // that have no open finding (api view repo_blueprint_compliance). Meaningful
+  // only when evaluated is true; otherwise 0.0 means "not evaluated yet".
   float compliance_rate = 13;            // 0.0–1.0 (UI multiplies by 100)
   int32 pull_request_count = 14;        // [NEW — audit fix: UI shows PR count per project]
   google.protobuf.Timestamp last_activity_at = 15;            // timestamp should be used to show human-readable: "2h ago"
@@ -85,6 +88,11 @@ message Project {
   int32 repo_count = 17;
   int32 blueprint_count = 18;
   int32 member_count = 19;
+
+  // True when at least one repo of the project has a default-branch evaluation
+  // of its governing rules, so compliance_rate is a real number. False means
+  // "not evaluated yet" (compliance_rate is then 0.0, not 0%).
+  bool evaluated = 20;
 }
 
 enum ProjectStatus {

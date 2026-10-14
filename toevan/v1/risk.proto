@@ -24,29 +24,52 @@ message GetBlueprintInsightsRequest { string org_id = 1; }
 message BlueprintInsightRow {
   string blueprint_id = 1;
   string blueprint_name = 2;
+  // Open FINDINGS of this blueprint (a count of violations, not of rules).
   int32 open_violations = 3;
+  // Rule instances (one per evaluated repo and rule) of this blueprint with no
+  // open finding. NOT comparable with open_violations: derive the rate from
+  // rules_total and rules_failing, never from passed_now / (passed_now +
+  // open_violations).
   int32 passed_now = 4;
   // Twelve ISO weeks of violation evidence, oldest first (sparse — weeks
   // with no rows are omitted; clients pad).
   repeated WeeklyTrendPoint weekly = 5;
+  // Rule instances governed and evaluated (one per evaluated repo and rule) and
+  // how many of them have an open finding. rate = (total - failing) / total.
+  int32 rules_total = 6;
+  int32 rules_failing = 7;
+  // False when no repo has a default-branch evaluation of this blueprint yet:
+  // render "not evaluated", never 0%.
+  bool evaluated = 8;
 }
 
 message RuleQualityRow {
   string rule_id = 1;
   string rule_name = 2;
   string blueprint_name = 3;
+  // Open FINDINGS of this rule (a count of violations, not of repos).
   int32 open_violations = 4;
+  // Evaluated repos in which this rule has no open finding. Derive the rate
+  // from rules_total and rules_failing, not from this field and open_violations.
   int32 passed_now = 5;
+  // Evaluated repos that are governed by this rule, and how many of them have
+  // an open finding of it. rate = (total - failing) / total.
+  int32 rules_total = 6;
+  int32 rules_failing = 7;
+  bool evaluated = 8;
 }
 
 message GetBlueprintInsightsResponse {
   int32 violations_30d = 1;
   int32 checks_30d = 2;
+  // The org's derived compliance (see RiskMetrics.compliance_rate); meaningful
+  // only when org_evaluated is true.
   float org_pass_rate = 3;
   repeated BlueprintInsightRow blueprints = 4;
   repeated RuleQualityRow rules = 5;
   repeated RepoCompliance repos = 6;
   repeated WeeklyTrendPoint activity = 7;
+  bool org_evaluated = 8;
 }
 
 message GetRiskDashboardRequest { string org_id = 1; }
@@ -55,7 +78,10 @@ message RiskMetrics {
   int32 open_violations = 1;
   // Open findings whose rule severity is critical or error.
   int32 high_risk_open = 2;
-  // passed_now / (passed_now + open_now) — the repos-page formula, org-wide.
+  // Derived on read, org-wide: governing rules with no open finding over all
+  // governing rules, summed across the org's evaluated repos (api view
+  // repo_blueprint_compliance) — the same number every repo card is built from.
+  // Meaningful only when evaluated is true; otherwise 0.0 means "not evaluated".
   float compliance_rate = 3;
   int32 blueprints_enforced = 4;
   int32 repos_covered = 5;
@@ -63,6 +89,9 @@ message RiskMetrics {
   int32 prs_blocked_30d = 6;
   // Accepted risk in plain sight: findings under an active approved exception.
   int32 excepted_findings = 7;
+  // False when no repo of the org has been evaluated yet: compliance_rate is
+  // then 0.0 and must render as "Not evaluated yet".
+  bool evaluated = 8;
 }
 
 // severity x age bucket ('fresh' <24h, 'recent' <=7d, 'stale' >7d).
@@ -83,6 +112,9 @@ message BlueprintCoverage {
   string blueprint_name = 2;
   float pass_rate = 3;
   int32 open_violations = 4;
+  // False when no repo has a default-branch evaluation of this blueprint yet;
+  // pass_rate is then 0.0 and means "not evaluated".
+  bool evaluated = 5;
 }
 
 message OpenViolationRow {
@@ -119,8 +151,11 @@ message RuleCorrelation {
 message RepoCompliance {
   string repo_id = 1;
   string repo_name = 2;
+  // Share of the repo's governing rules with no open finding; meaningful only
+  // when evaluated is true (otherwise 0.0 means "not evaluated yet").
   float compliance_rate = 3;
   int32 open_violations = 4;
+  bool evaluated = 5;
 }
 
 message GetRiskDashboardResponse {
@@ -133,10 +168,14 @@ message GetRiskDashboardResponse {
   repeated OpenViolationRow open_violations = 5;
   repeated LeaderboardEntry leaderboard = 6;
   repeated RuleCorrelation correlations = 7;
+  // Meaningful only when org_evaluated is true.
   float org_compliance_rate = 8;
   repeated RepoCompliance repo_compliance = 9;
   // True when this week's violation evidence rose >=25% (and >=5 rows)
   // over last week.
   bool violation_spike = 10;
   float spike_delta_pct = 11;
+  // False when no repo of the org has been evaluated yet: org_compliance_rate
+  // is then 0.0 and means "not evaluated", never 0%.
+  bool org_evaluated = 12;
 }
