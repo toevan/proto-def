@@ -45,6 +45,73 @@ service EvidenceService {
   // published public key. Authorization derives the owning org from the REPO
   // row (viewer floor), never from the request.
   rpc ListVerdictAttestations(ListVerdictAttestationsRequest) returns (ListVerdictAttestationsResponse);
+
+  // Re-verify the org's whole evidence ledger from the stored records: the
+  // hash chain of every repository, the attestation signatures under the
+  // published key(s), and the Rekor inclusion proofs when the org's log
+  // anchoring applies. Same permission as ListEvidence (org member, or platform
+  // staff with a support-access grant), scoped by org_id. Bounded work: one run
+  // per org at a time (a second caller joins it), a per-org minimum interval (a
+  // repeat inside it returns the stored result with its time,
+  // served_from_stored = true), a server deadline, and the caller's
+  // cancellation stops the run. The result is persisted and also returned by
+  // GetEvidenceSummary as last_verification.
+  rpc VerifyEvidenceChain(VerifyEvidenceChainRequest) returns (VerifyEvidenceChainResponse);
+}
+
+// ── Chain verification ──
+
+// How the first failed check failed. The first four are the hash-chain
+// invariants (the same kinds `toevan audit verify` reports); the rest are the
+// attestation legs.
+enum EvidenceBreakageKind {
+  EVIDENCE_BREAKAGE_KIND_UNSPECIFIED = 0;
+  EVIDENCE_BREAKAGE_KIND_SEQ_CONTIGUITY = 1;   // chain_seq is not the gap-free 1-based sequence
+  EVIDENCE_BREAKAGE_KIND_CONTENT_HASH = 2;     // record_hash != sha256(stored record): tampered content
+  EVIDENCE_BREAKAGE_KIND_GENESIS_LINK = 3;     // first record does not link to the repository genesis
+  EVIDENCE_BREAKAGE_KIND_PREV_LINK = 4;        // a record does not link to its predecessor
+  EVIDENCE_BREAKAGE_KIND_SIGNATURE = 5;        // an attestation signature (or its envelope) does not verify
+  EVIDENCE_BREAKAGE_KIND_ATTESTATION_BINDING = 6; // a signed statement disagrees with its ledger record
+  EVIDENCE_BREAKAGE_KIND_INCLUSION_PROOF = 7;  // a Rekor inclusion proof does not verify
+}
+
+// The first point verification failed. Never carries hashes: an auditor who
+// wants them runs the CLI; the page links to the record.
+message EvidenceBreakage {
+  string repo_id = 1;
+  string repo_name = 2;                  // display name; empty when the repository row is gone
+  int64 chain_seq = 3;                   // position in that repository's chain
+  EvidenceBreakageKind kind = 4;
+  string record_id = 5;                  // the ledger run's id; empty when no row sits at that position (a gap)
+}
+
+// One verification result. Counts are real: a leg that did not apply is
+// reported as not applicable (rekor_applicable = false), never as "0 ok".
+message EvidenceVerification {
+  google.protobuf.Timestamp verified_at = 1;
+  int64 records_checked = 2;             // ledger records whose chain position was verified
+  int32 repos_checked = 3;
+  bool chain_intact = 4;                 // the hash chain of every repository holds
+  int64 signatures_checked = 5;
+  int64 signatures_valid = 6;
+  bool rekor_applicable = 7;             // false: the org has no Rekor anchoring to check
+  int64 inclusion_proofs_checked = 8;    // meaningful only when rekor_applicable
+  int64 inclusion_proofs_ok = 9;         // meaningful only when rekor_applicable
+  // True only when the chain is intact, every signature and binding verified,
+  // and (when applicable) every inclusion proof held.
+  bool all_checks_passed = 10;
+  EvidenceBreakage first_breakage = 11;  // unset when all_checks_passed
+}
+
+message VerifyEvidenceChainRequest {
+  string org_id = 1;
+}
+
+message VerifyEvidenceChainResponse {
+  EvidenceVerification verification = 1;
+  // true: the org verified inside the minimum interval, so this is the stored
+  // result (verification.verified_at says when it ran), not a new run.
+  bool served_from_stored = 2;
 }
 
 // ── Verdict attestations ──
@@ -130,6 +197,10 @@ message EvidenceSummary {
 
   // Per-blueprint breakdown
   repeated BlueprintComplianceRate per_blueprint = 10;
+
+  // The org's last chain verification (VerifyEvidenceChain); unset when the
+  // org has never been verified.
+  EvidenceVerification last_verification = 11;
 }
 
 message BlueprintComplianceRate {
