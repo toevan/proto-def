@@ -73,6 +73,20 @@ enum EvidenceBreakageKind {
   EVIDENCE_BREAKAGE_KIND_SIGNATURE = 5;        // an attestation signature (or its envelope) does not verify
   EVIDENCE_BREAKAGE_KIND_ATTESTATION_BINDING = 6; // a signed statement disagrees with its ledger record
   EVIDENCE_BREAKAGE_KIND_INCLUSION_PROOF = 7;  // a Rekor inclusion proof does not verify
+  EVIDENCE_BREAKAGE_KIND_ATTESTATION_MISSING = 8; // an attestable run inside the attested stretch has no signed attestation
+}
+
+// What the Rekor leg did for this org.
+enum EvidenceRekorStatus {
+  EVIDENCE_REKOR_STATUS_UNSPECIFIED = 0;
+  // The org has no stored Rekor proof bundle: nothing to check, proof counts are 0.
+  EVIDENCE_REKOR_STATUS_NOT_ANCHORED = 1;
+  // The org has bundles but this deployment lacks the pinned log key for at least one of
+  // them, so they cannot be checked here. Proof counts are 0; this is not a pass of the proofs.
+  EVIDENCE_REKOR_STATUS_NOT_CHECKABLE = 2;
+  // The org has bundles and every one was checked under its pinned log key; the
+  // proof counts say how many held.
+  EVIDENCE_REKOR_STATUS_VERIFIED_ANCHORED = 3;
 }
 
 // The first point verification failed. Never carries hashes: an auditor who
@@ -94,13 +108,22 @@ message EvidenceVerification {
   bool chain_intact = 4;                 // the hash chain of every repository holds
   int64 signatures_checked = 5;
   int64 signatures_valid = 6;
-  bool rekor_applicable = 7;             // false: the org has no Rekor anchoring to check
-  int64 inclusion_proofs_checked = 8;    // meaningful only when rekor_applicable
-  int64 inclusion_proofs_ok = 9;         // meaningful only when rekor_applicable
-  // True only when the chain is intact, every signature and binding verified,
-  // and (when applicable) every inclusion proof held.
+  EvidenceRekorStatus rekor_status = 7;
+  int64 inclusion_proofs_checked = 8;    // 0 unless rekor_status is VERIFIED_ANCHORED
+  int64 inclusion_proofs_ok = 9;         // 0 unless rekor_status is VERIFIED_ANCHORED
+  // True only when there is something to verify, the chain is intact, every signature
+  // and binding verified, no attestation is missing, and (when anchored) every
+  // inclusion proof held.
   bool all_checks_passed = 10;
-  EvidenceBreakage first_breakage = 11;  // unset when all_checks_passed
+  EvidenceBreakage first_breakage = 11;  // unset when all_checks_passed, or when nothing_to_verify
+  // Attestable runs inside the attested stretch (at or after the org's first attested
+  // run, before the repository's newest attested run) that have no attestation. Any is a failure.
+  int64 attestations_missing = 12;
+  // Attestable runs recorded before attestation began for the org: counted, never a failure.
+  int64 attestations_before_attestation = 13;
+  // The org has no ledger records. all_checks_passed is false and no breakage is named:
+  // render "nothing to verify yet", never a green pass.
+  bool nothing_to_verify = 14;
 }
 
 message VerifyEvidenceChainRequest {
