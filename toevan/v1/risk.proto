@@ -21,32 +21,95 @@ service RiskService {
 
 message GetBlueprintInsightsRequest { string org_id = 1; }
 
+// The LEGACY blueprint row of Blueprint Analytics: rows exist only for blueprints with
+// open findings or passed rows, exactly as before the derived compliance. Its fields
+// keep their meaning; a client must not compute a rate from them. The derived
+// per-blueprint rows are BlueprintCompliance, in GetBlueprintInsightsResponse
+// .blueprint_compliance.
 message BlueprintInsightRow {
   string blueprint_id = 1;
   string blueprint_name = 2;
+  // Open FINDINGS of this blueprint (a count of violations).
   int32 open_violations = 3;
+  // The passed rows of the default-branch evidence view for this blueprint
+  // (resolution markers a re-evaluation writes), NOT a count of passing rules.
   int32 passed_now = 4;
-  // Twelve ISO weeks of violation evidence, oldest first (sparse — weeks
+  // Twelve ISO weeks of violation evidence, oldest first (sparse, weeks
   // with no rows are omitted; clients pad).
   repeated WeeklyTrendPoint weekly = 5;
 }
 
+// The LEGACY rule row of Rule Quality: rows exist only for rules with open findings
+// or passed rows, exactly as before the derived compliance. The derived per-rule rows
+// are RuleCompliance, in GetBlueprintInsightsResponse.rule_compliance.
 message RuleQualityRow {
   string rule_id = 1;
   string rule_name = 2;
   string blueprint_name = 3;
+  // Open FINDINGS of this rule (a count of violations).
   int32 open_violations = 4;
+  // The passed rows of the default-branch evidence view for this rule (resolution
+  // markers), NOT a count of repos or rules passing.
   int32 passed_now = 5;
+}
+
+// The derived compliance of one blueprint over the org's repositories: one row per
+// governed blueprint, including those with no finding and those not evaluated yet.
+message BlueprintCompliance {
+  string blueprint_id = 1;
+  string blueprint_name = 2;
+  // Rule instances (one per evaluated repo and governed rule) and how many of them
+  // have an open finding.
+  int32 rules_total = 3;
+  int32 rules_failing = 4;
+  // Rule instances in repos where this blueprint has not been evaluated yet. They
+  // are not in rules_total and never count as passing.
+  int32 rules_pending = 5;
+  // False when no repo has a default-branch evaluation of this blueprint yet:
+  // render "not evaluated", never 0%.
+  bool evaluated = 6;
+  // (rules_total - rules_failing) / rules_total, computed on the server. Absent
+  // when evaluated is false. The client never divides.
+  optional float pass_rate = 7;
+  // Open FINDINGS of this blueprint (a count of violations).
+  int32 open_violations = 8;
+}
+
+// The derived compliance of one rule id over the org's repositories: one row per
+// governed rule, including those with no finding.
+message RuleCompliance {
+  string rule_id = 1;
+  string rule_name = 2;
+  string blueprint_name = 3;
+  // Rule instances of this rule id: one per evaluated repo and governing blueprint
+  // (a rule id shared by two blueprints in one repo counts twice), and how many of
+  // them have an open finding.
+  int32 rules_total = 4;
+  int32 rules_failing = 5;
+  // Rule instances of this rule in repos where the blueprint is not evaluated yet.
+  int32 rules_pending = 6;
+  bool evaluated = 7;
+  // (rules_total - rules_failing) / rules_total, computed on the server. Absent
+  // when evaluated is false. The client never divides.
+  optional float pass_rate = 8;
+  // Open FINDINGS of this rule (a count of violations).
+  int32 open_violations = 9;
 }
 
 message GetBlueprintInsightsResponse {
   int32 violations_30d = 1;
   int32 checks_30d = 2;
+  // The org's derived compliance (see RiskMetrics.compliance_rate); meaningful
+  // only when org_evaluated is true.
   float org_pass_rate = 3;
   repeated BlueprintInsightRow blueprints = 4;
   repeated RuleQualityRow rules = 5;
   repeated RepoCompliance repos = 6;
   repeated WeeklyTrendPoint activity = 7;
+  bool org_evaluated = 8;
+  // The derived rows (a client reads these, not blueprints/rules, for compliance).
+  repeated BlueprintCompliance blueprint_compliance = 9;
+  repeated RuleCompliance rule_compliance = 10;
 }
 
 message GetRiskDashboardRequest { string org_id = 1; }
@@ -55,7 +118,10 @@ message RiskMetrics {
   int32 open_violations = 1;
   // Open findings whose rule severity is critical or error.
   int32 high_risk_open = 2;
-  // passed_now / (passed_now + open_now) — the repos-page formula, org-wide.
+  // Derived on read, org-wide: governing rules with no open finding over all
+  // governing rules, summed across the org's evaluated repos (api view
+  // repo_blueprint_compliance), the same number every repo card is built from.
+  // Meaningful only when evaluated is true; otherwise 0.0 means "not evaluated".
   float compliance_rate = 3;
   int32 blueprints_enforced = 4;
   int32 repos_covered = 5;
@@ -63,6 +129,12 @@ message RiskMetrics {
   int32 prs_blocked_30d = 6;
   // Accepted risk in plain sight: findings under an active approved exception.
   int32 excepted_findings = 7;
+  // False when no repo of the org has been evaluated yet: compliance_rate is
+  // then 0.0 and must render as "Not evaluated yet".
+  bool evaluated = 8;
+  // Governed rules of (repo, blueprint) pairs not evaluated yet, summed over the
+  // org's repos. compliance_rate covers evaluated rules only.
+  int32 rules_pending = 9;
 }
 
 // severity x age bucket ('fresh' <24h, 'recent' <=7d, 'stale' >7d).
@@ -83,6 +155,12 @@ message BlueprintCoverage {
   string blueprint_name = 2;
   float pass_rate = 3;
   int32 open_violations = 4;
+  // False when no repo has a default-branch evaluation of this blueprint yet;
+  // pass_rate is then 0.0 and means "not evaluated".
+  bool evaluated = 5;
+  // Rule instances in repos where this blueprint is not evaluated yet (not in the
+  // rate, never counted as passing).
+  int32 rules_pending = 6;
 }
 
 message OpenViolationRow {
@@ -119,8 +197,13 @@ message RuleCorrelation {
 message RepoCompliance {
   string repo_id = 1;
   string repo_name = 2;
+  // Share of the repo's governing rules with no open finding; meaningful only
+  // when evaluated is true (otherwise 0.0 means "not evaluated yet").
   float compliance_rate = 3;
   int32 open_violations = 4;
+  bool evaluated = 5;
+  // Governed rules of blueprints not evaluated yet in this repo (not in the rate).
+  int32 rules_pending = 6;
 }
 
 message GetRiskDashboardResponse {
@@ -133,10 +216,18 @@ message GetRiskDashboardResponse {
   repeated OpenViolationRow open_violations = 5;
   repeated LeaderboardEntry leaderboard = 6;
   repeated RuleCorrelation correlations = 7;
+  // Meaningful only when org_evaluated is true.
   float org_compliance_rate = 8;
   repeated RepoCompliance repo_compliance = 9;
   // True when this week's violation evidence rose >=25% (and >=5 rows)
   // over last week.
   bool violation_spike = 10;
   float spike_delta_pct = 11;
+  // False when no repo of the org has been evaluated yet: org_compliance_rate
+  // is then 0.0 and means "not evaluated", never 0%.
+  bool org_evaluated = 12;
+  // The derived per-blueprint rows, including blueprints with no finding and those not
+  // evaluated yet. coverage keeps its legacy row set (blueprints with findings or
+  // passed rows).
+  repeated BlueprintCompliance blueprint_compliance = 13;
 }

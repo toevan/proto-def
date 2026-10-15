@@ -68,21 +68,26 @@ message GetDashboardResponse {
   // Every dashboard number must be reconcilable against the page that owns
   // it. open_violations is SUM(repositories.violation_count) under the SAME
   // predicate the Repositories page sums — the two surfaces cannot disagree.
-  // compliance_rate is passed/(passed+violation) over evidence_records,
-  // org-wide, the same formula the per-repo cards use — never a windowed
-  // variant those cards cannot reproduce.
+  // compliance_rate is DERIVED on read (api view repo_blueprint_compliance):
+  // the governing rules with no open finding over all governing rules,
+  // summed across the org's evaluated repos, the same number the per-repo
+  // cards are built from, never a windowed variant they cannot reproduce.
 
   // Repos with violation_count > 0, same predicate as open_violations —
   // equals the Repositories page's warning + critical counts.
   int32 repos_with_violations = 12;
   // The numerator and denominator behind compliance_rate, so the client can
-  // say "X of Y checks passing" instead of a bare percentage.
+  // say "X of Y rules passing" instead of a bare percentage. compliance_evaluated
+  // == 0 means NO repo has been evaluated yet: show "Not evaluated yet" and
+  // ignore compliance_rate (0.0 there is not 0%).
   //
   // SEMANTICS (2026-07-30, exclusion-plus-visibility): CURRENT-STATE — the
   // deduped latest-per-finding view, the same source as the violation counts —
   // and EXCEPTION-AWARE: a finding under an active approved exception leaves
   // the denominator entirely, exactly like the PR gate's result='exception'
-  // rows. evaluated = passed + OPEN violations.
+  // rows. compliance_passed = governing rules with no open finding,
+  // compliance_evaluated = governing rules, both over evaluated repos (one
+  // rule of one repo is one unit).
   int32 compliance_passed = 13;
   int32 compliance_evaluated = 14;
 

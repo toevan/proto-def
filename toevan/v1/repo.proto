@@ -103,8 +103,13 @@ message Repo {
   int32 violation_count = 17;
   int32 layer_count = 23;
 
-  // Compliance metrics — derived from evidence_records at list time
-  float compliance_rate = 20;                          // 0.0–1.0; 0.0 when never scanned
+  // Compliance metrics, derived on read: the share of the rules the repo is
+  // governed by that have no open finding on the default branch (api view
+  // repo_blueprint_compliance). compliance_rate is meaningful ONLY when
+  // evaluated is true; when evaluated is false (no governing blueprint, or no
+  // main evaluation yet) compliance_rate is 0.0 and means "not evaluated",
+  // never "0% compliant". Render "Not evaluated yet" in that case.
+  float compliance_rate = 20;                          // 0.0 to 1.0; read together with evaluated
   google.protobuf.Timestamp last_scan_at = 21;         // last constraint evaluation; absent when never scanned
   RepoHealthLabel health_label = 22;                   // computed from violation_count: healthy/warning/critical
 
@@ -121,6 +126,15 @@ message Repo {
   // Per-repo badge on/off (composed with the org-level Org.badges_enabled). Defaults
   // true. The repo-detail Status-badge toggle flips it.
   bool badge_enabled = 27;
+
+  // True when compliance_rate is a real number: the repo has a governing
+  // blueprint with rules and a default-branch evaluation of it. False means
+  // "not evaluated yet" (compliance_rate is then 0.0 and must not be shown as 0%).
+  bool evaluated = 28;
+  // Governed rules of blueprints this repo has not had evaluated yet. They are not in
+  // compliance_rate (it covers evaluated rules only) and never count as passing, so a
+  // client can say "100% of evaluated rules, 3 pending".
+  int32 rules_pending = 29;
 }
 
 enum RepoStatus {
