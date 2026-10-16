@@ -119,15 +119,22 @@ message EvidenceVerification {
   // internally consistent and that every stored attestation verifies. It cannot detect a
   // rewrite of a repository's records from some point to its head whose attestations were
   // also removed: the chain link is inside every hashed record, so a rewrite always runs to
-  // the head, and the unattested stretch reads as the signing sweep's backlog (and the
-  // sweep would sign it afresh). Only the external anchors (Rekor log, git twin, Kosli)
-  // defend against that.
+  // the head, and the unattested stretch reads as the signing sweep's backlog (or as runs
+  // from before attestation, when the removal includes the org's earliest attestations); the
+  // sweep would sign it afresh. Only the external anchors (Rekor log, git twin, Kosli)
+  // defend against that, and this verification does not consult them (its Rekor leg checks
+  // only the proof bundles stored with the attestations that remain). Never show a pass as
+  // "verified" when signatures_checked is 0.
   bool all_checks_passed = 10;
   EvidenceBreakage first_breakage = 11;  // unset when all_checks_passed, or when nothing_to_verify
   // Attestable runs that have no attestation although a LATER run of the same repository
-  // has one (never runs before the repository's first attested run, which are legacy, and
-  // never the unattested tail after its newest attested run). Any is a failure. Facts are
-  // read from the signed record (its timestamp and decision), not from table columns.
+  // has one. Not counted: runs before the repository's first attested run that are ALSO older
+  // than the org's first attestation (legacy, see attestations_before_attestation), and the
+  // unattested tail after the repository's newest attested run (the signing sweep's backlog).
+  // A run before its repository's first attested run but NOT older than the org's first
+  // attestation is counted here. Any is a failure. Facts are signed values (the record's
+  // timestamp and decision, the attestation's own time), not table columns. A run the signing
+  // sweep failed to sign reads as missing until it is signed.
   int64 attestations_missing = 12;
   // Attestable runs recorded before attestation began for the org: counted, never a failure.
   int64 attestations_before_attestation = 13;
