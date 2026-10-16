@@ -99,8 +99,8 @@ message EvidenceBreakage {
   string record_id = 5;                  // the ledger run's id; empty when no row sits at that position (a gap)
 }
 
-// One verification result. Counts are real: a leg that did not apply is
-// reported as not applicable (rekor_applicable = false), never as "0 ok".
+// One verification result. Counts are real: a leg that did not run is reported through
+// rekor_status (NOT_ANCHORED or NOT_CHECKABLE), never as "0 ok".
 message EvidenceVerification {
   google.protobuf.Timestamp verified_at = 1;
   int64 records_checked = 2;             // ledger records whose chain position was verified
@@ -111,13 +111,23 @@ message EvidenceVerification {
   EvidenceRekorStatus rekor_status = 7;
   int64 inclusion_proofs_checked = 8;    // 0 unless rekor_status is VERIFIED_ANCHORED
   int64 inclusion_proofs_ok = 9;         // 0 unless rekor_status is VERIFIED_ANCHORED
-  // True only when there is something to verify, the chain is intact, every signature
-  // and binding verified, no attestation is missing, and (when anchored) every
-  // inclusion proof held.
+  // True only when there is something to verify, the chain is intact, every stored
+  // signature and binding verified, no attestation inside the attested stretch is missing,
+  // and no inclusion proof that was checked failed.
+  //
+  // WHAT IT DOES NOT MEAN (do not render it as "untampered"): it proves the stored ledger is
+  // internally consistent and that every stored attestation verifies. It cannot detect a
+  // rewrite of a repository's records from some point to its head whose attestations were
+  // also removed: the chain link is inside every hashed record, so a rewrite always runs to
+  // the head, and the unattested stretch reads as the signing sweep's backlog (and the
+  // sweep would sign it afresh). Only the external anchors (Rekor log, git twin, Kosli)
+  // defend against that.
   bool all_checks_passed = 10;
   EvidenceBreakage first_breakage = 11;  // unset when all_checks_passed, or when nothing_to_verify
-  // Attestable runs inside the attested stretch (at or after the org's first attested
-  // run, before the repository's newest attested run) that have no attestation. Any is a failure.
+  // Attestable runs that have no attestation although a LATER run of the same repository
+  // has one (never runs before the repository's first attested run, which are legacy, and
+  // never the unattested tail after its newest attested run). Any is a failure. Facts are
+  // read from the signed record (its timestamp and decision), not from table columns.
   int64 attestations_missing = 12;
   // Attestable runs recorded before attestation began for the org: counted, never a failure.
   int64 attestations_before_attestation = 13;
