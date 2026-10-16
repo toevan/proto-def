@@ -2246,14 +2246,31 @@ message AnalyzeNodeRequest {
   string repo_id = 1;
   string node_id = 2;
   string question = 3;       // optional: specific question about the node
+  // The finding the question is about (the canvas violation id). Grounds the
+  // answer on that one finding and keys the server's answer cache. Optional.
+  string violation_id = 4;
+  // Stable id of a canned question (for example "why_fires"), independent of the
+  // UI language. When set it, not the localized text, keys the answer cache.
+  string canned_question_id = 5;
 }
 
+// The Ask answer. answer_markdown is free-form Markdown chosen per question;
+// summary and raw_response carry the same text so an older client still shows
+// it. risk_assessment, refactoring_suggestions and compliance_notes are retired:
+// always empty.
 message AnalyzeNodeResponse {
-  string summary = 1;                             // what this component does
-  string risk_assessment = 2;                      // risk level + reasoning
-  repeated string refactoring_suggestions = 3;
-  repeated string compliance_notes = 4;
-  string raw_response = 5;                         // full AI response
+  string summary = 1;                             // same text as answer_markdown
+  string risk_assessment = 2;                      // retired: always empty
+  repeated string refactoring_suggestions = 3;     // retired: always empty
+  repeated string compliance_notes = 4;            // retired: always empty
+  string raw_response = 5;                         // same text as answer_markdown
+  string answer_markdown = 6;                      // the answer, Markdown
+  bool cached = 7;                                 // true: stored answer, no model call
+  google.protobuf.Timestamp answered_at = 8;       // when the answer was first produced
+  // Non-empty when the question was refused (off topic or an injection attempt):
+  // an ERR_ASK_* code the client localizes. answer_markdown then holds the
+  // English fallback.
+  string refusal_code = 9;
 }
 
 // ── Canvas Chat History ──
@@ -2266,6 +2283,9 @@ message CanvasChatMessage {
   string role = 5;                                 // "user" or "assistant"
   string content = 6;
   google.protobuf.Timestamp created_at = 7;
+  // ERR_ASK_* reason code when this assistant message is a refusal (content then
+  // holds the English fallback); empty otherwise.
+  string refusal_code = 8;
 }
 
 message GetCanvasChatHistoryRequest {
