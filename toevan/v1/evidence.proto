@@ -45,6 +45,113 @@ service EvidenceService {
   // published public key. Authorization derives the owning org from the REPO
   // row (viewer floor), never from the request.
   rpc ListVerdictAttestations(ListVerdictAttestationsRequest) returns (ListVerdictAttestationsResponse);
+
+  // Re-verify the org's whole evidence ledger from the stored records: the
+  // hash chain of every repository, the attestation signatures under the
+  // published key(s), and the Rekor inclusion proofs when the org's log
+  // anchoring applies. Same permission as ListEvidence (org member, or platform
+  // staff with a support-access grant), scoped by org_id. Bounded work: one run
+  // per org at a time (a second caller joins it), a per-org minimum interval (a
+  // repeat inside it returns the stored result with its time,
+  // served_from_stored = true), a server deadline, and the caller's
+  // cancellation stops the run. The result is persisted and also returned by
+  // GetEvidenceSummary as last_verification.
+  rpc VerifyEvidenceChain(VerifyEvidenceChainRequest) returns (VerifyEvidenceChainResponse);
+}
+
+// ── Chain verification ──
+
+// How the first failed check failed. The first four are the hash-chain
+// invariants (the same kinds `toevan audit verify` reports); the rest are the
+// attestation legs.
+enum EvidenceBreakageKind {
+  EVIDENCE_BREAKAGE_KIND_UNSPECIFIED = 0;
+  EVIDENCE_BREAKAGE_KIND_SEQ_CONTIGUITY = 1;   // chain_seq is not the gap-free 1-based sequence
+  EVIDENCE_BREAKAGE_KIND_CONTENT_HASH = 2;     // record_hash != sha256(stored record): tampered content
+  EVIDENCE_BREAKAGE_KIND_GENESIS_LINK = 3;     // first record does not link to the repository genesis
+  EVIDENCE_BREAKAGE_KIND_PREV_LINK = 4;        // a record does not link to its predecessor
+  EVIDENCE_BREAKAGE_KIND_SIGNATURE = 5;        // an attestation signature (or its envelope) does not verify
+  EVIDENCE_BREAKAGE_KIND_ATTESTATION_BINDING = 6; // a signed statement disagrees with its ledger record
+  EVIDENCE_BREAKAGE_KIND_INCLUSION_PROOF = 7;  // a Rekor inclusion proof does not verify
+  EVIDENCE_BREAKAGE_KIND_ATTESTATION_MISSING = 8; // an attestable run inside the attested stretch has no signed attestation
+}
+
+// What the Rekor leg did for this org.
+enum EvidenceRekorStatus {
+  EVIDENCE_REKOR_STATUS_UNSPECIFIED = 0;
+  // The org has no stored Rekor proof bundle: nothing to check, proof counts are 0.
+  EVIDENCE_REKOR_STATUS_NOT_ANCHORED = 1;
+  // The org has bundles but this deployment lacks the pinned log key for at least one of
+  // them, so they cannot be checked here. Proof counts are 0; this is not a pass of the proofs.
+  EVIDENCE_REKOR_STATUS_NOT_CHECKABLE = 2;
+  // The org has bundles and every one was checked under its pinned log key; the
+  // proof counts say how many held.
+  EVIDENCE_REKOR_STATUS_VERIFIED_ANCHORED = 3;
+}
+
+// The first point verification failed. Never carries hashes: an auditor who
+// wants them runs the CLI; the page links to the record.
+message EvidenceBreakage {
+  string repo_id = 1;
+  string repo_name = 2;                  // display name; empty when the repository row is gone
+  int64 chain_seq = 3;                   // position in that repository's chain
+  EvidenceBreakageKind kind = 4;
+  string record_id = 5;                  // the ledger run's id; empty when no row sits at that position (a gap)
+}
+
+// One verification result. Counts are real: a leg that did not run is reported through
+// rekor_status (NOT_ANCHORED or NOT_CHECKABLE), never as "0 ok".
+message EvidenceVerification {
+  google.protobuf.Timestamp verified_at = 1;
+  int64 records_checked = 2;             // ledger records whose chain position was verified
+  int32 repos_checked = 3;
+  bool chain_intact = 4;                 // the hash chain of every repository holds
+  int64 signatures_checked = 5;
+  int64 signatures_valid = 6;
+  EvidenceRekorStatus rekor_status = 7;
+  int64 inclusion_proofs_checked = 8;    // 0 unless rekor_status is VERIFIED_ANCHORED
+  int64 inclusion_proofs_ok = 9;         // 0 unless rekor_status is VERIFIED_ANCHORED
+  // True only when there is something to verify, the chain is intact, every stored
+  // signature and binding verified, no attestation inside the attested stretch is missing,
+  // and no inclusion proof that was checked failed.
+  //
+  // WHAT IT DOES NOT MEAN (do not render it as "untampered"): it proves the stored ledger is
+  // internally consistent and that every stored attestation verifies. It cannot detect a
+  // rewrite of a repository's records from some point to its head whose attestations were
+  // also removed: the chain link is inside every hashed record, so a rewrite always runs to
+  // the head, and the unattested stretch reads as the signing sweep's backlog (or as runs
+  // from before attestation, when the removal includes the org's earliest attestations); the
+  // sweep would sign it afresh. Only the external anchors (Rekor log, git twin, Kosli)
+  // defend against that, and this verification does not consult them (its Rekor leg checks
+  // only the proof bundles stored with the attestations that remain). Never show a pass as
+  // "verified" when signatures_checked is 0.
+  bool all_checks_passed = 10;
+  EvidenceBreakage first_breakage = 11;  // unset when all_checks_passed, or when nothing_to_verify
+  // Attestable runs that have no attestation although a LATER run of the same repository
+  // has one. Not counted: runs before the repository's first attested run that are ALSO older
+  // than the org's first attestation (legacy, see attestations_before_attestation), and the
+  // unattested tail after the repository's newest attested run (the signing sweep's backlog).
+  // A run before its repository's first attested run but NOT older than the org's first
+  // attestation is counted here. Any is a failure. Facts are signed values (the record's
+  // timestamp and decision, the attestation's own time), not table columns. A run the signing
+  // sweep failed to sign reads as missing until it is signed.
+  int64 attestations_missing = 12;
+  // Attestable runs recorded before attestation began for the org: counted, never a failure.
+  int64 attestations_before_attestation = 13;
+  // The org has no ledger records. all_checks_passed is false and no breakage is named:
+  // render "nothing to verify yet", never a green pass.
+  bool nothing_to_verify = 14;
+}
+
+message VerifyEvidenceChainRequest {
+  string org_id = 1;
+}
+
+message VerifyEvidenceChainResponse {
+  EvidenceVerification verification = 1;
+  // true: the org verified inside the minimum interval, so this is the stored
+  // result (verification.verified_at says when it ran), not a new run.
+  bool served_from_stored = 2;
 }
 
 // ── Verdict attestations ──
@@ -130,6 +237,10 @@ message EvidenceSummary {
 
   // Per-blueprint breakdown
   repeated BlueprintComplianceRate per_blueprint = 10;
+
+  // The org's last chain verification (VerifyEvidenceChain); unset when the
+  // org has never been verified.
+  EvidenceVerification last_verification = 11;
 }
 
 message BlueprintComplianceRate {
