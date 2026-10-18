@@ -113,6 +113,13 @@ message OrgPlanConfig {
   int32 seat_used = 3;
   int32 repo_limit = 4;
   int32 repo_used = 5;
+  // hard | fair_use | contractual, the same strings and meaning as BillingUsageMeter.mode.
+  // Contractual means the limit above is an alerting threshold, not a gate: render the usage
+  // without a lockout warning. The private beta reports contractual for both while it is on
+  // (caps are lifted), so a client branches on this value and never on the beta flag.
+  // Empty from an older server: treat as hard.
+  string seat_limit_mode = 6;
+  string repo_limit_mode = 7;
 }
 
 message Org {
