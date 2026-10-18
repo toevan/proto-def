@@ -88,6 +88,11 @@ service BlueprintService {
   // Auto-Detected (Inferred) Blueprints
   rpc GetInferredBlueprint(GetInferredBlueprintRequest) returns (GetInferredBlueprintResponse);
   rpc AdoptInferredBlueprint(AdoptInferredBlueprintRequest) returns (AdoptInferredBlueprintResponse);
+  // Saves the repository's detected blueprint as a DRAFT: a persisted review decision that never
+  // enforces, gates or writes evidence. Idempotent. Maintainer on the repository, like adopt.
+  rpc KeepInferredBlueprintAsDraft(KeepInferredBlueprintAsDraftRequest) returns (KeepInferredBlueprintAsDraftResponse);
+  // One row per repository (that the caller can access) with a detection no adoption governs.
+  rpc ListInferredBlueprints(ListInferredBlueprintsRequest) returns (ListInferredBlueprintsResponse);
   rpc ReinferBlueprint(ReinferBlueprintRequest) returns (ReinferBlueprintResponse);
 }
 
@@ -669,6 +674,49 @@ message GetInferredBlueprintResponse {
   int32 layer_count = 6;
   repeated CyclicDependency cyclic_groups = 7;
   google.protobuf.Timestamp inferred_at = 8;
+  // The review state of THIS detection. UNSPECIFIED when there is no detection or it is adopted.
+  InferredReviewState review_state = 9;
+}
+
+// Where an unadopted detection stands. Neither value enforces anything.
+enum InferredReviewState {
+  INFERRED_REVIEW_STATE_UNSPECIFIED = 0;
+  INFERRED_REVIEW_STATE_PENDING = 1;        // detected, nobody has decided
+  INFERRED_REVIEW_STATE_KEPT_AS_DRAFT = 2;  // saved as a draft, not enforced
+}
+
+message KeepInferredBlueprintAsDraftRequest {
+  string repo_id = 1;
+  string blueprint_id = 2;
+}
+
+message KeepInferredBlueprintAsDraftResponse {
+  InferredReviewState review_state = 1;
+  google.protobuf.Timestamp decided_at = 2;
+}
+
+message ListInferredBlueprintsRequest {
+  string org_id = 1;
+}
+
+message InferredBlueprintSummary {
+  string repo_id = 1;
+  string repo_name = 2;
+  string blueprint_id = 3;
+  string blueprint_name = 4;
+  InferredReviewState review_state = 5;
+  int32 layer_count = 6;
+  int32 rule_count = 7;
+  double confidence = 8;
+  google.protobuf.Timestamp detected_at = 9;
+}
+
+message ListInferredBlueprintsResponse {
+  repeated InferredBlueprintSummary blueprints = 1;
+  // True when more rows exist than were returned (the list is capped); total_count is the number
+  // of rows the caller could see before the cap.
+  bool truncated = 2;
+  int32 total_count = 3;
 }
 
 message CyclicDependency {
