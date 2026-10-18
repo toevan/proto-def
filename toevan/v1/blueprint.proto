@@ -665,6 +665,10 @@ message InferredBlueprintSummary {
 
 message ListInferredBlueprintsResponse {
   repeated InferredBlueprintSummary blueprints = 1;
+  // True when more rows exist than were returned (the list is capped); total_count is the number
+  // of rows the caller could see before the cap.
+  bool truncated = 2;
+  int32 total_count = 3;
 }
 
 message CyclicDependency {
