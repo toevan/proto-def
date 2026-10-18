@@ -238,6 +238,15 @@ enum OrgRole {
   ORG_ROLE_CISO = 5;                    // escalated exception approval
   ORG_ROLE_VIEWER = 6;                  // read-only
   ORG_ROLE_PLATFORM = 8;               // [NEW] Toevan HQ superadmin
+  // AUDITOR: read-only access to the evidence trail and reports for an external or
+  // internal auditor (no repo, PR or settings changes). Number 7 was never defined
+  // and stays unused; 9 is the next number after the highest in use.
+  // PROTO ONLY until AUDITOR-ROLE PR 2 lands: the server MUST refuse to assign this
+  // role (invite, accept, UpdateMemberRole) with an invalid-argument error until then,
+  // and no client may offer it in a role picker. There is no role catalog RPC; the
+  // roles a client offers are the enum values it hard-codes, so the client lists
+  // AUDITOR as assignable only once AUDITOR-ROLE PR 2 has merged and deployed.
+  ORG_ROLE_AUDITOR = 9;
   // NOTE: No "author" role — blueprint publishing is a capability, not a role.
   // Any user can create/publish blueprints.
 }

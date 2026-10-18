@@ -72,13 +72,26 @@ service EvidenceService {
   rpc RequeueOrgEvidenceRejections(RequeueOrgEvidenceRejectionsRequest) returns (RequeueOrgEvidenceRejectionsResponse);
 
   // GetEvidenceRetention states how long the org's evidence is kept: the ONE
-  // retention policy, read by General and by the Evidence page. It is a fixed
-  // platform fact (no per-org setting): evidence is retained indefinitely
-  // because records and attestations are append-only, hash-chained and anchored,
-  // so a time limit could not be honoured. Org membership (or platform staff with
-  // a support-access grant) for org_id, like ListEvidence, but NOT behind the
-  // Evidence Trail rollout flag: the policy is a fact about the system.
+  // retention policy, read by General and by the Evidence page. It is a PER-ORG
+  // minimum period in years (a floor, not a ceiling; default 3). Evidence is kept
+  // at least that long; automatic deletion at the end of the period is NOT yet
+  // enforced (purge_enforced = false), so no client may claim evidence is kept
+  // "indefinitely". Org membership (or platform staff with a support-access
+  // grant) for org_id, like ListEvidence, but NOT behind the Evidence Trail
+  // rollout flag: the policy is a fact about the system.
   rpc GetEvidenceRetention(GetEvidenceRetentionRequest) returns (GetEvidenceRetentionResponse);
+
+  // SetEvidenceRetention raises (or restores) the org's evidence retention
+  // period. Org ADMIN only (a support-access grant never writes) and Enterprise
+  // only: the plan gate is the server's entitlement check, never a client check.
+  // retention_years must be one of allowed_years, and never below the 3 year
+  // floor. Audited in the same transaction (who, when, old and new period).
+  // Returns the policy as GetEvidenceRetention now reads it. It starts no
+  // deletion: nothing is purged by this call or by the period elapsing.
+  // Errors: PERMISSION_DENIED (not an org admin), FAILED_PRECONDITION (plan
+  // does not include the change; the error carries the entitlement code),
+  // INVALID_ARGUMENT (value not in allowed_years).
+  rpc SetEvidenceRetention(SetEvidenceRetentionRequest) returns (SetEvidenceRetentionResponse);
 
   // The Coverage Gate for one repository: the share of its production source
   // files that the index parsed at the indexed commit, the gate in force, and
@@ -680,18 +693,20 @@ message EraseDataSubjectResponse {
 
 enum EvidenceRetentionMode {
   EVIDENCE_RETENTION_MODE_UNSPECIFIED = 0;
-  // Nothing is deleted by age. The only mode the platform has: append-only
-  // records and attestations, a hash chain, a permanent public log entry and a
-  // customer-owned git twin cannot honour a time limit. A limited mode would
-  // need a deleting job and a decision on all of those; it is not declared here
-  // (value 2 is reserved) so no client is built to render one.
+  // SUPERSEDED by the owner decision of 2026-10-19 (the landing model): the server
+  // no longer returns this value and no client may claim evidence is kept
+  // "indefinitely". Kept so the number is never reused.
   EVIDENCE_RETENTION_MODE_INDEFINITE = 1;
   reserved 2;
   reserved "EVIDENCE_RETENTION_MODE_LIMITED";
+  // The org's evidence is kept AT LEAST retention_years (a floor). Nothing is
+  // deleted at the end of the period yet (purge_enforced = false). The only mode
+  // the server returns.
+  EVIDENCE_RETENTION_MODE_MINIMUM_PERIOD = 3;
 }
 
 // The two cases in which the CONTENT of evidence changes although the policy is
-// indefinite. Hashes are kept in both. What each does and does not reach is in
+// a minimum period (no purge yet). Hashes are kept in both. What each does and does not reach is in
 // GetEvidenceRetentionResponse.statement.
 enum EvidenceRetentionException {
   EVIDENCE_RETENTION_EXCEPTION_UNSPECIFIED = 0;
@@ -726,7 +741,7 @@ message GetEvidenceRetentionResponse {
   repeated EvidenceRetentionException exceptions = 3;
   // The policy in one English statement, for clients without their own copy. It is
   // built per request from the facts below and states only what is true of THIS
-  // deployment and org: evidence is retained indefinitely; what erasure and
+  // deployment and org: evidence is kept at least retention_years (purge_enforced says whether deletion happens); what erasure and
   // organisation deletion change; the transparency log claim ONLY for the state in
   // transparency_log / log_entries_published; the git twin only if enabled; and what
   // the audit-log sweep actually is here.
@@ -748,4 +763,33 @@ message GetEvidenceRetentionResponse {
   // Private beta is on (or could not be read, which fails toward on): nothing is published to
   // a transparency log whatever the log setting is, and transparency_log is NONE.
   bool beta_suppresses_publication = 10;
+  // OWNER DECISION 2026-10-19 (landing model), added in place with no version bump.
+  // The org's configured evidence retention period in whole years: a FLOOR, not a
+  // ceiling. Default 3 for an org that never set one; always one of allowed_years.
+  // The client shows this value instead of any hard-coded period.
+  int32 retention_years = 11;
+  // The periods an admin may choose, ascending: 3, 5, 7, 10 (years). Never below 3.
+  // Render these as the choices; do not hard-code them.
+  repeated int32 allowed_years = 12;
+  // True only when the CALLER is an Enterprise org admin, so SetEvidenceRetention
+  // would be accepted now. Server-computed from role and plan entitlement; false
+  // for members, support-access staff and non-Enterprise orgs. The client shows
+  // the change control only when true and never decides this itself.
+  bool can_change = 13;
+  // Whether the server deletes evidence automatically when the period ends. FALSE
+  // today (that job is not built); clients show the note "Evidence is kept at least
+  // this long; automatic deletion at the end of the period is not yet enforced".
+  // Turns true only when a purge that keeps the hash chain verifiable ships.
+  bool purge_enforced = 14;
+}
+
+message SetEvidenceRetentionRequest {
+  string org_id = 1;
+  // The new period in years; must be one of allowed_years (3, 5, 7 or 10).
+  int32 retention_years = 2;
+}
+
+message SetEvidenceRetentionResponse {
+  // The policy as GetEvidenceRetention reads it after the change.
+  GetEvidenceRetentionResponse retention = 1;
 }
