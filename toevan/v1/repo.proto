@@ -633,7 +633,9 @@ message BlueprintAssignment {
   BlueprintScope scope = 4;
   bool is_active = 5;
   google.protobuf.Timestamp assigned_at = 6;
-  int32 rule_count = 7;                    // number of rules in the blueprint
+  // Rules the adoption runs. Absent = UNKNOWN (the count could not be taken, or this response does
+  // not carry it); 0 = none. Never read an absent count as 0.
+  optional int32 rule_count = 7;
   int32 violation_count = 8;               // repo-level violations for this blueprint
 }
 
