@@ -57,6 +57,105 @@ service EvidenceService {
   // cancellation stops the run. The result is persisted and also returned by
   // GetEvidenceSummary as last_verification.
   rpc VerifyEvidenceChain(VerifyEvidenceChainRequest) returns (VerifyEvidenceChainResponse);
+
+  // The org's transparency-log setting: the public log (the default) or a
+  // self-hosted log the org operates. Read: any org member (the setting is
+  // not a secret; the log's PUBLIC key is shown). Write: org admin only, a
+  // support-access grant never writes, Enterprise (the self_hosted feature)
+  // for a self-hosted log, audited in the same transaction. Switching back
+  // to the public log is always allowed.
+  rpc GetOrgEvidenceLog(GetOrgEvidenceLogRequest) returns (GetOrgEvidenceLogResponse);
+  rpc SetOrgEvidenceLog(SetOrgEvidenceLogRequest) returns (SetOrgEvidenceLogResponse);
+  // Org admin only (a support grant never writes), audited, with a written reason: clear the records and
+  // chain heads a transparency log refused for good, so the next sweep offers them to their log again. A
+  // refusal is therefore never permanent. Their history (who, why, when) is kept.
+  rpc RequeueOrgEvidenceRejections(RequeueOrgEvidenceRejectionsRequest) returns (RequeueOrgEvidenceRejectionsResponse);
+}
+
+// ── Transparency log setting ──
+
+enum EvidenceLogKind {
+  EVIDENCE_LOG_KIND_UNSPECIFIED = 0;
+  // The platform's transparency log (Sigstore Rekor by default). No url or key.
+  EVIDENCE_LOG_KIND_PUBLIC = 1;
+  // A Rekor the organization operates. Anchoring there is third-party only in
+  // the sense that the log is not Toevan's: its operator can rewrite it, so
+  // render it as "anchored in a log operated by the organization".
+  EVIDENCE_LOG_KIND_SELF_HOSTED = 2;
+}
+
+// What the anchoring sweeps are doing for ONE log an org's records are pinned to.
+message EvidenceLogHealth {
+  // Signed attestations pinned to this log that are not anchored yet and not refused.
+  int64 pending = 1;
+  google.protobuf.Timestamp oldest_pending_at = 2;  // unset when none pending
+  google.protobuf.Timestamp last_attempt_at = 3;    // unset when never attempted
+  google.protobuf.Timestamp last_success_at = 4;    // unset when never succeeded
+  // "" when the last attempt succeeded. Otherwise one of: unreachable, slow, rejected_<status> (a
+  // refusal, e.g. rejected_422), rejected_all, circuit_open, invalid_proof, no_proof, log_id_mismatch,
+  // lookup_failed, egress_blocked, stamp_failed (our database refused the stamp), queue_failed (our
+  // database could not read the work queue), pin_mismatch, key_not_held, config_missing. Never carries the
+  // host or the response body.
+  string last_error_kind = 5;
+  int32 consecutive_failures = 6;
+  // The log this entry is about: "" = the public log, otherwise the self-hosted log's id. Records stay
+  // pinned to the log they were signed for, so an earlier log keeps its own entry and keeps draining.
+  string log_id = 7;
+  // Records this log refused for good (terminal until an org admin re-queues them). Not pending. Render
+  // as "not anchored: rejected by the log".
+  int64 rejected = 8;
+  google.protobuf.Timestamp last_rejected_at = 9;  // unset when none
+  // The org's repositories whose CURRENT chain head this log refused for good. A newer head supersedes
+  // it and anchors normally. Render as "chain head not anchored: rejected by the log".
+  int64 rejected_chain_heads = 10;
+  string url = 11;         // the log's newest recorded locator; empty for the public log
+  bool is_current = 12;    // the org's current setting names this log
+}
+
+message OrgEvidenceLog {
+  EvidenceLogKind kind = 1;
+  string url = 2;             // empty for the public log
+  string log_id = 3;          // hex sha256 of the log key's SPKI; empty for the public log
+  string public_key_pem = 4;  // the log's PUBLIC key; empty for the public log
+  int32 version = 5;          // 0 = never configured (the public log by default)
+  google.protobuf.Timestamp set_at = 6;
+  string set_by_user_id = 7;
+}
+
+message GetOrgEvidenceLogRequest {
+  string org_id = 1;
+}
+
+message GetOrgEvidenceLogResponse {
+  OrgEvidenceLog log = 1;
+  EvidenceLogHealth health = 2;
+  // Whether the org's plan allows a self-hosted log (Enterprise; the beta
+  // unlock applies through the same entitlement gate).
+  bool self_hosted_allowed = 3;
+  // EVERY log the org's records are pinned to (the current one, earlier ones, the public one), each with
+  // its own health. `health` above is the current log's.
+  repeated EvidenceLogHealth logs = 4;
+}
+
+message RequeueOrgEvidenceRejectionsRequest {
+  string org_id = 1;
+  string reason = 2;  // required, 1 to 500 characters; recorded with who and when
+}
+
+message RequeueOrgEvidenceRejectionsResponse {
+  int64 attestations = 1;  // records cleared
+  int64 chain_heads = 2;   // chain heads cleared
+}
+
+message SetOrgEvidenceLogRequest {
+  string org_id = 1;
+  EvidenceLogKind kind = 2;
+  string url = 3;             // https URL of the Rekor; required when SELF_HOSTED
+  string public_key_pem = 4;  // the log's PEM public key (ECDSA P-256); required when SELF_HOSTED
+}
+
+message SetOrgEvidenceLogResponse {
+  OrgEvidenceLog log = 1;
 }
 
 // ── Chain verification ──
@@ -74,6 +173,13 @@ enum EvidenceBreakageKind {
   EVIDENCE_BREAKAGE_KIND_ATTESTATION_BINDING = 6; // a signed statement disagrees with its ledger record
   EVIDENCE_BREAKAGE_KIND_INCLUSION_PROOF = 7;  // a Rekor inclusion proof does not verify
   EVIDENCE_BREAKAGE_KIND_ATTESTATION_MISSING = 8; // an attestable run inside the attested stretch has no signed attestation
+  // Records or chain heads a transparency log refused for good, or that an org's own log has not taken
+  // for longer than the grace. The chain and the signatures hold; the anchoring does not, so the result
+  // is not green. The counts (rejected_by_log, rejected_chain_heads, anchoring_overdue) say how many.
+  EVIDENCE_BREAKAGE_KIND_NOT_ANCHORED = 9;
+  // A refusal in force with no matching history: something other than the sweep stopped a record from
+  // being anchored.
+  EVIDENCE_BREAKAGE_KIND_REJECTION_UNRECORDED = 10;
 }
 
 // What the Rekor leg did for this org.
@@ -141,6 +247,26 @@ message EvidenceVerification {
   // The org has no ledger records. all_checks_passed is false and no breakage is named:
   // render "nothing to verify yet", never a green pass.
   bool nothing_to_verify = 14;
+  // Of inclusion_proofs_checked, the proofs checked under a log the ORGANIZATION
+  // operates (a self-hosted log). Those prove what the org's log says, not what a
+  // third party witnessed: render them as such. Always 0 unless rekor_status is
+  // VERIFIED_ANCHORED.
+  int64 self_hosted_proofs_checked = 15;
+  // Signed attestations pinned to a self-hosted log that are not anchored yet.
+  // Reported, never counted as a failure (anchoring is asynchronous), never
+  // dropped: a log that stays unreachable shows here until it is reachable.
+  int64 self_hosted_awaiting = 16;
+  // Signed attestations a transparency log (any) REFUSED for good: never anchored, terminal, reported
+  // here as "not anchored: rejected by the log". Not a failure of the chain or the signatures.
+  int64 rejected_by_log = 17;
+  // Repositories whose current chain head a log refused for good: "chain head not anchored: rejected
+  // by the log". Terminal; a newer head supersedes it. Not a failure of the chain or the signatures.
+  int64 rejected_chain_heads = 18;
+  // Of self_hosted_awaiting, the records that have waited longer than the grace (1 hour): an org that
+  // runs a log with records the log has not taken for that long is not green.
+  int64 anchoring_overdue = 19;
+  // Refusals in force with no matching history (something other than the sweep marked them).
+  int64 unrecorded_rejections = 20;
 }
 
 message VerifyEvidenceChainRequest {
