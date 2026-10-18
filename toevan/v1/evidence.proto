@@ -506,6 +506,10 @@ message GetEvidenceRetentionResponse {
   // appends to it and never deletes or rewrites it.
   bool git_twin_enabled = 8;
   // Audit logs older than this many days are deleted by the optional sweep; 0 = no sweep
-  // (the default). Audit logs are not evidence.
+  // (the default). Audit logs are not evidence. A sweep that is on never reads 0: the age is
+  // rounded up to whole days, with a minimum of 1.
   int32 audit_log_sweep_days = 9;
+  // Private beta is on (or could not be read, which fails toward on): nothing is published to
+  // a transparency log whatever the log setting is, and transparency_log is NONE.
+  bool beta_suppresses_publication = 10;
 }
