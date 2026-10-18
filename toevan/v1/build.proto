@@ -2246,14 +2246,103 @@ message AnalyzeNodeRequest {
   string repo_id = 1;
   string node_id = 2;
   string question = 3;       // optional: specific question about the node
+  // The finding the question is about (the canvas violation id). Grounds the
+  // answer on that one finding and keys the server's answer cache. Optional.
+  string violation_id = 4;
+  // Stable id of a canned question (for example "why_fires"), independent of the
+  // UI language. When set it, not the localized text, keys the answer cache.
+  string canned_question_id = 5;
 }
 
+// The Ask answer. The answer is a typed document (answer): the server parses the
+// model's Markdown once and emits only the node types below, so there is no image
+// node, no raw HTML node and no link whose URL has not passed the server's
+// allow-list. summary and raw_response carry the same text FLATTENED to plain text
+// (no markup), so an older client that shows them as text shows the answer and
+// nothing it could render as an image or a link. risk_assessment,
+// refactoring_suggestions and compliance_notes are retired: always empty.
 message AnalyzeNodeResponse {
-  string summary = 1;                             // what this component does
-  string risk_assessment = 2;                      // risk level + reasoning
-  repeated string refactoring_suggestions = 3;
-  repeated string compliance_notes = 4;
-  string raw_response = 5;                         // full AI response
+  reserved 6;
+  reserved "answer_markdown";
+  string summary = 1;                             // the answer as plain text
+  string risk_assessment = 2;                      // retired: always empty
+  repeated string refactoring_suggestions = 3;     // retired: always empty
+  repeated string compliance_notes = 4;            // retired: always empty
+  string raw_response = 5;                         // the answer as plain text
+  bool cached = 7;                                 // true: stored answer, no model call
+  google.protobuf.Timestamp answered_at = 8;       // when the answer was first produced
+  // Non-empty when the question was refused (off topic or an injection attempt):
+  // an ERR_ASK_* code the client localizes. The answer then holds the English fallback.
+  string refusal_code = 9;
+  AnswerDocument answer = 10;                      // the answer, structured
+}
+
+// AnswerDocument is the Ask answer as blocks. Nothing in it loads or runs anything.
+message AnswerDocument {
+  repeated AnswerBlock blocks = 1;
+}
+
+message AnswerBlock {
+  oneof block {
+    AnswerParagraph paragraph = 1;
+    AnswerHeading heading = 2;
+    AnswerList list = 3;
+    AnswerCodeBlock code_block = 4;
+    AnswerQuote quote = 5;
+    AnswerThematicBreak thematic_break = 6;
+  }
+}
+
+message AnswerParagraph { repeated AnswerInline inlines = 1; }
+
+message AnswerHeading {
+  int32 level = 1;                                 // 1..3
+  repeated AnswerInline inlines = 2;
+}
+
+message AnswerList {
+  bool ordered = 1;
+  int32 start = 2;                                 // first number of an ordered list
+  repeated AnswerListItem items = 3;
+}
+
+message AnswerListItem { repeated AnswerBlock blocks = 1; }
+
+// A code block: text is verbatim, language is the info string's first word
+// ([A-Za-z0-9_+#.-], at most 32 characters) or empty.
+message AnswerCodeBlock {
+  string language = 1;
+  string text = 2;
+}
+
+message AnswerQuote { repeated AnswerBlock blocks = 1; }
+
+message AnswerThematicBreak {}
+
+message AnswerInline {
+  oneof inline {
+    AnswerText text = 1;
+    AnswerCode code = 2;
+    AnswerEmphasis emphasis = 3;
+    AnswerStrong strong = 4;
+    AnswerLink link = 5;
+  }
+}
+
+message AnswerText { string text = 1; }
+
+// Inline code, verbatim.
+message AnswerCode { string text = 1; }
+
+message AnswerEmphasis { repeated AnswerInline inlines = 1; }
+
+message AnswerStrong { repeated AnswerInline inlines = 1; }
+
+// A link. url is https on an allow-listed host (the documentation host) or an in-app
+// route, already validated by the server; a client still re-validates before opening it.
+message AnswerLink {
+  string url = 1;
+  repeated AnswerInline inlines = 2;
 }
 
 // ── Canvas Chat History ──
@@ -2266,6 +2355,9 @@ message CanvasChatMessage {
   string role = 5;                                 // "user" or "assistant"
   string content = 6;
   google.protobuf.Timestamp created_at = 7;
+  // ERR_ASK_* reason code when this assistant message is a refusal (content then
+  // holds the English fallback); empty otherwise.
+  string refusal_code = 8;
 }
 
 message GetCanvasChatHistoryRequest {
