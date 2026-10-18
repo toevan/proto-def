@@ -913,11 +913,15 @@ enum RequirementNotCheckableReason {
   REQUIREMENT_NOT_CHECKABLE_REASON_EXTERNAL_ASSESSMENT = 7;
 }
 
-// ControlCoverageLevel is how much of a requirement a rule states it evidences.
+// ControlCoverageLevel is how a rule relates to a requirement it cites. FULL and PARTIAL are what the
+// rule states about a requirement that is checkable in code and make it "covered". SUPPORTING is
+// derived: the rule cites a requirement that cannot be checked in code (a process, a regulatory
+// duty, a contract); it is related evidence and never makes the requirement covered.
 enum ControlCoverageLevel {
   CONTROL_COVERAGE_LEVEL_UNSPECIFIED = 0;
   CONTROL_COVERAGE_LEVEL_FULL = 1;
   CONTROL_COVERAGE_LEVEL_PARTIAL = 2;
+  CONTROL_COVERAGE_LEVEL_SUPPORTING = 3;
 }
 
 // RuleBeforeMerge is what the PR gate does with a rule before merge (the same vocabulary as
@@ -946,7 +950,7 @@ enum UnresolvedControlReason {
   UNRESOLVED_CONTROL_REASON_UNSPECIFIED = 0;
   UNRESOLVED_CONTROL_REASON_OTHER_FRAMEWORK = 1;      // names a framework the blueprint does not declare
   UNRESOLVED_CONTROL_REASON_UNKNOWN_CONTROL = 2;      // not in the declared edition
-  UNRESOLVED_CONTROL_REASON_NOT_CHECKABLE_REQUIREMENT = 3; // lands on a requirement not checkable in code
+  UNRESOLVED_CONTROL_REASON_NOT_CHECKABLE_REQUIREMENT = 3; // no longer produced: such a citation is a SUPPORTING rule link
 }
 
 message FrameworkRequirementCoverage {
@@ -976,7 +980,7 @@ message FrameworkRequirement {
   bool checkable_in_code = 4;
   RequirementNotCheckableReason not_checkable_reason = 5; // set only when checkable_in_code is false
   bool covered = 6;
-  repeated RequirementRuleLink rules = 7;   // evaluable rules citing the requirement
+  repeated RequirementRuleLink rules = 7;   // evaluable rules citing the requirement (all SUPPORTING when it is not checkable in code)
   repeated string inert_rule_ids = 8;       // rules citing it that the engine cannot evaluate
 }
 
