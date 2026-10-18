@@ -100,9 +100,11 @@ message Project {
   // project's repos. compliance_rate covers evaluated rules only.
   int32 rules_pending = 21;
 
-  // The governing rules on latest main, summed over the project's repos: the
-  // SAME counts compliance_rate is taken from (rate.Of(rules_total - rules_failing,
-  // rules_total) is compliance_rate). rules_total 0 means not evaluated yet.
+  // The EVALUATED governing rules on the default branch, summed per repository over the
+  // project's repos: the SAME counts compliance_rate is taken from
+  // (rate.Of(rules_total, rules_failing) is compliance_rate). Governed rules of a
+  // (repo, blueprint) pair nothing has evaluated yet are NOT in it (rules_pending).
+  // rules_total 0 means not evaluated yet.
   int32 rules_total = 22;
   int32 rules_failing = 23;
   // Open findings (the violation_count set) whose file is NOT production code by
@@ -184,9 +186,11 @@ message ListProjectsResponse {
   // projects the caller can see (across pages, not just this page); they are
   // inside total and the page rows like any other non-deleted project.
   int32 archived_count = 3;
-  // Org listing only. Distinct CURRENT org members with explicit project access
-  // in some project of the org, unioned with the org admins (who see every
-  // project implicitly): one person counted once.
+  // Org listing only. Distinct CURRENT org members, unioned: the org admins (who see
+  // every project implicitly, always included) and the users with an explicit project
+  // membership in a project THE CALLER CAN SEE (every project for an org admin; the
+  // caller's own projects otherwise), so the number reconciles with the page. One person
+  // counted once.
   int32 members_with_access = 4;
   // Org admins among the current members. They are inside members_with_access
   // (includes_org_admins), so a caption can say "org admins see every project".
@@ -194,10 +198,14 @@ message ListProjectsResponse {
   bool includes_org_admins = 6;
 }
 
+// UpdateProjectRequest edits by PRESENCE: a field that is not sent is left as it is (a
+// name-only request does not erase the description). At least one of name and description
+// must be sent; a sent name must not be empty. An archived project cannot be edited
+// (ERR_PROJECT_ARCHIVED, FAILED_PRECONDITION).
 message UpdateProjectRequest {
   string project_id = 1;
-  string name = 2;
-  string description = 3;
+  optional string name = 2;
+  optional string description = 3;
 }
 message UpdateProjectResponse { Project project = 1; }
 
