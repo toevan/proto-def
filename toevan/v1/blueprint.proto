@@ -140,6 +140,9 @@ message BlueprintRef {
   // "structural" | "compliance" | "security" | "design" — clients key the
   // type icon on this (the marketplace icon convention).
   string blueprint_type = 5;
+  // Rules the adoption runs (compiled rows at its pinned version, minus the ones the
+  // executor skips). Absent = UNKNOWN (the count could not be taken); 0 = none.
+  optional int32 rule_count = 6;
 }
 
 message Blueprint {
@@ -226,8 +229,12 @@ message ScopedBlueprintAssignment {
   string project_id = 8;
   string repo_id = 9;
   google.protobuf.Timestamp assigned_at = 10;
+  // Rules the adoption runs. Absent = UNKNOWN (the count could not be taken, or this
+  // response does not carry it); 0 = none.
+  optional int32 rule_count = 11;
+  // (renumbered from 11 on consolidation: projects-reads holds 11 for rule_count)
   // The adoption's mode. Never UNSPECIFIED from the server; a paused adoption keeps its mode.
-  AdoptionEnforcementMode enforcement_mode = 11;
+  AdoptionEnforcementMode enforcement_mode = 13;
   // ACTIVE or PAUSED on the project and repo reads (a removed adoption is not listed). A paused
   // adoption is listed with is_active=false, is not evaluated and does not gate.
   AdoptionLifecycle lifecycle = 12;

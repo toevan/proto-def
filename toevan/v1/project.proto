@@ -16,6 +16,9 @@ service ProjectService {
   // Project CRUD
   rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
   rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+  // UpdateProject edits a project's name and description. Org admin or project
+  // owner/maintainer only; audit-logged in the same transaction.
+  rpc UpdateProject(UpdateProjectRequest) returns (UpdateProjectResponse);
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
   rpc ArchiveProject(ArchiveProjectRequest) returns (ArchiveProjectResponse);
   rpc RestoreProject(RestoreProjectRequest) returns (RestoreProjectResponse);
@@ -96,6 +99,21 @@ message Project {
   // Governed rules of (repo, blueprint) pairs not evaluated yet, summed over the
   // project's repos. compliance_rate covers evaluated rules only.
   int32 rules_pending = 21;
+
+  // The EVALUATED governing rules on the default branch, summed per repository over the
+  // project's repos: the SAME counts compliance_rate is taken from
+  // (rate.Of(rules_total, rules_failing) is compliance_rate). Governed rules of a
+  // (repo, blueprint) pair nothing has evaluated yet are NOT in it (rules_pending).
+  // rules_total 0 means not evaluated yet.
+  int32 rules_total = 22;
+  int32 rules_failing = 23;
+  // Open findings (the violation_count set) whose file is NOT production code by
+  // the attention scope's path classification. violation_count - this is the
+  // production share.
+  int32 non_production_violation_count = 24;
+  // Pull requests the PR gate evaluated in the last 30 days (a rolling window).
+  // pull_request_count stays the all-time count.
+  int32 pull_requests_gated_30d = 25;
 }
 
 enum ProjectStatus {
@@ -161,7 +179,35 @@ message ListProjectsRequest {
   int32 limit = 2;
   int32 offset = 3;
 }
-message ListProjectsResponse { repeated Project projects = 1; int32 total = 2; }
+message ListProjectsResponse {
+  repeated Project projects = 1;
+  int32 total = 2;
+  // Org listing only (org_id set), else 0. Archived projects among ALL the
+  // projects the caller can see (across pages, not just this page); they are
+  // inside total and the page rows like any other non-deleted project.
+  int32 archived_count = 3;
+  // Org listing only. Distinct CURRENT org members, unioned: the org admins (who see
+  // every project implicitly, always included) and the users with an explicit project
+  // membership in a project THE CALLER CAN SEE (every project for an org admin; the
+  // caller's own projects otherwise), so the number reconciles with the page. One person
+  // counted once.
+  int32 members_with_access = 4;
+  // Org admins among the current members. They are inside members_with_access
+  // (includes_org_admins), so a caption can say "org admins see every project".
+  int32 org_admin_count = 5;
+  bool includes_org_admins = 6;
+}
+
+// UpdateProjectRequest edits by PRESENCE: a field that is not sent is left as it is (a
+// name-only request does not erase the description). At least one of name and description
+// must be sent; a sent name must not be empty. An archived project cannot be edited
+// (ERR_PROJECT_ARCHIVED, FAILED_PRECONDITION).
+message UpdateProjectRequest {
+  string project_id = 1;
+  optional string name = 2;
+  optional string description = 3;
+}
+message UpdateProjectResponse { Project project = 1; }
 
 message ArchiveProjectRequest {
   string project_id = 1;
