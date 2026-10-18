@@ -57,6 +57,14 @@ service EvidenceService {
   // cancellation stops the run. The result is persisted and also returned by
   // GetEvidenceSummary as last_verification.
   rpc VerifyEvidenceChain(VerifyEvidenceChainRequest) returns (VerifyEvidenceChainResponse);
+
+  // GetEvidenceRetention states how long the org's evidence is kept: the ONE
+  // retention policy, read by General and by the Evidence page. It is a fixed
+  // platform fact (no per-org setting): evidence is retained indefinitely
+  // because records and attestations are append-only, hash-chained and anchored,
+  // so a time limit could not be honoured. Same permission as ListEvidence (org
+  // member, or platform staff with a support-access grant), scoped by org_id.
+  rpc GetEvidenceRetention(GetEvidenceRetentionRequest) returns (GetEvidenceRetentionResponse);
 }
 
 // ── Chain verification ──
@@ -428,4 +436,39 @@ message EraseDataSubjectResponse {
   int64 pr_checks_redacted = 3;         // pr_checks rows whose author was tombstoned
   int64 export_jobs_redacted = 4;       // evidence_export_jobs rows whose author filter was nulled
   int64 ledger_runs_redacted = 5;       // 0 today — the immutable ledger holds no PII
+}
+
+// ── Evidence retention ──
+
+enum EvidenceRetentionMode {
+  EVIDENCE_RETENTION_MODE_UNSPECIFIED = 0;
+  // Nothing is deleted by age. The only policy the platform offers today.
+  EVIDENCE_RETENTION_MODE_INDEFINITE = 1;
+  // Reserved: kept for `days`, then removed. Not produced by the server today.
+  EVIDENCE_RETENTION_MODE_LIMITED = 2;
+}
+
+// The two cases in which evidence content is changed although the policy is
+// indefinite. Hashes are kept in both.
+enum EvidenceRetentionException {
+  EVIDENCE_RETENTION_EXCEPTION_UNSPECIFIED = 0;
+  // Personal-data erasure on request: the record content is emptied, the
+  // hashes are kept (the chain stays verifiable).
+  EVIDENCE_RETENTION_EXCEPTION_PERSONAL_DATA_ERASURE = 1;
+  // Organisation deletion: records are anonymised, the hashes are kept.
+  EVIDENCE_RETENTION_EXCEPTION_ORGANISATION_DELETION = 2;
+}
+
+message GetEvidenceRetentionRequest { string org_id = 1; }
+
+message GetEvidenceRetentionResponse {
+  EvidenceRetentionMode mode = 1;
+  // Retention in days when mode is LIMITED; 0 when INDEFINITE.
+  int32 days = 2;
+  repeated EvidenceRetentionException exceptions = 3;
+  // The policy in one English statement, for clients without their own copy.
+  // It states exactly the facts above and nothing more: evidence is retained
+  // indefinitely (append-only, chained, anchored); the exceptions; and that
+  // audit logs are separate and have their own sweep.
+  string statement = 4;
 }
