@@ -83,6 +83,7 @@ enum EvidenceBreakageKind {
   EVIDENCE_BREAKAGE_KIND_ATTESTATION_BINDING = 6; // a signed statement disagrees with its ledger record
   EVIDENCE_BREAKAGE_KIND_INCLUSION_PROOF = 7;  // a Rekor inclusion proof does not verify
   EVIDENCE_BREAKAGE_KIND_ATTESTATION_MISSING = 8; // an attestable run inside the attested stretch has no signed attestation
+  EVIDENCE_BREAKAGE_KIND_REDACTION_UNRECORDED = 9; // a run's content is erased but no erasure recorded it: the ledger's content cannot be vouched for
 }
 
 // What the Rekor leg did for this org.
@@ -458,10 +459,10 @@ enum EvidenceRetentionMode {
 // GetEvidenceRetentionResponse.statement.
 enum EvidenceRetentionException {
   EVIDENCE_RETENTION_EXCEPTION_UNSPECIFIED = 0;
-  // Personal-data erasure on request: the content of the database copy of the
-  // affected runs is emptied and the author is cleared on their records. The
-  // transparency-log entry, the customer's git twin and any export already
-  // taken are not reached.
+  // Personal-data erasure on request: the content of the affected runs is
+  // emptied and the author is cleared on their records, in the database copy
+  // only. A published transparency-log entry, the customer's git twin and any
+  // export already taken are not reached. Each erased run is recorded.
   EVIDENCE_RETENTION_EXCEPTION_PERSONAL_DATA_ERASURE = 1;
   // Organisation deletion: on evidence records the author is blanked and the
   // repository and exception links are cleared. Runs, attestations and
@@ -471,16 +472,40 @@ enum EvidenceRetentionException {
 
 message GetEvidenceRetentionRequest { string org_id = 1; }
 
+// Where this deployment publishes attestations now. NONE is the default: publication is
+// an operator choice (evidence.rekor_url), and nothing is published while it is empty.
+enum EvidenceTransparencyLog {
+  EVIDENCE_TRANSPARENCY_LOG_UNSPECIFIED = 0;
+  EVIDENCE_TRANSPARENCY_LOG_NONE = 1;
+  // The public Sigstore Rekor log: an entry there is permanent and public.
+  EVIDENCE_TRANSPARENCY_LOG_PUBLIC = 2;
+  // Any other log (self-hosted): whether an entry can be removed is that log's policy.
+  EVIDENCE_TRANSPARENCY_LOG_SELF_HOSTED = 3;
+}
+
 message GetEvidenceRetentionResponse {
   EvidenceRetentionMode mode = 1;
   reserved 2;
   reserved "days";
   repeated EvidenceRetentionException exceptions = 3;
-  // The policy in one English statement, for clients without their own copy.
-  // It states only what the code does: evidence is retained indefinitely; what
-  // erasure and organisation deletion change; that transparency-log entries are
-  // permanent and public and the git twin is the customer's, neither reachable
-  // by Toevan; and that audit logs are separate, with an optional sweep that is
-  // off by default.
+  // The policy in one English statement, for clients without their own copy. It is
+  // built per request from the facts below and states only what is true of THIS
+  // deployment and org: evidence is retained indefinitely; what erasure and
+  // organisation deletion change; the transparency log claim ONLY for the state in
+  // transparency_log / log_entries_published; the git twin only if enabled; and what
+  // the audit-log sweep actually is here.
   string statement = 4;
+  // The facts the statement is built from, so a client can render its own copy.
+  EvidenceTransparencyLog transparency_log = 5;
+  // This deployment signs attestations, or the org already holds some.
+  bool attestations_signed = 6;
+  // The org already has entries in a transparency log (published earlier, whatever the
+  // log setting is now).
+  bool log_entries_published = 7;
+  // The git twin (toevan/evidence) is exported to the customer's repository. Toevan only
+  // appends to it and never deletes or rewrites it.
+  bool git_twin_enabled = 8;
+  // Audit logs older than this many days are deleted by the optional sweep; 0 = no sweep
+  // (the default). Audit logs are not evidence.
+  int32 audit_log_sweep_days = 9;
 }
