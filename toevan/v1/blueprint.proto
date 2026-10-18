@@ -67,6 +67,10 @@ service BlueprintService {
   rpc ListBlueprintAdopters(ListBlueprintAdoptersRequest) returns (ListBlueprintAdoptersResponse);
   rpc ListOrgAdoptedBlueprints(ListOrgAdoptedBlueprintsRequest) returns (ListOrgAdoptedBlueprintsResponse);
   rpc SetAdoptionStatus(SetAdoptionStatusRequest) returns (SetAdoptionStatusResponse);
+  // SetAdoptionMode sets whether adoptions ENFORCE (their rules can block the PR gate under the org's
+  // gate policy) or ANNOTATE (findings are reported, never block). Org admin only. Pause stays on
+  // SetAdoptionStatus.
+  rpc SetAdoptionMode(SetAdoptionModeRequest) returns (SetAdoptionModeResponse);
 
   // Purchases (premium blueprints)
   rpc RecordBlueprintPurchase(RecordPurchaseRequest) returns (RecordPurchaseResponse);
@@ -222,6 +226,31 @@ message ScopedBlueprintAssignment {
   string project_id = 8;
   string repo_id = 9;
   google.protobuf.Timestamp assigned_at = 10;
+  // The adoption's mode. Never UNSPECIFIED from the server; a paused adoption keeps its mode.
+  AdoptionEnforcementMode enforcement_mode = 11;
+  // ACTIVE or PAUSED on the project and repo reads (a removed adoption is not listed). A paused
+  // adoption is listed with is_active=false, is not evaluated and does not gate.
+  AdoptionLifecycle lifecycle = 12;
+}
+
+// The adoption lifecycle. is_active is true exactly when ACTIVE.
+enum AdoptionLifecycle {
+  ADOPTION_LIFECYCLE_UNSPECIFIED = 0;
+  // Evaluated, gates per its mode.
+  ADOPTION_LIFECYCLE_ACTIVE = 1;
+  // Listed, NOT evaluated, does not gate; findings and evidence retained; resumable.
+  ADOPTION_LIFECYCLE_PAUSED = 2;
+  // Gone from every read; evaluation evidence retired.
+  ADOPTION_LIFECYCLE_REMOVED = 3;
+}
+
+// What an adoption's findings may do at the PR gate. Pause is not a mode: it is is_active=false.
+enum AdoptionEnforcementMode {
+  ADOPTION_ENFORCEMENT_MODE_UNSPECIFIED = 0;
+  // The adoption's rules can block the PR gate, per the org's gate policy.
+  ADOPTION_ENFORCEMENT_MODE_ENFORCE = 1;
+  // Findings are reported (annotations, canvas, evidence) and never block.
+  ADOPTION_ENFORCEMENT_MODE_ANNOTATE = 2;
 }
 
 message BlueprintAnalytics {
@@ -496,6 +525,10 @@ message ListProjectBlueprintsRequest {
 }
 message ListProjectBlueprintsResponse {
   repeated ScopedBlueprintAssignment assignments = 1;
+  // The counts of the listed assignments, computed once on the server so every surface agrees.
+  // The list holds only ACTIVE (governing) adoptions: a paused adoption is in neither count.
+  int32 enforcing_count = 2;
+  int32 annotating_count = 3;
 }
 
 message BlueprintListRepoAssignmentsRequest {
@@ -504,6 +537,9 @@ message BlueprintListRepoAssignmentsRequest {
 }
 message BlueprintListRepoAssignmentsResponse {
   repeated ScopedBlueprintAssignment assignments = 1;
+  // See ListProjectBlueprintsResponse.
+  int32 enforcing_count = 2;
+  int32 annotating_count = 3;
 }
 
 message CheckUpdatesRequest { string project_id = 1; }
@@ -811,6 +847,24 @@ message SetAdoptionStatusRequest {
   repeated string adopter_ids = 3;     // project_ids or repo_ids; must be non-empty
   bool is_active = 4;                  // target state
   string org_id = 5;                   // required; org that owns the adopters
+  // Target state. UNSPECIFIED keeps the legacy meaning of is_active (true ACTIVE, false REMOVED);
+  // otherwise it wins and is_active is ignored. PAUSED retires nothing; REMOVED retires evidence.
+  AdoptionLifecycle lifecycle = 6;
+}
+
+message SetAdoptionModeRequest {
+  repeated string assignment_ids = 1;  // adoption ids (ScopedBlueprintAssignment.assignment_id); non-empty, at most 50
+  AdoptionEnforcementMode mode = 2;    // ENFORCE or ANNOTATE
+  string org_id = 3;                   // required; org that owns the adoptions
+}
+
+message SetAdoptionModeResponse {
+  int32 updated_count = 1;                  // adoptions whose mode actually changed
+  repeated string updated_assignment_ids = 2;
+  // The repositories the changed adoptions govern right now (none for a paused adoption). The
+  // client re-gates their open PRs per the org's ReevaluatePRsMode (OFF/ASK/AUTO), as after an
+  // adopt or unadopt: the server does not re-gate.
+  repeated string affected_repo_ids = 3;
 }
 
 message SetAdoptionStatusResponse {
