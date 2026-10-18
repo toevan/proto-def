@@ -826,7 +826,82 @@ message DryRunBlueprintConstraintsResponse {
   int32 total_violations = 2;
   int32 total_affected_files = 3;
   int32 repos_evaluated = 4;
-  int32 repos_failed = 5;                  // repos where evaluation failed (best-effort)
+  // Repos that produced no result: evaluation failed, or the request ended before
+  // the repo ran (cancelled). Each is also listed in repo_results as skipped with
+  // NOT_CHECKABLE_REASON_EVALUATION_FAILED.
+  int32 repos_failed = 5;
+  // total_violations above is the TRUE count over every evaluated repo; the
+  // violations actually carried in repo_results may be capped. returned_violations
+  // is how many are carried, truncated is true when returned < total, so a client
+  // says "showing N of M" and never presents a capped list as complete.
+  int32 returned_violations = 6;
+  bool truncated = 7;
+  // Rules that did NOT run, summed over the evaluated repos. A rule that did not
+  // run contributes no findings and is never a "0 findings" result.
+  int32 rules_not_checked = 8;
+}
+
+// Why a rule of a dry run could not be checked. UNSPECIFIED is never sent.
+enum NotCheckableReason {
+  NOT_CHECKABLE_REASON_UNSPECIFIED = 0;
+  // A data_tag_* rule whose required tag categories have no tagged symbol in the repo.
+  NOT_CHECKABLE_REASON_NO_DATA_TAGS_IN_SCOPE = 1;
+  // The repo has no indexed symbols in the graph.
+  NOT_CHECKABLE_REASON_REPO_NOT_INDEXED = 2;
+  // The repo's languages are not supported by the blueprint (whole repo skipped).
+  NOT_CHECKABLE_REASON_UNSUPPORTED_LANGUAGE = 3;
+  // The rule has no compiled query to run.
+  NOT_CHECKABLE_REASON_RULE_NOT_COMPILED = 4;
+  // A file-based rule had no source to read (no checkout or no file runner).
+  NOT_CHECKABLE_REASON_SOURCE_UNAVAILABLE = 5;
+  // The rule failed while evaluating.
+  NOT_CHECKABLE_REASON_EVALUATION_FAILED = 6;
+  // The preview evaluates at most 100 repos per request; this repo was past the limit.
+  NOT_CHECKABLE_REASON_REPO_LIMIT_EXCEEDED = 7;
+  // No language is recorded for the repo yet, so whether the blueprint covers it
+  // is not known. Says nothing about the repo's index state.
+  NOT_CHECKABLE_REASON_NO_LANGUAGES_DETECTED = 8;
+}
+
+// Why a rule that DID run may have judged less than the whole repo. Its findings
+// (including 0) are a partial answer, not a clean one.
+enum IncompleteReason {
+  INCOMPLETE_REASON_UNSPECIFIED = 0;
+  // Dependency or module data the rule needs could not be fetched (a vulnerability
+  // or license source unreachable, a Terraform module file unavailable).
+  INCOMPLETE_REASON_DATA_UNAVAILABLE = 1;
+  // Files the rule was to read could not be read (over the size cap, a symbolic
+  // link, an IO error).
+  INCOMPLETE_REASON_FILES_NOT_READ = 2;
+  // Some attributes could not be judged statically (a value set from a variable,
+  // a conditional or a function call): no finding, neither compliant nor not.
+  INCOMPLETE_REASON_ATTRIBUTES_NOT_JUDGED = 3;
+}
+
+// One rule that ran but with a partial answer.
+message RuleIncomplete {
+  string rule_id = 1;
+  string rule_type = 2;
+  IncompleteReason reason = 3;
+}
+
+// One rule that did not run for a repo.
+message RuleNotChecked {
+  string rule_id = 1;
+  string rule_type = 2;                    // constraint family, e.g. data_tag_query
+  NotCheckableReason reason = 3;
+  // NO_DATA_TAGS_IN_SCOPE only: the catalog categories the rule needs, e.g.
+  // financial.cardholder.pan, and the pattern they were resolved from.
+  repeated string required_categories = 4;
+  string required_tag_pattern = 5;
+  // NO_DATA_TAGS_IN_SCOPE only: the catalog version the names were taken from, and
+  // whether it is the version the repo's own data-classification tags record
+  // (false = the names are NOT from the repo's indexed catalog: either the index
+  // records no data-classification tag, or it records a version this release does
+  // not bundle; in both cases they come from the catalog version this release
+  // indexes with, the pinned one).
+  string catalog_version = 6;
+  bool catalog_is_indexed_version = 7;
 }
 
 message ExplainDryRunViolationRequest {
@@ -869,6 +944,12 @@ message RepoDryRunResult {
   repeated DryRunViolation violations = 5;
   bool skipped = 6;                        // true = repo was not evaluated (language mismatch, etc.)
   string skip_reason = 7;                  // human-readable reason when skipped (e.g. "language not supported")
+  NotCheckableReason skip_reason_code = 8; // typed reason when skipped
+  // violation_count is the TRUE count; returned_violation_count is how many are in violations.
+  int32 returned_violation_count = 9;
+  int32 rules_ran = 10;                    // rules that executed (ran, possibly with 0 findings)
+  repeated RuleNotChecked not_checked = 11; // rules that did not run: not "0 findings"
+  repeated RuleIncomplete incomplete = 12;  // rules that ran with a partial answer
 }
 
 message DryRunViolation {
