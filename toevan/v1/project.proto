@@ -180,7 +180,9 @@ message ListProjectsRequest {
 message ListProjectsResponse {
   repeated Project projects = 1;
   int32 total = 2;
-  // Org listing only (org_id set), else 0. projects holds ACTIVE projects only.
+  // Org listing only (org_id set), else 0. Archived projects among ALL the
+  // projects the caller can see (across pages, not just this page); they are
+  // inside total and the page rows like any other non-deleted project.
   int32 archived_count = 3;
   // Org listing only. Distinct CURRENT org members with explicit project access
   // in some project of the org, unioned with the org admins (who see every
