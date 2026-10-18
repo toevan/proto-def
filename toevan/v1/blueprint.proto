@@ -951,6 +951,7 @@ enum UnresolvedControlReason {
   UNRESOLVED_CONTROL_REASON_OTHER_FRAMEWORK = 1;      // names a framework the blueprint does not declare
   UNRESOLVED_CONTROL_REASON_UNKNOWN_CONTROL = 2;      // not in the declared edition
   UNRESOLVED_CONTROL_REASON_NOT_CHECKABLE_REQUIREMENT = 3; // no longer produced: such a citation is a SUPPORTING rule link
+  UNRESOLVED_CONTROL_REASON_BAD_COVERAGE = 4;         // the authored coverage word is not full or partial
 }
 
 message FrameworkRequirementCoverage {
