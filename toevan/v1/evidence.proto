@@ -57,6 +57,227 @@ service EvidenceService {
   // cancellation stops the run. The result is persisted and also returned by
   // GetEvidenceSummary as last_verification.
   rpc VerifyEvidenceChain(VerifyEvidenceChainRequest) returns (VerifyEvidenceChainResponse);
+
+  // The org's transparency-log setting: the public log (the default) or a
+  // self-hosted log the org operates. Read: any org member (the setting is
+  // not a secret; the log's PUBLIC key is shown). Write: org admin only, a
+  // support-access grant never writes, Enterprise (the self_hosted feature)
+  // for a self-hosted log, audited in the same transaction. Switching back
+  // to the public log is always allowed.
+  rpc GetOrgEvidenceLog(GetOrgEvidenceLogRequest) returns (GetOrgEvidenceLogResponse);
+  rpc SetOrgEvidenceLog(SetOrgEvidenceLogRequest) returns (SetOrgEvidenceLogResponse);
+  // Org admin only (a support grant never writes), audited, with a written reason: clear the records and
+  // chain heads a transparency log refused for good, so the next sweep offers them to their log again. A
+  // refusal is therefore never permanent. Their history (who, why, when) is kept.
+  rpc RequeueOrgEvidenceRejections(RequeueOrgEvidenceRejectionsRequest) returns (RequeueOrgEvidenceRejectionsResponse);
+
+  // GetEvidenceRetention states how long the org's evidence is kept: the ONE
+  // retention policy, read by General and by the Evidence page. It is a PER-ORG
+  // minimum period in years (a floor, not a ceiling; default 3). Evidence is kept
+  // at least that long; automatic deletion at the end of the period is NOT yet
+  // enforced (purge_enforced = false), so no client may claim evidence is kept
+  // "indefinitely". Org membership (or platform staff with a support-access
+  // grant) for org_id, like ListEvidence, but NOT behind the Evidence Trail
+  // rollout flag: the policy is a fact about the system.
+  rpc GetEvidenceRetention(GetEvidenceRetentionRequest) returns (GetEvidenceRetentionResponse);
+
+  // SetEvidenceRetention raises (or restores) the org's evidence retention
+  // period. Org ADMIN only (a support-access grant never writes) and Enterprise
+  // only: the plan gate is the server's entitlement check, never a client check.
+  // retention_years must be one of allowed_years, and never below the 3 year
+  // floor. Audited in the same transaction (who, when, old and new period).
+  // Returns the policy as GetEvidenceRetention now reads it. It starts no
+  // deletion: nothing is purged by this call or by the period elapsing.
+  // Errors: PERMISSION_DENIED (not an org admin), FAILED_PRECONDITION (plan
+  // does not include the change; the error carries the entitlement code),
+  // INVALID_ARGUMENT (value not in allowed_years).
+  rpc SetEvidenceRetention(SetEvidenceRetentionRequest) returns (SetEvidenceRetentionResponse);
+
+  // The Coverage Gate for one repository: the share of its production source
+  // files that the index parsed at the indexed commit, the gate in force, and
+  // whether the next index-dependent verdict would be signed. A stored read (no
+  // re-index, no git). Viewer floor on the REPO row; the owning org derives
+  // from the row, never from the request. Ungated by plan, like the
+  // attestations it explains.
+  rpc GetRepoIndexCoverage(GetRepoIndexCoverageRequest) returns (GetRepoIndexCoverageResponse);
+}
+
+// ── Transparency log setting ──
+
+enum EvidenceLogKind {
+  EVIDENCE_LOG_KIND_UNSPECIFIED = 0;
+  // The platform's transparency log (Sigstore Rekor by default). No url or key.
+  EVIDENCE_LOG_KIND_PUBLIC = 1;
+  // A Rekor the organization operates. Anchoring there is third-party only in
+  // the sense that the log is not Toevan's: its operator can rewrite it, so
+  // render it as "anchored in a log operated by the organization".
+  EVIDENCE_LOG_KIND_SELF_HOSTED = 2;
+}
+
+// What the anchoring sweeps are doing for ONE log an org's records are pinned to.
+message EvidenceLogHealth {
+  // Signed attestations pinned to this log that are not anchored yet and not refused.
+  int64 pending = 1;
+  google.protobuf.Timestamp oldest_pending_at = 2;  // unset when none pending
+  google.protobuf.Timestamp last_attempt_at = 3;    // unset when never attempted
+  google.protobuf.Timestamp last_success_at = 4;    // unset when never succeeded
+  // "" when the last attempt succeeded. Otherwise one of: unreachable, slow, rejected_<status> (a
+  // refusal, e.g. rejected_422), rejected_all, circuit_open, invalid_proof, no_proof, log_id_mismatch,
+  // lookup_failed, egress_blocked, stamp_failed (our database refused the stamp), queue_failed (our
+  // database could not read the work queue), pin_mismatch, key_not_held, config_missing. Never carries the
+  // host or the response body.
+  string last_error_kind = 5;
+  int32 consecutive_failures = 6;
+  // The log this entry is about: "" = the public log, otherwise the self-hosted log's id. Records stay
+  // pinned to the log they were signed for, so an earlier log keeps its own entry and keeps draining.
+  string log_id = 7;
+  // Records this log refused for good (terminal until an org admin re-queues them). Not pending. Render
+  // as "not anchored: rejected by the log".
+  int64 rejected = 8;
+  google.protobuf.Timestamp last_rejected_at = 9;  // unset when none
+  // The org's repositories whose CURRENT chain head this log refused for good. A newer head supersedes
+  // it and anchors normally. Render as "chain head not anchored: rejected by the log".
+  int64 rejected_chain_heads = 10;
+  string url = 11;         // the log's newest recorded locator; empty for the public log
+  bool is_current = 12;    // the org's current setting names this log
+}
+
+message OrgEvidenceLog {
+  EvidenceLogKind kind = 1;
+  string url = 2;             // empty for the public log
+  string log_id = 3;          // hex sha256 of the log key's SPKI; empty for the public log
+  string public_key_pem = 4;  // the log's PUBLIC key; empty for the public log
+  int32 version = 5;          // 0 = never configured (the public log by default)
+  google.protobuf.Timestamp set_at = 6;
+  string set_by_user_id = 7;
+}
+
+message GetOrgEvidenceLogRequest {
+  string org_id = 1;
+}
+
+message GetOrgEvidenceLogResponse {
+  OrgEvidenceLog log = 1;
+  EvidenceLogHealth health = 2;
+  // Whether the org's plan allows a self-hosted log (Enterprise; the beta
+  // unlock applies through the same entitlement gate).
+  bool self_hosted_allowed = 3;
+  // EVERY log the org's records are pinned to (the current one, earlier ones, the public one), each with
+  // its own health. `health` above is the current log's.
+  repeated EvidenceLogHealth logs = 4;
+}
+
+message RequeueOrgEvidenceRejectionsRequest {
+  string org_id = 1;
+  string reason = 2;  // required, 1 to 500 characters; recorded with who and when
+}
+
+message RequeueOrgEvidenceRejectionsResponse {
+  int64 attestations = 1;  // records cleared
+  int64 chain_heads = 2;   // chain heads cleared
+}
+
+message SetOrgEvidenceLogRequest {
+  string org_id = 1;
+  EvidenceLogKind kind = 2;
+  string url = 3;             // https URL of the Rekor; required when SELF_HOSTED
+  string public_key_pem = 4;  // the log's PEM public key (ECDSA P-256); required when SELF_HOSTED
+}
+
+message SetOrgEvidenceLogResponse {
+  OrgEvidenceLog log = 1;
+}
+
+// ── Coverage Gate ──
+
+// Why a verdict is, or would be, left unsigned by the Coverage Gate. An
+// eligible verdict carries UNSPECIFIED, or INDEX_NOT_USED when its blueprint's
+// rules never judge through the index (it is signed whatever the coverage).
+enum CoverageGateReason {
+  COVERAGE_GATE_REASON_UNSPECIFIED = 0;
+  // The index resolved less of the production code than the gate requires.
+  COVERAGE_GATE_REASON_BELOW_THRESHOLD = 1;
+  // No coverage figure exists for the indexed commit (an index from before the
+  // gate, or one whose figure could not be written).
+  COVERAGE_GATE_REASON_NOT_MEASURED = 2;
+  // The repository has no production source file in a language the index
+  // supports, so the share is undefined.
+  COVERAGE_GATE_REASON_NO_PRODUCTION_FILES = 3;
+  // Eligible: every rule the blueprint runs reads files directly (IaC,
+  // secrets, dependency and license scanners), never the index.
+  COVERAGE_GATE_REASON_INDEX_NOT_USED = 4;
+}
+
+// One rule of the coverage figure. The first five EXCLUDE a file from the
+// production denominator; the last four count a production file as NOT
+// resolved.
+enum CoverageFileRule {
+  COVERAGE_FILE_RULE_UNSPECIFIED = 0;
+  COVERAGE_FILE_RULE_UNSUPPORTED_LANGUAGE = 1; // production source in a language the index does not parse
+  COVERAGE_FILE_RULE_NON_PRODUCTION = 2;       // a test, docs, fixture, example, vendored or blueprint file
+  COVERAGE_FILE_RULE_GENERATED = 3;            // generated by path convention, header or .gitattributes
+  COVERAGE_FILE_RULE_REPO_IGNORE = 4;          // excluded by the repository's index.ignore
+  COVERAGE_FILE_RULE_LINK_OR_SPECIAL = 5;      // a committed symbolic link
+  COVERAGE_FILE_RULE_LANGUAGE_NOT_SELECTED = 6; // supported, but not in the repository's languages
+  COVERAGE_FILE_RULE_NOT_WALKED = 7;           // under a directory the index walk skips
+  COVERAGE_FILE_RULE_PARSE_FAILED = 8;         // unreadable, or the parser failed on it
+  COVERAGE_FILE_RULE_SYNTAX_ERROR = 9;         // parsed with syntax errors in a language whose errors are trusted
+}
+
+// The file count of one rule.
+message CoverageFileCount {
+  CoverageFileRule rule = 1;
+  int64 files = 2;
+}
+
+message GetRepoIndexCoverageRequest {
+  string repo_id = 1;
+}
+
+message GetRepoIndexCoverageResponse {
+  RepoIndexCoverage coverage = 1;
+}
+
+// RepoIndexCoverage is the Coverage Gate card's read.
+message RepoIndexCoverage {
+  string repo_id = 1;
+  // The repository's indexed commit; empty before its first index.
+  string indexed_commit = 2;
+  // A figure exists for the indexed commit. False: reason NOT_MEASURED and
+  // every count is 0.
+  bool measured = 3;
+  google.protobuf.Timestamp measured_at = 4;
+  // resolved_files * 10000 / production_files, rounded DOWN (9499 = 94.99%),
+  // so a figure below the gate never reads as at it. 0 when production_files
+  // is 0.
+  int32 percent_bp = 5;
+  // The gate in force now, in basis points (9000 = 90%).
+  int32 threshold_bp = 6;
+  // Whether the next verdict of an index-dependent blueprint would be signed,
+  // judged against threshold_bp: measured, production_files > 0 and
+  // resolved_files * 10000 >= threshold_bp * production_files.
+  bool eligible = 7;
+  CoverageGateReason reason = 8; // UNSPECIFIED when eligible
+  int64 production_files = 9;
+  int64 resolved_files = 10;
+  // Files kept out of the denominator (the sum of excluded).
+  int64 excluded_files = 11;
+  repeated CoverageFileCount excluded = 12;   // by rule, rules with no file left out
+  repeated CoverageFileCount unresolved = 13; // by rule, rules with no file left out
+}
+
+// One verdict at a commit that the Coverage Gate left unsigned. Its facts are
+// read from the verdict's hashed ledger record.
+message UnsignedVerdict {
+  string run_id = 1;
+  int64 chain_seq = 2;
+  string blueprint_id = 3;
+  string blueprint_name = 4; // joined at read time; empty when the blueprint row is gone
+  string decision = 5;       // pass | blocked | exception
+  CoverageGateReason reason = 6;
+  int32 percent_bp = 7;      // the recorded figure (0 when not measured)
+  int32 gate_min_bp = 8;     // the gate recorded with the verdict
+  string indexed_commit = 9; // the commit whose index the figure measures
 }
 
 // ── Chain verification ──
@@ -74,6 +295,14 @@ enum EvidenceBreakageKind {
   EVIDENCE_BREAKAGE_KIND_ATTESTATION_BINDING = 6; // a signed statement disagrees with its ledger record
   EVIDENCE_BREAKAGE_KIND_INCLUSION_PROOF = 7;  // a Rekor inclusion proof does not verify
   EVIDENCE_BREAKAGE_KIND_ATTESTATION_MISSING = 8; // an attestable run inside the attested stretch has no signed attestation
+  // Records or chain heads a transparency log refused for good, or that an org's own log has not taken
+  // for longer than the grace. The chain and the signatures hold; the anchoring does not, so the result
+  // is not green. The counts (rejected_by_log, rejected_chain_heads, anchoring_overdue) say how many.
+  EVIDENCE_BREAKAGE_KIND_NOT_ANCHORED = 9;
+  // A refusal in force with no matching history: something other than the sweep stopped a record from
+  // being anchored.
+  EVIDENCE_BREAKAGE_KIND_REJECTION_UNRECORDED = 10;
+  EVIDENCE_BREAKAGE_KIND_REDACTION_UNRECORDED = 11; // a run's content is erased but no erasure recorded it: the ledger's content cannot be vouched for
 }
 
 // What the Rekor leg did for this org.
@@ -141,6 +370,33 @@ message EvidenceVerification {
   // The org has no ledger records. all_checks_passed is false and no breakage is named:
   // render "nothing to verify yet", never a green pass.
   bool nothing_to_verify = 14;
+  // Of inclusion_proofs_checked, the proofs checked under a log the ORGANIZATION
+  // operates (a self-hosted log). Those prove what the org's log says, not what a
+  // third party witnessed: render them as such. Always 0 unless rekor_status is
+  // VERIFIED_ANCHORED.
+  int64 self_hosted_proofs_checked = 15;
+  // Signed attestations pinned to a self-hosted log that are not anchored yet.
+  // Reported, never counted as a failure (anchoring is asynchronous), never
+  // dropped: a log that stays unreachable shows here until it is reachable.
+  int64 self_hosted_awaiting = 16;
+  // Signed attestations a transparency log (any) REFUSED for good: never anchored, terminal, reported
+  // here as "not anchored: rejected by the log". Not a failure of the chain or the signatures.
+  int64 rejected_by_log = 17;
+  // Repositories whose current chain head a log refused for good: "chain head not anchored: rejected
+  // by the log". Terminal; a newer head supersedes it. Not a failure of the chain or the signatures.
+  int64 rejected_chain_heads = 18;
+  // Of self_hosted_awaiting, the records that have waited longer than the grace (1 hour): an org that
+  // runs a log with records the log has not taken for that long is not green.
+  int64 anchoring_overdue = 19;
+  // Refusals in force with no matching history (something other than the sweep marked them).
+  int64 unrecorded_rejections = 20;
+  // (renumbered from 15 on consolidation: org-rekor holds 15 to 20)
+  // Runs the Coverage Gate left unsigned on purpose: their hashed record says the
+  // index resolved less of the production code than the gate recorded with it
+  // (or no figure existed). Read from the hashed record, never a table column.
+  // Counted, never a failure, never attestations_missing; an attestation found
+  // over such a run IS a failure (an ATTESTATION_BINDING breakage).
+  int64 not_eligible_coverage = 21;
 }
 
 message VerifyEvidenceChainRequest {
@@ -184,6 +440,9 @@ message VerdictAttestation {
 
 message ListVerdictAttestationsResponse {
   repeated VerdictAttestation attestations = 1;
+  // The verdicts at this commit that the Coverage Gate left unsigned, so a
+  // client can tell "not signed: coverage" from "not signed yet". In chain order.
+  repeated UnsignedVerdict unsigned = 2;
 }
 
 // ── Core Types ──
@@ -428,4 +687,109 @@ message EraseDataSubjectResponse {
   int64 pr_checks_redacted = 3;         // pr_checks rows whose author was tombstoned
   int64 export_jobs_redacted = 4;       // evidence_export_jobs rows whose author filter was nulled
   int64 ledger_runs_redacted = 5;       // 0 today — the immutable ledger holds no PII
+}
+
+// ── Evidence retention ──
+
+enum EvidenceRetentionMode {
+  EVIDENCE_RETENTION_MODE_UNSPECIFIED = 0;
+  // SUPERSEDED by the owner decision of 2026-10-19 (the landing model): the server
+  // no longer returns this value and no client may claim evidence is kept
+  // "indefinitely". Kept so the number is never reused.
+  EVIDENCE_RETENTION_MODE_INDEFINITE = 1;
+  reserved 2;
+  reserved "EVIDENCE_RETENTION_MODE_LIMITED";
+  // The org's evidence is kept AT LEAST retention_years (a floor). Nothing is
+  // deleted at the end of the period yet (purge_enforced = false). The only mode
+  // the server returns.
+  EVIDENCE_RETENTION_MODE_MINIMUM_PERIOD = 3;
+}
+
+// The two cases in which the CONTENT of evidence changes although the policy is
+// a minimum period (no purge yet). Hashes are kept in both. What each does and does not reach is in
+// GetEvidenceRetentionResponse.statement.
+enum EvidenceRetentionException {
+  EVIDENCE_RETENTION_EXCEPTION_UNSPECIFIED = 0;
+  // Personal-data erasure on request: the content of the affected runs is
+  // emptied and the author is cleared on their records, in the database copy
+  // only. A published transparency-log entry, the customer's git twin and any
+  // export already taken are not reached. Each erased run is recorded.
+  EVIDENCE_RETENTION_EXCEPTION_PERSONAL_DATA_ERASURE = 1;
+  // Organisation deletion: on evidence records the author is blanked and the
+  // repository and exception links are cleared. Runs, attestations and
+  // canonical records are kept as they are.
+  EVIDENCE_RETENTION_EXCEPTION_ORGANISATION_DELETION = 2;
+}
+
+message GetEvidenceRetentionRequest { string org_id = 1; }
+
+// Where this deployment publishes attestations now. NONE is the default: publication is
+// an operator choice (evidence.rekor_url), and nothing is published while it is empty.
+enum EvidenceTransparencyLog {
+  EVIDENCE_TRANSPARENCY_LOG_UNSPECIFIED = 0;
+  EVIDENCE_TRANSPARENCY_LOG_NONE = 1;
+  // The public Sigstore Rekor log: an entry there is permanent and public.
+  EVIDENCE_TRANSPARENCY_LOG_PUBLIC = 2;
+  // Any other log (self-hosted): whether an entry can be removed is that log's policy.
+  EVIDENCE_TRANSPARENCY_LOG_SELF_HOSTED = 3;
+}
+
+message GetEvidenceRetentionResponse {
+  EvidenceRetentionMode mode = 1;
+  reserved 2;
+  reserved "days";
+  repeated EvidenceRetentionException exceptions = 3;
+  // The policy in one English statement, for clients without their own copy. It is
+  // built per request from the facts below and states only what is true of THIS
+  // deployment and org: evidence is kept at least retention_years (purge_enforced says whether deletion happens); what erasure and
+  // organisation deletion change; the transparency log claim ONLY for the state in
+  // transparency_log / log_entries_published; the git twin only if enabled; and what
+  // the audit-log sweep actually is here.
+  string statement = 4;
+  // The facts the statement is built from, so a client can render its own copy.
+  EvidenceTransparencyLog transparency_log = 5;
+  // This deployment signs attestations, or the org already holds some.
+  bool attestations_signed = 6;
+  // The org already has entries in a transparency log (published earlier, whatever the
+  // log setting is now).
+  bool log_entries_published = 7;
+  // The git twin (toevan/evidence) is exported to the customer's repository. Toevan only
+  // appends to it and never deletes or rewrites it.
+  bool git_twin_enabled = 8;
+  // Audit logs older than this many days are deleted by the optional sweep; 0 = no sweep
+  // (the default). Audit logs are not evidence. A sweep that is on never reads 0: the age is
+  // rounded up to whole days, with a minimum of 1.
+  int32 audit_log_sweep_days = 9;
+  // Private beta is on (or could not be read, which fails toward on): nothing is published to
+  // a transparency log whatever the log setting is, and transparency_log is NONE.
+  bool beta_suppresses_publication = 10;
+  // OWNER DECISION 2026-10-19 (landing model), added in place with no version bump.
+  // The org's configured evidence retention period in whole years: a FLOOR, not a
+  // ceiling. Default 3 for an org that never set one; always one of allowed_years.
+  // The client shows this value instead of any hard-coded period.
+  int32 retention_years = 11;
+  // The periods an admin may choose, ascending: 3, 5, 7, 10 (years). Never below 3.
+  // Render these as the choices; do not hard-code them.
+  repeated int32 allowed_years = 12;
+  // True only when the CALLER is an Enterprise org admin, so SetEvidenceRetention
+  // would be accepted now. Server-computed from role and plan entitlement; false
+  // for members, support-access staff and non-Enterprise orgs. The client shows
+  // the change control only when true and never decides this itself.
+  bool can_change = 13;
+  // Whether the server deletes evidence automatically when the period ends. FALSE
+  // today (that job is not built); clients show the note "Evidence is kept at least
+  // this long; automatic deletion at the end of the period is not yet enforced".
+  // Turns true only when a purge that keeps the hash chain verifiable ships.
+  bool purge_enforced = 14;
+}
+
+message SetEvidenceRetentionRequest {
+  string org_id = 1;
+  // The new period in years; must be one of allowed_years (3, 5, 7 or 10).
+  int32 retention_years = 2;
+}
+
+message SetEvidenceRetentionResponse {
+  // The policy as GetEvidenceRetention reads it after the change.
+  GetEvidenceRetentionResponse retention = 1;
 }

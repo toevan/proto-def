@@ -81,6 +81,11 @@ service OrgService {
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
   rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (UpdateMemberRoleResponse);
   rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+  // The org roles the caller may assign in this org right now, in display order. The
+  // client's role pickers (invite, change role) offer exactly these. A server that does
+  // not implement this RPC (Unimplemented) predates it: the client then offers its
+  // long-standing roles and never ORG_ROLE_AUDITOR.
+  rpc ListAssignableOrgRoles(ListAssignableOrgRolesRequest) returns (ListAssignableOrgRolesResponse);
 
   // OrgInvitation workflow
   rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
@@ -113,6 +118,13 @@ message OrgPlanConfig {
   int32 seat_used = 3;
   int32 repo_limit = 4;
   int32 repo_used = 5;
+  // hard | fair_use | contractual, the same strings and meaning as BillingUsageMeter.mode.
+  // Contractual means the limit above is an alerting threshold, not a gate: render the usage
+  // without a lockout warning. The private beta reports contractual for both while it is on
+  // (caps are lifted), so a client branches on this value and never on the beta flag.
+  // Empty from an older server: treat as hard.
+  string seat_limit_mode = 6;
+  string repo_limit_mode = 7;
 }
 
 message Org {
@@ -231,6 +243,14 @@ enum OrgRole {
   ORG_ROLE_CISO = 5;                    // escalated exception approval
   ORG_ROLE_VIEWER = 6;                  // read-only
   ORG_ROLE_PLATFORM = 8;               // [NEW] Toevan HQ superadmin
+  // AUDITOR: read-only access to the evidence trail and reports for an external or
+  // internal auditor (no repo, PR or settings changes). Number 7 was never defined
+  // and stays unused; 9 is the next number after the highest in use.
+  // PROTO ONLY until AUDITOR-ROLE PR 2 lands: the server MUST refuse to assign this
+  // role (invite, accept, UpdateMemberRole) with an invalid-argument error until then,
+  // and no client may offer it in a role picker. Clients offer the roles that
+  // ListAssignableOrgRoles returns, so AUDITOR appears only once the server lists it.
+  ORG_ROLE_AUDITOR = 9;
   // NOTE: No "author" role — blueprint publishing is a capability, not a role.
   // Any user can create/publish blueprints.
 }
@@ -536,6 +556,15 @@ message UpdateMemberRoleRequest {
 message UpdateMemberRoleResponse {
   bool success = 1;
   string error = 2;
+}
+
+message ListAssignableOrgRolesRequest {
+  string org_id = 1;
+}
+message ListAssignableOrgRolesResponse {
+  // Roles the caller may assign here, in display order. Empty when the caller may
+  // assign none (a non-admin).
+  repeated OrgRole roles = 1;
 }
 
 message ListMembersRequest {

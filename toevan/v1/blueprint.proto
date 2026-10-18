@@ -67,6 +67,10 @@ service BlueprintService {
   rpc ListBlueprintAdopters(ListBlueprintAdoptersRequest) returns (ListBlueprintAdoptersResponse);
   rpc ListOrgAdoptedBlueprints(ListOrgAdoptedBlueprintsRequest) returns (ListOrgAdoptedBlueprintsResponse);
   rpc SetAdoptionStatus(SetAdoptionStatusRequest) returns (SetAdoptionStatusResponse);
+  // SetAdoptionMode sets whether adoptions ENFORCE (their rules can block the PR gate under the org's
+  // gate policy) or ANNOTATE (findings are reported, never block). Org admin only. Pause stays on
+  // SetAdoptionStatus.
+  rpc SetAdoptionMode(SetAdoptionModeRequest) returns (SetAdoptionModeResponse);
 
   // Purchases (premium blueprints)
   rpc RecordBlueprintPurchase(RecordPurchaseRequest) returns (RecordPurchaseResponse);
@@ -75,10 +79,20 @@ service BlueprintService {
   // Compliance Coverage
   rpc ListComplianceFrameworks(ListComplianceFrameworksRequest) returns (ListComplianceFrameworksResponse);
   rpc GetComplianceCoverage(GetComplianceCoverageRequest) returns (ComplianceCoverageReport);
+  // GetBlueprintRequirementCoverage states which of a compliance blueprint's framework
+  // requirements it checks in code, which cannot be checked in code (and why), and, per rule,
+  // when it blocks (before merge or after merge on main) under the caller's org gate policy.
+  // Pure read: no index work. Auth: the blueprint read gate, then org membership of org_id.
+  rpc GetBlueprintRequirementCoverage(GetBlueprintRequirementCoverageRequest) returns (GetBlueprintRequirementCoverageResponse);
 
   // Auto-Detected (Inferred) Blueprints
   rpc GetInferredBlueprint(GetInferredBlueprintRequest) returns (GetInferredBlueprintResponse);
   rpc AdoptInferredBlueprint(AdoptInferredBlueprintRequest) returns (AdoptInferredBlueprintResponse);
+  // Saves the repository's detected blueprint as a DRAFT: a persisted review decision that never
+  // enforces, gates or writes evidence. Idempotent. Maintainer on the repository, like adopt.
+  rpc KeepInferredBlueprintAsDraft(KeepInferredBlueprintAsDraftRequest) returns (KeepInferredBlueprintAsDraftResponse);
+  // One row per repository (that the caller can access) with a detection no adoption governs.
+  rpc ListInferredBlueprints(ListInferredBlueprintsRequest) returns (ListInferredBlueprintsResponse);
   rpc ReinferBlueprint(ReinferBlueprintRequest) returns (ReinferBlueprintResponse);
 }
 
@@ -131,6 +145,9 @@ message BlueprintRef {
   // "structural" | "compliance" | "security" | "design" — clients key the
   // type icon on this (the marketplace icon convention).
   string blueprint_type = 5;
+  // Rules the adoption runs (compiled rows at its pinned version, minus the ones the
+  // executor skips). Absent = UNKNOWN (the count could not be taken); 0 = none.
+  optional int32 rule_count = 6;
 }
 
 message Blueprint {
@@ -217,6 +234,35 @@ message ScopedBlueprintAssignment {
   string project_id = 8;
   string repo_id = 9;
   google.protobuf.Timestamp assigned_at = 10;
+  // Rules the adoption runs. Absent = UNKNOWN (the count could not be taken, or this
+  // response does not carry it); 0 = none.
+  optional int32 rule_count = 11;
+  // (renumbered from 11 on consolidation: projects-reads holds 11 for rule_count)
+  // The adoption's mode. Never UNSPECIFIED from the server; a paused adoption keeps its mode.
+  AdoptionEnforcementMode enforcement_mode = 13;
+  // ACTIVE or PAUSED on the project and repo reads (a removed adoption is not listed). A paused
+  // adoption is listed with is_active=false, is not evaluated and does not gate.
+  AdoptionLifecycle lifecycle = 12;
+}
+
+// The adoption lifecycle. is_active is true exactly when ACTIVE.
+enum AdoptionLifecycle {
+  ADOPTION_LIFECYCLE_UNSPECIFIED = 0;
+  // Evaluated, gates per its mode.
+  ADOPTION_LIFECYCLE_ACTIVE = 1;
+  // Listed, NOT evaluated, does not gate; findings and evidence retained; resumable.
+  ADOPTION_LIFECYCLE_PAUSED = 2;
+  // Gone from every read; evaluation evidence retired.
+  ADOPTION_LIFECYCLE_REMOVED = 3;
+}
+
+// What an adoption's findings may do at the PR gate. Pause is not a mode: it is is_active=false.
+enum AdoptionEnforcementMode {
+  ADOPTION_ENFORCEMENT_MODE_UNSPECIFIED = 0;
+  // The adoption's rules can block the PR gate, per the org's gate policy.
+  ADOPTION_ENFORCEMENT_MODE_ENFORCE = 1;
+  // Findings are reported (annotations, canvas, evidence) and never block.
+  ADOPTION_ENFORCEMENT_MODE_ANNOTATE = 2;
 }
 
 message BlueprintAnalytics {
@@ -491,6 +537,10 @@ message ListProjectBlueprintsRequest {
 }
 message ListProjectBlueprintsResponse {
   repeated ScopedBlueprintAssignment assignments = 1;
+  // The counts of the listed assignments, computed once on the server so every surface agrees.
+  // The list holds only ACTIVE (governing) adoptions: a paused adoption is in neither count.
+  int32 enforcing_count = 2;
+  int32 annotating_count = 3;
 }
 
 message BlueprintListRepoAssignmentsRequest {
@@ -499,6 +549,9 @@ message BlueprintListRepoAssignmentsRequest {
 }
 message BlueprintListRepoAssignmentsResponse {
   repeated ScopedBlueprintAssignment assignments = 1;
+  // See ListProjectBlueprintsResponse.
+  int32 enforcing_count = 2;
+  int32 annotating_count = 3;
 }
 
 message CheckUpdatesRequest { string project_id = 1; }
@@ -621,6 +674,49 @@ message GetInferredBlueprintResponse {
   int32 layer_count = 6;
   repeated CyclicDependency cyclic_groups = 7;
   google.protobuf.Timestamp inferred_at = 8;
+  // The review state of THIS detection. UNSPECIFIED when there is no detection or it is adopted.
+  InferredReviewState review_state = 9;
+}
+
+// Where an unadopted detection stands. Neither value enforces anything.
+enum InferredReviewState {
+  INFERRED_REVIEW_STATE_UNSPECIFIED = 0;
+  INFERRED_REVIEW_STATE_PENDING = 1;        // detected, nobody has decided
+  INFERRED_REVIEW_STATE_KEPT_AS_DRAFT = 2;  // saved as a draft, not enforced
+}
+
+message KeepInferredBlueprintAsDraftRequest {
+  string repo_id = 1;
+  string blueprint_id = 2;
+}
+
+message KeepInferredBlueprintAsDraftResponse {
+  InferredReviewState review_state = 1;
+  google.protobuf.Timestamp decided_at = 2;
+}
+
+message ListInferredBlueprintsRequest {
+  string org_id = 1;
+}
+
+message InferredBlueprintSummary {
+  string repo_id = 1;
+  string repo_name = 2;
+  string blueprint_id = 3;
+  string blueprint_name = 4;
+  InferredReviewState review_state = 5;
+  int32 layer_count = 6;
+  int32 rule_count = 7;
+  double confidence = 8;
+  google.protobuf.Timestamp detected_at = 9;
+}
+
+message ListInferredBlueprintsResponse {
+  repeated InferredBlueprintSummary blueprints = 1;
+  // True when more rows exist than were returned (the list is capped); total_count is the number
+  // of rows the caller could see before the cap.
+  bool truncated = 2;
+  int32 total_count = 3;
 }
 
 message CyclicDependency {
@@ -806,6 +902,24 @@ message SetAdoptionStatusRequest {
   repeated string adopter_ids = 3;     // project_ids or repo_ids; must be non-empty
   bool is_active = 4;                  // target state
   string org_id = 5;                   // required; org that owns the adopters
+  // Target state. UNSPECIFIED keeps the legacy meaning of is_active (true ACTIVE, false REMOVED);
+  // otherwise it wins and is_active is ignored. PAUSED retires nothing; REMOVED retires evidence.
+  AdoptionLifecycle lifecycle = 6;
+}
+
+message SetAdoptionModeRequest {
+  repeated string assignment_ids = 1;  // adoption ids (ScopedBlueprintAssignment.assignment_id); non-empty, at most 50
+  AdoptionEnforcementMode mode = 2;    // ENFORCE or ANNOTATE
+  string org_id = 3;                   // required; org that owns the adoptions
+}
+
+message SetAdoptionModeResponse {
+  int32 updated_count = 1;                  // adoptions whose mode actually changed
+  repeated string updated_assignment_ids = 2;
+  // The repositories the changed adoptions govern right now (none for a paused adoption). The
+  // client re-gates their open PRs per the org's ReevaluatePRsMode (OFF/ASK/AUTO), as after an
+  // adopt or unadopt: the server does not re-gate.
+  repeated string affected_repo_ids = 3;
 }
 
 message SetAdoptionStatusResponse {
@@ -959,4 +1073,131 @@ message DryRunViolation {
   string file_path = 4;
   int32 line = 5;
   string message = 6;
+}
+
+// ── Blueprint requirement coverage ──
+
+message GetBlueprintRequirementCoverageRequest {
+  string blueprint_id = 1;
+  // The org whose PR-gate policy states when a rule blocks. The caller must be a member.
+  string org_id = 2;
+  // Optional: a repo of org_id, for its Deep Check state. Without it Deep Check is treated as not
+  // running, so a rule only Deep Check could block reads after_merge EVALUATED.
+  string repo_id = 3;
+}
+
+message GetBlueprintRequirementCoverageResponse {
+  // Unset when the blueprint declares no compliance framework.
+  FrameworkRequirementCoverage coverage = 1;
+}
+
+// RequirementNotCheckableReason is why a requirement cannot be evidenced from code.
+enum RequirementNotCheckableReason {
+  REQUIREMENT_NOT_CHECKABLE_REASON_UNSPECIFIED = 0;
+  REQUIREMENT_NOT_CHECKABLE_REASON_ORGANISATIONAL_POLICY = 1;
+  REQUIREMENT_NOT_CHECKABLE_REASON_PERSONNEL = 2;
+  REQUIREMENT_NOT_CHECKABLE_REASON_PHYSICAL_SECURITY = 3;
+  REQUIREMENT_NOT_CHECKABLE_REASON_CONTRACTUAL = 4;
+  REQUIREMENT_NOT_CHECKABLE_REASON_REGULATORY_PROCEDURE = 5;
+  REQUIREMENT_NOT_CHECKABLE_REASON_OPERATIONAL_PROCESS = 6;
+  REQUIREMENT_NOT_CHECKABLE_REASON_EXTERNAL_ASSESSMENT = 7;
+}
+
+// ControlCoverageLevel is how a rule relates to a requirement it cites. FULL and PARTIAL are what the
+// rule states about a requirement that is checkable in code and make it "covered". SUPPORTING is
+// derived: the rule cites a requirement that cannot be checked in code (a process, a regulatory
+// duty, a contract); it is related evidence and never makes the requirement covered.
+enum ControlCoverageLevel {
+  CONTROL_COVERAGE_LEVEL_UNSPECIFIED = 0;
+  CONTROL_COVERAGE_LEVEL_FULL = 1;
+  CONTROL_COVERAGE_LEVEL_PARTIAL = 2;
+  CONTROL_COVERAGE_LEVEL_SUPPORTING = 3;
+}
+
+// RuleBeforeMerge is what the PR gate does with a rule before merge (the same vocabulary as
+// GateBeforeMerge in prgate.proto, which this file cannot import: prgate.proto imports repo.proto,
+// which imports this file). A rule has no MIXED state.
+enum RuleBeforeMerge {
+  RULE_BEFORE_MERGE_UNSPECIFIED = 0;
+  RULE_BEFORE_MERGE_BLOCKS = 1;          // an introduced violation fails the gate
+  RULE_BEFORE_MERGE_WARNS = 2;           // surfaced, never fails the gate
+  RULE_BEFORE_MERGE_OFF = 3;             // the org muted the rule's family
+  RULE_BEFORE_MERGE_DEEP_CHECK_ONLY = 4; // the fast gate cannot block it; only Deep Check can
+  RULE_BEFORE_MERGE_NOT_EVALUATED = 5;   // the engine cannot evaluate the rule
+}
+
+// RuleAfterMerge is what the default branch does with a rule after merge (GateAfterMerge's
+// vocabulary, per rule).
+enum RuleAfterMerge {
+  RULE_AFTER_MERGE_UNSPECIFIED = 0;
+  RULE_AFTER_MERGE_RE_EVALUATED = 1; // judged before merge, evaluated again on main
+  RULE_AFTER_MERGE_EVALUATED = 2;    // first evaluated on main
+  RULE_AFTER_MERGE_NOT_EVALUATED = 3; // the engine cannot evaluate the rule
+}
+
+// UnresolvedControlReason is why a rule's controls[] entry did not count toward a requirement.
+enum UnresolvedControlReason {
+  UNRESOLVED_CONTROL_REASON_UNSPECIFIED = 0;
+  UNRESOLVED_CONTROL_REASON_OTHER_FRAMEWORK = 1;      // names a framework the blueprint does not declare
+  UNRESOLVED_CONTROL_REASON_UNKNOWN_CONTROL = 2;      // not in the declared edition
+  UNRESOLVED_CONTROL_REASON_NOT_CHECKABLE_REQUIREMENT = 3; // no longer produced: such a citation is a SUPPORTING rule link
+  UNRESOLVED_CONTROL_REASON_BAD_COVERAGE = 4;         // the authored coverage word is not full or partial
+}
+
+message FrameworkRequirementCoverage {
+  string framework_id = 1;
+  string framework_name = 2;
+  string edition = 3;
+  // The source the requirement list is taken from.
+  string source_name = 4;
+  string source_edition = 5;
+  string source_url = 6;
+  // What a "requirement" is in this edition (for example "sub_requirement", "control", "article").
+  string requirement_level = 7;
+  int32 total_requirements = 8;
+  // Requirements the catalog says can be evidenced in code.
+  int32 checkable_in_code = 9;
+  // Checkable requirements at least one rule the engine can evaluate cites: covered_fully plus
+  // covered_partly. Read the two, not this alone: "N checkable in code: X fully, Y partly covered".
+  int32 covered = 10;
+  repeated FrameworkRequirement requirements = 11;
+  repeated NotCheckableRequirement not_checkable = 12;
+  repeated UnresolvedRuleControl unresolved_controls = 13;
+  // Of covered: requirements an evaluable rule cites with FULL coverage on the requirement itself.
+  int32 covered_fully = 14;
+  // Of covered: requirements every covering rule cites PARTIAL (or FULL only on a part of it).
+  int32 covered_partly = 15;
+}
+
+message FrameworkRequirement {
+  string id = 1;
+  string label = 2;
+  string category = 3;
+  bool checkable_in_code = 4;
+  RequirementNotCheckableReason not_checkable_reason = 5; // set only when checkable_in_code is false
+  bool covered = 6;
+  repeated RequirementRuleLink rules = 7;   // evaluable rules citing the requirement (all SUPPORTING when it is not checkable in code)
+  repeated string inert_rule_ids = 8;       // rules citing it that the engine cannot evaluate
+}
+
+message NotCheckableRequirement {
+  string id = 1;
+  string label = 2;
+  RequirementNotCheckableReason reason = 3;
+}
+
+message RequirementRuleLink {
+  string rule_id = 1;
+  string rule_name = 2;
+  string family = 3;                         // the constraint type
+  ControlCoverageLevel coverage = 4;
+  RuleBeforeMerge before_merge = 5;
+  RuleAfterMerge after_merge = 6;
+}
+
+message UnresolvedRuleControl {
+  string rule_id = 1;
+  string framework_id = 2;
+  string control_id = 3;
+  UnresolvedControlReason reason = 4;
 }
