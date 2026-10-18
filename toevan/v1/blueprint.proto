@@ -966,11 +966,16 @@ message FrameworkRequirementCoverage {
   int32 total_requirements = 8;
   // Requirements the catalog says can be evidenced in code.
   int32 checkable_in_code = 9;
-  // Checkable requirements at least one rule the engine can evaluate cites.
+  // Checkable requirements at least one rule the engine can evaluate cites: covered_fully plus
+  // covered_partly. Read the two, not this alone: "N checkable in code: X fully, Y partly covered".
   int32 covered = 10;
   repeated FrameworkRequirement requirements = 11;
   repeated NotCheckableRequirement not_checkable = 12;
   repeated UnresolvedRuleControl unresolved_controls = 13;
+  // Of covered: requirements an evaluable rule cites with FULL coverage on the requirement itself.
+  int32 covered_fully = 14;
+  // Of covered: requirements every covering rule cites PARTIAL (or FULL only on a part of it).
+  int32 covered_partly = 15;
 }
 
 message FrameworkRequirement {
