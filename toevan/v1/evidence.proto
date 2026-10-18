@@ -62,8 +62,9 @@ service EvidenceService {
   // retention policy, read by General and by the Evidence page. It is a fixed
   // platform fact (no per-org setting): evidence is retained indefinitely
   // because records and attestations are append-only, hash-chained and anchored,
-  // so a time limit could not be honoured. Same permission as ListEvidence (org
-  // member, or platform staff with a support-access grant), scoped by org_id.
+  // so a time limit could not be honoured. Org membership (or platform staff with
+  // a support-access grant) for org_id, like ListEvidence, but NOT behind the
+  // Evidence Trail rollout flag: the policy is a fact about the system.
   rpc GetEvidenceRetention(GetEvidenceRetentionRequest) returns (GetEvidenceRetentionResponse);
 }
 
@@ -442,20 +443,29 @@ message EraseDataSubjectResponse {
 
 enum EvidenceRetentionMode {
   EVIDENCE_RETENTION_MODE_UNSPECIFIED = 0;
-  // Nothing is deleted by age. The only policy the platform offers today.
+  // Nothing is deleted by age. The only mode the platform has: append-only
+  // records and attestations, a hash chain, a permanent public log entry and a
+  // customer-owned git twin cannot honour a time limit. A limited mode would
+  // need a deleting job and a decision on all of those; it is not declared here
+  // (value 2 is reserved) so no client is built to render one.
   EVIDENCE_RETENTION_MODE_INDEFINITE = 1;
-  // Reserved: kept for `days`, then removed. Not produced by the server today.
-  EVIDENCE_RETENTION_MODE_LIMITED = 2;
+  reserved 2;
+  reserved "EVIDENCE_RETENTION_MODE_LIMITED";
 }
 
-// The two cases in which evidence content is changed although the policy is
-// indefinite. Hashes are kept in both.
+// The two cases in which the CONTENT of evidence changes although the policy is
+// indefinite. Hashes are kept in both. What each does and does not reach is in
+// GetEvidenceRetentionResponse.statement.
 enum EvidenceRetentionException {
   EVIDENCE_RETENTION_EXCEPTION_UNSPECIFIED = 0;
-  // Personal-data erasure on request: the record content is emptied, the
-  // hashes are kept (the chain stays verifiable).
+  // Personal-data erasure on request: the content of the database copy of the
+  // affected runs is emptied and the author is cleared on their records. The
+  // transparency-log entry, the customer's git twin and any export already
+  // taken are not reached.
   EVIDENCE_RETENTION_EXCEPTION_PERSONAL_DATA_ERASURE = 1;
-  // Organisation deletion: records are anonymised, the hashes are kept.
+  // Organisation deletion: on evidence records the author is blanked and the
+  // repository and exception links are cleared. Runs, attestations and
+  // canonical records are kept as they are.
   EVIDENCE_RETENTION_EXCEPTION_ORGANISATION_DELETION = 2;
 }
 
@@ -463,12 +473,14 @@ message GetEvidenceRetentionRequest { string org_id = 1; }
 
 message GetEvidenceRetentionResponse {
   EvidenceRetentionMode mode = 1;
-  // Retention in days when mode is LIMITED; 0 when INDEFINITE.
-  int32 days = 2;
+  reserved 2;
+  reserved "days";
   repeated EvidenceRetentionException exceptions = 3;
   // The policy in one English statement, for clients without their own copy.
-  // It states exactly the facts above and nothing more: evidence is retained
-  // indefinitely (append-only, chained, anchored); the exceptions; and that
-  // audit logs are separate and have their own sweep.
+  // It states only what the code does: evidence is retained indefinitely; what
+  // erasure and organisation deletion change; that transparency-log entries are
+  // permanent and public and the git twin is the customer's, neither reachable
+  // by Toevan; and that audit logs are separate, with an optional sweep that is
+  // off by default.
   string statement = 4;
 }
