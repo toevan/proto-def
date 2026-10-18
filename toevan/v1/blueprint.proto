@@ -131,6 +131,9 @@ message BlueprintRef {
   // "structural" | "compliance" | "security" | "design" — clients key the
   // type icon on this (the marketplace icon convention).
   string blueprint_type = 5;
+  // Rules the adoption's blueprint version compiles to (the governed rule set's
+  // source rows). 0 when none are compiled.
+  int32 rule_count = 6;
 }
 
 message Blueprint {
@@ -217,6 +220,8 @@ message ScopedBlueprintAssignment {
   string project_id = 8;
   string repo_id = 9;
   google.protobuf.Timestamp assigned_at = 10;
+  // Rules the adopted blueprint version compiles to. 0 when none are compiled.
+  int32 rule_count = 11;
 }
 
 message BlueprintAnalytics {
