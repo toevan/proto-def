@@ -85,8 +85,9 @@ message AuthUser {
   string avatar_url = 4;
   string provider = 5;                              // "github" or "google"
                                                     // NOTE: Distinct from OrgRole (per-organization).
-                                                    // Blueprint publishing is a capability, not a role —
-                                                    // any user can create/publish blueprints.
+                                                    // Blueprint publishing is a capability, not a role:
+                                                    // it needs the developer ORG role or above (viewers
+                                                    // read and preview only).
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp last_login_at = 7;
 
@@ -100,8 +101,9 @@ message AuthUser {
                                                     // "user" = regular user
                                                     // "admin" = Toevan staff
                                                     // "super-admin" = Toevan platform owner
-                                                    // No "author" role — blueprint publishing is a capability,
-                                                    // not a role. Any user can create/publish blueprints.
+                                                    // No "author" role: blueprint publishing is a capability,
+                                                    // not a role. Creating, editing and publishing a blueprint
+                                                    // needs the developer ORG role or above.
   repeated string permissions = 10;                 // permissions assigned to the user (e.g. "project.create", "project.read", "project.update", "project.delete")
   string username = 11;                              // provider username (e.g. GitHub login: "kwado-tech")
 
