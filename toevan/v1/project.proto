@@ -20,6 +20,13 @@ service ProjectService {
   // owner/maintainer only; audit-logged in the same transaction.
   rpc UpdateProject(UpdateProjectRequest) returns (UpdateProjectResponse);
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+  // ArchiveProject archives a project and, in the same transaction, PAUSES its project-scoped
+  // blueprint adoptions (repository-scoped adoptions are not touched). Paused adoptions stop
+  // gating pull requests and stop being evaluated; the project becomes read-only. RestoreProject
+  // resumes only the adoptions this archive paused; one a person paused by hand stays paused.
+  // Dialog wording (client i18n owns the string): "Archiving pauses this project's blueprints, so
+  // they stop gating pull requests, and makes the project read-only. Restoring it resumes the
+  // blueprints that archiving paused."
   rpc ArchiveProject(ArchiveProjectRequest) returns (ArchiveProjectResponse);
   rpc RestoreProject(RestoreProjectRequest) returns (RestoreProjectResponse);
   rpc DeleteProject(DeleteProjectRequest) returns (DeleteProjectResponse);
@@ -134,6 +141,14 @@ message ProjectRepo {
   repeated BlueprintRef blueprints = 4;   // repo-scoped blueprints
   string status = 5;                     // repo_status verbatim (pending/indexing/indexed/error/...)
   int32 open_violations = 6;             // open findings on current evidence
+  // Of open_violations, the findings in files that are NOT production code by the same path
+  // classification as Project.non_production_violation_count (docs, scripts, tests, generated).
+  // The project total is the sum of its repositories' values, never a second derivation.
+  // Absent when the repository has never been scanned (unknown), never 0 for unknown.
+  optional int32 non_production_violation_count = 7;
+  // The newest constraint evaluation of the repository (the same definition as
+  // Repo.last_scan_at). Absent when it has never been scanned.
+  optional google.protobuf.Timestamp last_scan_at = 8;
 }
 
 // ── Project-level access control ──
@@ -223,6 +238,8 @@ message ArchiveProjectRequest {
 message ArchiveProjectResponse {
   bool   success = 1;
   string error = 2;
+  // Project-scoped blueprint adoptions this archive paused. Absent when unknown.
+  optional int32 paused_adoption_count = 3;
 }
 
 message RestoreProjectRequest {
@@ -231,6 +248,9 @@ message RestoreProjectRequest {
 message RestoreProjectResponse {
   bool   success = 1;
   string error = 2;
+  // Adoptions this restore resumed: only those archive paused. A manually paused adoption stays
+  // paused. Absent when unknown.
+  optional int32 resumed_adoption_count = 3;
 }
 
 message DeleteProjectRequest {
