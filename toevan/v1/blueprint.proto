@@ -936,9 +936,10 @@ message SetAdoptionModeRequest {
 message SetAdoptionModeResponse {
   int32 updated_count = 1;                  // adoptions whose mode actually changed
   repeated string updated_assignment_ids = 2;
-  // The repositories the changed adoptions govern right now (none for a paused adoption). The
-  // client re-gates their open PRs per the org's ReevaluatePRsMode (OFF/ASK/AUTO), as after an
-  // adopt or unadopt: the server does not re-gate.
+  // The repositories the changed adoptions govern right now (none for a paused adoption). When the
+  // org's ReevaluatePRsMode is AUTO the server re-gates their open PRs itself, in the background after
+  // the change commits; the client must not re-gate again. For OFF and ASK the client decides, as
+  // after an adopt or unadopt.
   repeated string affected_repo_ids = 3;
 }
 
