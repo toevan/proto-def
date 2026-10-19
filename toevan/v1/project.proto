@@ -23,8 +23,9 @@ service ProjectService {
   // ArchiveProject archives a project and, in the same transaction, PAUSES its project-scoped
   // blueprint adoptions. While archived, no blueprint gates pull requests or is evaluated on the
   // project's repositories, repository-scoped ones included (those are not paused and gate again
-  // on restore). The project is read-only: its adoptions cannot be changed. RestoreProject
-  // resumes only the adoptions archive paused; one a person paused stays paused. Evidence is kept.
+  // on restore). Nothing can be turned on while archived; turning one off is allowed and stays off
+  // after restore. RestoreProject resumes only the adoptions archive paused; one a person paused
+  // stays paused. Evidence is kept.
   // Dialog wording (client i18n owns the string): "Archiving pauses this project's blueprints, so
   // nothing in it gates pull requests, and makes the project read-only. Restoring it resumes the
   // blueprints archiving paused; any you paused yourself stay paused."
