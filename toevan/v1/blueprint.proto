@@ -538,7 +538,8 @@ message ListProjectBlueprintsRequest {
 message ListProjectBlueprintsResponse {
   repeated ScopedBlueprintAssignment assignments = 1;
   // The counts of the listed assignments, computed once on the server so every surface agrees.
-  // The list holds only ACTIVE (governing) adoptions: a paused adoption is in neither count.
+  // The list also holds PAUSED adoptions (is_active=false, lifecycle PAUSED); a paused adoption is in
+  // neither count.
   int32 enforcing_count = 2;
   int32 annotating_count = 3;
 }
@@ -899,12 +900,18 @@ message OrgAdoptedBlueprintStats {
 message SetAdoptionStatusRequest {
   string blueprint_id = 1;
   BlueprintScope scope = 2;            // required; determines which column adopter_ids maps to
-  repeated string adopter_ids = 3;     // project_ids or repo_ids; must be non-empty
+  repeated string adopter_ids = 3;     // project_ids or repo_ids; must be non-empty unless assignment_ids is set
   bool is_active = 4;                  // target state
   string org_id = 5;                   // required; org that owns the adopters
   // Target state. UNSPECIFIED keeps the legacy meaning of is_active (true ACTIVE, false REMOVED);
   // otherwise it wins and is_active is ignored. PAUSED retires nothing; REMOVED retires evidence.
   AdoptionLifecycle lifecycle = 6;
+  // Address EXACT adoptions (ScopedBlueprintAssignment.assignment_id), at most 50. When non-empty it
+  // replaces adopter_ids: only these adoptions change, so one module's adoption can be paused without
+  // its siblings. Every id must be an adoption of this blueprint and scope held by org_id, else
+  // NOT_FOUND (a foreign id is indistinguishable from an unknown one). With adopter_ids instead, every
+  // adoption of the named adopter in the source state changes (all its modules).
+  repeated string assignment_ids = 7;
 }
 
 message SetAdoptionModeRequest {
