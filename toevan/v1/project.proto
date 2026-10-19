@@ -207,7 +207,14 @@ message UpdateProjectRequest {
   optional string name = 2;
   optional string description = 3;
 }
-message UpdateProjectResponse { Project project = 1; }
+message UpdateProjectResponse {
+  Project project = 1;
+  // True when project is the fully hydrated detail (the same as GetProject). False when the edit
+  // COMMITTED but the detail could not be re-read: project then carries only the committed row
+  // (id, name, description, status, timestamps) and every count in it is UNKNOWN, not 0. Refetch
+  // GetProject before showing counts.
+  bool hydrated = 2;
+}
 
 message ArchiveProjectRequest {
   string project_id = 1;
