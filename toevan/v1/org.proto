@@ -251,8 +251,9 @@ enum OrgRole {
   // and no client may offer it in a role picker. Clients offer the roles that
   // ListAssignableOrgRoles returns, so AUDITOR appears only once the server lists it.
   ORG_ROLE_AUDITOR = 9;
-  // NOTE: No "author" role — blueprint publishing is a capability, not a role.
-  // Any user can create/publish blueprints.
+  // NOTE: No "author" role: blueprint publishing is a capability, not a role.
+  // Creating, editing and publishing a blueprint needs the developer role or
+  // above; a viewer reads and previews only.
 }
 
 // ── Invitation types [NEW] ──
