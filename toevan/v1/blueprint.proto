@@ -78,7 +78,12 @@ service BlueprintService {
 
   // Compliance Coverage
   rpc ListComplianceFrameworks(ListComplianceFrameworksRequest) returns (ListComplianceFrameworksResponse);
-  rpc GetComplianceCoverage(GetComplianceCoverageRequest) returns (ComplianceCoverageReport);
+  // DEPRECATED, and answers Unimplemented. It counted every rule_control_mappings row as covered with no
+  // checkable gate, no cap on a part and no level: a third, divergent derivation of requirement coverage.
+  // Use GetBlueprintRequirementCoverage, which states each requirement's level.
+  rpc GetComplianceCoverage(GetComplianceCoverageRequest) returns (ComplianceCoverageReport) {
+    option deprecated = true;
+  }
   // GetBlueprintRequirementCoverage states which of a compliance blueprint's framework
   // requirements it checks in code, which cannot be checked in code (and why), and, per rule,
   // when it blocks (before merge or after merge on main) under the caller's org gate policy.
