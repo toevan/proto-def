@@ -609,7 +609,8 @@ message AssignBlueprintRequest {
   // Start-as mode (PJ-C2): what the new adoption's findings may do at the PR gate, applied in the
   // same transaction that creates it, so no window gates under the default. UNSPECIFIED = the
   // default (ENFORCE). Security Essentials is always ENFORCE: ANNOTATE for it is refused with
-  // ERR_SE_ALWAYS_ENFORCED and nothing is created.
+  // ERR_SE_ALWAYS_ENFORCED and nothing is created. Starting as ANNOTATE needs org admin
+  // (ERR_ANNOTATE_START_REQUIRES_ADMIN, PermissionDenied).
   AdoptionEnforcementMode enforcement_mode = 4;
 }
 message AssignBlueprintResponse {
