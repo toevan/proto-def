@@ -663,7 +663,10 @@ message GenerateDPIAResponse {
 message GenerateControlMappingRequest {
   string org_id = 1;
   string framework = 2;                 // optional — all frameworks if empty
-  repeated string active_constraints = 3; // constraint types currently active
+  // Ignored. The server builds the active set from the org's adopted, compiled, evaluable rules and
+  // matches shipped rules by blueprint id and rule id; a caller's list of constraint types credited every
+  // shipped rule of a listed type whether or not the org runs it. Kept on the wire for old clients.
+  repeated string active_constraints = 3 [deprecated = true];
 }
 
 message GenerateControlMappingResponse {
