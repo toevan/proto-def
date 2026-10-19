@@ -2400,13 +2400,18 @@ message AssistRequest {
 }
 
 message AssistReply {
-  // text is the assistant's answer, rendered as Markdown by the client.
+  // text is the assistant's answer as flattened plain text, kept for older clients.
+  // It is never Markdown to render. Clients that know answer render that instead.
   string text = 1;
   // proposed_action, when set, is an action the assistant suggests taking (e.g.
   // navigate to a page). The client renders a confirmation card and executes it
   // through the existing authorized flows only after the user confirms; the
   // server never acts on the user's behalf. Optional.
   AssistAction proposed_action = 2;
+  // answer is the reply as a typed document, built once by the server through an
+  // allow-list (no image node, links only on allowed hosts). Nothing in it loads or
+  // runs anything.
+  AnswerDocument answer = 3;
 }
 
 // AssistAction is a client-executed action the assistant proposes. tool is the
@@ -2433,6 +2438,10 @@ message AssistUpdate {
   // done marks the terminal frame of the stream. The client finalizes the
   // in-flight message (and applies proposed_action) when it arrives.
   bool done = 3;
+  // answer is the whole answer as a typed document, on the final frame only. The deltas
+  // before it are plain text, never Markdown to render. On the final frame text_delta
+  // holds the same answer as flattened plain text for older clients.
+  AnswerDocument answer = 4;
 }
 
 // ── Fix ChangeSet Architecture ──
