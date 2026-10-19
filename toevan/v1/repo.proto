@@ -606,6 +606,11 @@ message AssignBlueprintRequest {
   string repo_id = 1;
   string blueprint_id = 2;
   string blueprint_version = 3;
+  // Start-as mode (PJ-C2): what the new adoption's findings may do at the PR gate, applied in the
+  // same transaction that creates it, so no window gates under the default. UNSPECIFIED = the
+  // default (ENFORCE). Security Essentials is always ENFORCE: ANNOTATE for it is refused with
+  // ERR_SE_ALWAYS_ENFORCED and nothing is created.
+  AdoptionEnforcementMode enforcement_mode = 4;
 }
 message AssignBlueprintResponse {
   bool success = 1;

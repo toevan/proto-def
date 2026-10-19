@@ -484,6 +484,13 @@ message BlueprintAssignRequest {
   repeated string project_ids = 3;       // project-scoped targets (compliance, security)
   repeated string repo_ids = 4;          // repo-scoped targets (structural, design)
   string param_overrides_json = 5;       // optional: per-rule param overrides JSON
+  // Start-as mode (PJ-C2): what the new adoption's findings may do at the PR gate, applied in the
+  // same transaction that creates it, so no window gates under the default. UNSPECIFIED = the
+  // default (ENFORCE). Security Essentials is always ENFORCE: ANNOTATE for it is refused with
+  // ERR_SE_ALWAYS_ENFORCED and nothing is created.
+  AdoptionEnforcementMode enforcement_mode = 6;
+  // Applies to every target of the batch; one Security Essentials target with ANNOTATE refuses the
+  // whole request before any adoption is created.
 }
 
 // Per-target assignment result. On failure, assignment is nil and error is set.
