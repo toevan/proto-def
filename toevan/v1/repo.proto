@@ -642,6 +642,27 @@ message BlueprintAssignment {
   // not carry it); 0 = none. Never read an absent count as 0.
   optional int32 rule_count = 7;
   int32 violation_count = 8;               // repo-level violations for this blueprint
+  // Open findings per rule of this blueprint on THIS repository, from a COUNT/GROUP BY over the
+  // repo's open (exception-aware) findings, scoped to the owning org and the repo. ABSENT message =
+  // UNKNOWN (the count could not be taken); present = known, and a rule missing from `rules` has no
+  // open finding (0). Never read an absent message as zero.
+  optional RepoBlueprintRuleCounts rule_open_counts = 9;
+}
+
+// RepoBlueprintRuleCounts is the per-rule open-finding breakdown of one blueprint on one repo.
+message RepoBlueprintRuleCounts {
+  // Open findings across every rule of the blueprint on the repo (the sum of `rules`).
+  int32 open_total = 1;
+  // Only rules with at least one open finding.
+  repeated RepoRuleOpenCount rules = 2;
+}
+
+message RepoRuleOpenCount {
+  string rule_id = 1;
+  int32 open_count = 2;
+  // Highest severity among the rule's open findings ("CRITICAL", "ERROR", "WARNING", "INFO").
+  // Absent = the findings carried none.
+  optional string severity = 3;
 }
 
 // ── Repo change stream ──
