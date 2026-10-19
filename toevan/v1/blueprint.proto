@@ -1178,6 +1178,23 @@ message FrameworkRequirement {
   bool covered = 6;
   repeated RequirementRuleLink rules = 7;   // evaluable rules citing the requirement (all SUPPORTING when it is not checkable in code)
   repeated string inert_rule_ids = 8;       // rules citing it that the engine cannot evaluate
+  // The requirement's coverage, STATED by the server from the same computation that fills `covered`
+  // after the cap on a part of a requirement and the runtime reviewed-FULL cap. Clients show this and
+  // never derive it from `rules`: an authored FULL that no review allows reads PARTLY_COVERED here
+  // although its link says full.
+  RequirementCoverageLevel level = 9;
+}
+
+// RequirementCoverageLevel is one requirement's level in the read. FULLY_COVERED and PARTLY_COVERED
+// split `covered`; NOT_COVERED is a checkable requirement no evaluable rule cites; NOT_CHECKABLE cannot
+// be checked in code (its rules, if any, are SUPPORTING links). An older client sees UNSPECIFIED for a
+// value it does not know and must show "unknown", never covered.
+enum RequirementCoverageLevel {
+  REQUIREMENT_COVERAGE_LEVEL_UNSPECIFIED = 0;
+  REQUIREMENT_COVERAGE_LEVEL_FULLY_COVERED = 1;
+  REQUIREMENT_COVERAGE_LEVEL_PARTLY_COVERED = 2;
+  REQUIREMENT_COVERAGE_LEVEL_NOT_COVERED = 3;
+  REQUIREMENT_COVERAGE_LEVEL_NOT_CHECKABLE = 4;
 }
 
 message NotCheckableRequirement {
