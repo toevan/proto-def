@@ -67,6 +67,12 @@ service EvidenceService {
   // to the public log is always allowed.
   rpc GetOrgEvidenceLog(GetOrgEvidenceLogRequest) returns (GetOrgEvidenceLogResponse);
   rpc SetOrgEvidenceLog(SetOrgEvidenceLogRequest) returns (SetOrgEvidenceLogResponse);
+  // Whether the org's evidence is published to the PLATFORM's public transparency log. Default OFF.
+  // Org admin only (a support grant never writes), audited in the same transaction. Turning it on
+  // publishes only records sealed from that moment on; turning it off stops future publication;
+  // turning it on again starts a new window. Entries already published cannot be removed.
+  // Read: the public_opt_in fields of GetOrgEvidenceLogResponse.
+  rpc SetOrgPublicRekorOptIn(SetOrgPublicRekorOptInRequest) returns (SetOrgPublicRekorOptInResponse);
   // Org admin only (a support grant never writes), audited, with a written reason: clear the records and
   // chain heads a transparency log refused for good, so the next sweep offers them to their log again. A
   // refusal is therefore never permanent. Their history (who, why, when) is kept.
@@ -166,6 +172,41 @@ message GetOrgEvidenceLogResponse {
   // EVERY log the org's records are pinned to (the current one, earlier ones, the public one), each with
   // its own health. `health` above is the current log's.
   repeated EvidenceLogHealth logs = 4;
+  // The org's opt-in to publish to the platform's public log (default false). Independent of an
+  // org's own log, which needs no opt-in.
+  bool public_opt_in = 5;
+  // When the CURRENT publication window began; unset while public_opt_in is false.
+  google.protobuf.Timestamp public_opted_in_at = 6;
+  reserved 7;
+  reserved "public_log_configured";
+  // Whether the platform can send to its public log right now. Anything other than READY is the reason
+  // nothing is sent, whatever the org chose. Computed by the server from the same facts the sweep uses.
+  EvidencePublicLogStatus public_log_status = 8;
+}
+
+// Whether the platform's public log is able to receive an org's records now.
+enum EvidencePublicLogStatus {
+  EVIDENCE_PUBLIC_LOG_STATUS_UNSPECIFIED = 0;
+  EVIDENCE_PUBLIC_LOG_STATUS_READY = 1;
+  // The operator has not set a public log (evidence.rekor_url is empty).
+  EVIDENCE_PUBLIC_LOG_STATUS_NOT_CONFIGURED = 2;
+  // The private beta is on: the platform log gets nothing.
+  EVIDENCE_PUBLIC_LOG_STATUS_PRIVATE_BETA = 3;
+  // The configured address cannot be used (it carries a credential, a query or a fragment, or no key is
+  // pinned to verify its answers).
+  EVIDENCE_PUBLIC_LOG_STATUS_URL_UNUSABLE = 4;
+  // Signing and publication are paused (the attestation kill switch).
+  EVIDENCE_PUBLIC_LOG_STATUS_PAUSED = 5;
+}
+
+message SetOrgPublicRekorOptInRequest {
+  string org_id = 1;
+  bool enabled = 2;
+}
+
+message SetOrgPublicRekorOptInResponse {
+  bool public_opt_in = 1;
+  google.protobuf.Timestamp public_opted_in_at = 2;
 }
 
 message RequeueOrgEvidenceRejectionsRequest {
@@ -398,6 +439,10 @@ message EvidenceVerification {
   // Counted, never a failure, never attestations_missing; an attestation found
   // over such a run IS a failure (an ATTESTATION_BINDING breakage).
   int64 not_eligible_coverage = 21;
+  // True when rekor_status is NOT_ANCHORED because the org has not opted in to the platform's public log
+  // and runs no log of its own: nothing was meant to be published, so it is not a hole. Additive on purpose:
+  // rekor_status stays a value every client already reads as a pass.
+  bool public_log_off = 22;
 }
 
 message VerifyEvidenceChainRequest {
