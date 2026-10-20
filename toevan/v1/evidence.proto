@@ -106,6 +106,20 @@ service EvidenceService {
   // from the row, never from the request. Ungated by plan, like the
   // attestations it explains.
   rpc GetRepoIndexCoverage(GetRepoIndexCoverageRequest) returns (GetRepoIndexCoverageResponse);
+
+  // The Change evidence report, v1: a generated report of CODE evidence only (the sealed code
+  // verdicts, coverage, waivers, records and how to check them). Change-process (merge event) and
+  // deployment evidence are not part of it yet and the report says so. Generation is asynchronous:
+  // Generate records a PENDING row and the job completes it.
+  //
+  // Authorization (org scope, from org_id; every repository id is resolved against that org):
+  //   Generate: org admin or compliance. List / Get / Download: org admin, compliance or auditor.
+  //   An auditor never generates. Plan gate and the Compliance Reports rollout flag like
+  //   GenerateComplianceReport; List / Get / Download stay ungated by plan (grandfathered history).
+  rpc GenerateChangeEvidenceReport(GenerateChangeEvidenceReportRequest) returns (GenerateChangeEvidenceReportResponse);
+  rpc ListChangeEvidenceReports(ListChangeEvidenceReportsRequest) returns (ListChangeEvidenceReportsResponse);
+  rpc GetChangeEvidenceReport(GetChangeEvidenceReportRequest) returns (GetChangeEvidenceReportResponse);
+  rpc DownloadChangeEvidenceReport(DownloadChangeEvidenceReportRequest) returns (DownloadChangeEvidenceReportResponse);
 }
 
 // ── Transparency log setting ──
@@ -840,4 +854,106 @@ message SetEvidenceRetentionRequest {
 message SetEvidenceRetentionResponse {
   // The policy as GetEvidenceRetention reads it after the change.
   GetEvidenceRetentionResponse retention = 1;
+}
+
+// ── Change evidence report (v1: code evidence) ──
+
+enum ChangeEvidenceReportStatus {
+  CHANGE_EVIDENCE_REPORT_STATUS_UNSPECIFIED = 0;
+  CHANGE_EVIDENCE_REPORT_STATUS_PENDING = 1;
+  CHANGE_EVIDENCE_REPORT_STATUS_RUNNING = 2;
+  CHANGE_EVIDENCE_REPORT_STATUS_COMPLETED = 3;
+  CHANGE_EVIDENCE_REPORT_STATUS_FAILED = 4;
+}
+
+enum ChangeEvidenceArtifactKind {
+  CHANGE_EVIDENCE_ARTIFACT_KIND_UNSPECIFIED = 0;
+  CHANGE_EVIDENCE_ARTIFACT_KIND_PDF = 1;
+  // One row per sealed code-verdict record in scope and period.
+  CHANGE_EVIDENCE_ARTIFACT_KIND_RECORDS_CSV = 2;
+  // The canonical manifest the PDF and the viewer both render. Its SHA-256 is the report's
+  // content digest printed on the cover.
+  CHANGE_EVIDENCE_ARTIFACT_KIND_MANIFEST = 3;
+}
+
+// Why a report is FAILED. A closed set so a client never shows a raw error.
+enum ChangeEvidenceFailureReason {
+  CHANGE_EVIDENCE_FAILURE_REASON_UNSPECIFIED = 0;
+  CHANGE_EVIDENCE_FAILURE_REASON_BUILD = 1;     // the manifest could not be built
+  CHANGE_EVIDENCE_FAILURE_REASON_RENDER = 2;    // the PDF or CSV could not be rendered
+  CHANGE_EVIDENCE_FAILURE_REASON_STORE = 3;     // the artifacts could not be stored
+  CHANGE_EVIDENCE_FAILURE_REASON_ABANDONED = 4; // the worker stopped and the row was never retried
+}
+
+message GenerateChangeEvidenceReportRequest {
+  string org_id = 1;
+  // The chosen repositories (1 to 50), all in org_id. Exactly one of repo_ids / project_id.
+  repeated string repo_ids = 2;
+  // A preset: every repository of this project in org_id.
+  string project_id = 3;
+  // The period, inclusive start and exclusive end, at most 12 months. Required.
+  google.protobuf.Timestamp period_from = 4;
+  google.protobuf.Timestamp period_to = 5;
+  // Free text printed on the cover ("Prepared for"), at most 200 characters. Optional.
+  string prepared_for = 6;
+}
+message GenerateChangeEvidenceReportResponse {
+  ChangeEvidenceReportRow report = 1;
+}
+
+message ListChangeEvidenceReportsRequest {
+  string org_id = 1;
+  int32 limit = 2;                       // default 50, max 200
+}
+message ListChangeEvidenceReportsResponse {
+  repeated ChangeEvidenceReportRow reports = 1;
+}
+
+message GetChangeEvidenceReportRequest {
+  string org_id = 1;
+  string report_id = 2;
+}
+message GetChangeEvidenceReportResponse {
+  ChangeEvidenceReportRow report = 1;
+  // The canonical manifest JSON of a COMPLETED report, byte for byte what was digested. Empty
+  // until completed. The client renders the viewer from it.
+  bytes manifest_json = 2;
+}
+
+message DownloadChangeEvidenceReportRequest {
+  string org_id = 1;
+  string report_id = 2;
+  ChangeEvidenceArtifactKind kind = 3;
+}
+message DownloadChangeEvidenceReportResponse {
+  string download_url = 1;               // freshly presigned (60 minutes)
+  string filename = 2;
+  string sha256 = 3;                     // the file's SHA-256, "sha256:<hex>"
+  int64 size_bytes = 4;
+}
+
+message ChangeEvidenceArtifact {
+  ChangeEvidenceArtifactKind kind = 1;
+  string filename = 2;
+  string sha256 = 3;                     // "sha256:<hex>"
+  int64 size_bytes = 4;
+}
+
+message ChangeEvidenceReportRow {
+  string id = 1;
+  ChangeEvidenceReportStatus status = 2;
+  ChangeEvidenceFailureReason failure_reason = 3;  // set only when FAILED
+  repeated string repo_ids = 4;
+  repeated string repo_names = 5;
+  google.protobuf.Timestamp period_from = 6;
+  google.protobuf.Timestamp period_to = 7;
+  string prepared_for = 8;
+  string generated_by = 9;               // display name or email of the caller
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp completed_at = 11;
+  // The report id's content digest, "sha256:<hex>" of the canonical manifest. Empty until completed.
+  string manifest_digest = 12;
+  int32 record_count = 13;               // sealed code-verdict records in scope and period
+  string engine_version = 14;            // the generating server's engine commit
+  repeated ChangeEvidenceArtifact artifacts = 15;  // empty until completed
 }
