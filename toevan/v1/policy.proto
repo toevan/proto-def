@@ -3,6 +3,7 @@ syntax = "proto3";
 package toevan.v1;
 
 import "google/protobuf/timestamp.proto";
+import "toevan/v1/org.proto";
 
 option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
@@ -54,19 +55,25 @@ enum PolicyChangeOrigin {
   // An existing v1 file found when the feature shipped: held, never grandfathered.
   POLICY_CHANGE_ORIGIN_BOOTSTRAP = 5;
   POLICY_CHANGE_ORIGIN_REVOCATION = 6;
+  // A change seen on the branch whose attribution (direct push or merge) is not known
+  // yet; a later release refines it to DIRECT_PUSH or UNAPPROVED_MERGE.
+  POLICY_CHANGE_ORIGIN_BRANCH_UNATTRIBUTED = 7;
 }
 
 // The approvals a change needs.
 enum PolicyTier {
   POLICY_TIER_UNSPECIFIED = 0;
-  // Exclusion of rules outside Security Essentials that touches no compliance-family rule,
-  // or a pure narrowing: 1 technical.
+  // Exclusion of named rules or families outside Security Essentials that touches no
+  // compliance-family rule, or a change that only rewrites a reason or ticket: 1 technical.
+  // An exclusion with no rule filter includes the compliance families and is T2.
   POLICY_TIER_T1 = 1;
   // Any exception, or any entry touching a compliance-family rule: technical and governance,
   // two different people.
   POLICY_TIER_T2 = 2;
   // A Security Essentials exact-file exception: technical and org admin, two different people.
   POLICY_TIER_T3 = 3;
+  // Nothing widens (a pure narrowing, applied at once): no approval is needed.
+  POLICY_TIER_NONE = 4;
 }
 
 enum PolicyApprovalSlot {
@@ -94,11 +101,31 @@ enum PolicyDisposition {
 
 // ── Core types ──
 
+enum PolicyDeltaKind {
+  POLICY_DELTA_KIND_UNSPECIFIED = 0;
+  POLICY_DELTA_KIND_EXCLUSION_ADDED = 1;
+  POLICY_DELTA_KIND_EXCLUSION_WIDENED = 2;
+  POLICY_DELTA_KIND_EXCLUSION_NARROWED = 3;
+  POLICY_DELTA_KIND_EXCLUSION_REMOVED = 4;
+  POLICY_DELTA_KIND_EXCEPTION_ADDED = 5;
+  POLICY_DELTA_KIND_EXCEPTION_WIDENED = 6;
+  POLICY_DELTA_KIND_EXCEPTION_NARROWED = 7;
+  POLICY_DELTA_KIND_EXCEPTION_REMOVED = 8;
+  // The reason or ticket of a retained entry was rewritten.
+  POLICY_DELTA_KIND_JUSTIFICATION_REWRITTEN = 9;
+}
+
+enum PolicyVersionActivatedBy {
+  POLICY_VERSION_ACTIVATED_BY_UNSPECIFIED = 0;
+  POLICY_VERSION_ACTIVATED_BY_MERGE = 1;
+  POLICY_VERSION_ACTIVATED_BY_HELD_APPROVAL = 2;
+  POLICY_VERSION_ACTIVATED_BY_NARROWING = 3;
+  POLICY_VERSION_ACTIVATED_BY_REVOCATION = 4;
+}
+
 // One entry of a policy delta, in plain words.
 message PolicyDeltaEntry {
-  // exclusion_added, exclusion_widened, exclusion_narrowed, exclusion_removed,
-  // exception_added, exception_widened, exception_narrowed, exception_removed.
-  string kind = 1;
+  PolicyDeltaKind kind = 1;
   repeated string paths = 2;
   // Rules or families the entry names (empty: every rule outside Security Essentials).
   repeated string rule_names = 3;
@@ -158,8 +185,7 @@ message PolicyVersion {
   string digest = 5;
   string change_id = 6;
   string effective_from_sha = 7;
-  // merge, held_approval, narrowing, revocation.
-  string activated_by = 8;
+  PolicyVersionActivatedBy activated_by = 8;
   int32 merge_pr_number = 9;
   repeated PolicyDeltaEntry entries = 10;
   google.protobuf.Timestamp created_at = 11;
@@ -258,9 +284,9 @@ message ListPolicyVersionsResponse {
 
 // Which org roles fill each approval slot. Defaults follow the decision record.
 message PolicyApprovalSettings {
-  repeated string technical_roles = 1;
-  repeated string governance_roles = 2;
-  repeated string se_admin_roles = 3;
+  repeated OrgRole technical_roles = 1;
+  repeated OrgRole governance_roles = 2;
+  repeated OrgRole se_admin_roles = 3;
 }
 
 message GetPolicyApprovalSettingsRequest {
