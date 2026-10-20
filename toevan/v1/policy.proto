@@ -1,0 +1,308 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+import "google/protobuf/timestamp.proto";
+import "toevan/v1/org.proto";
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+// ============================================
+// Policy: the repository policy file (.toevan.yaml) and its approvals
+// ============================================
+//
+// A repository's .toevan.yaml declares path scope (code Toevan does not judge)
+// and permanent exceptions. A change takes effect only after its approvals in
+// Toevan, and only on the branch it is merged into. The messages and enums here are
+// what the policy store, the evidence record and the client share. The PolicyService
+// that serves them (ListPolicyChanges, GetPolicyChange, ApprovePolicyChange,
+// RejectPolicyChange, RevokePolicyApproval, RevokeEffectivePolicy, GetEffectivePolicy,
+// ListPolicyVersions, Get/UpdatePolicyApprovalSettings) is declared in the PR that
+// implements its handlers: a service without a handler fails the auditor, IDOR and
+// route ratchets. Every one of its calls carries org_id; a cross-org id answers NOT_FOUND.
+//
+// Every response here is a code-free DTO: a governance approver may have no
+// repository access, so no message carries a snippet, line content or fix.
+
+// ── Enums ──
+
+// Where a policy change is in its life. One row per change (repo, branch, base
+// version, digest).
+enum PolicyChangeState {
+  POLICY_CHANGE_STATE_UNSPECIFIED = 0;
+  // A file that fails validation. It never applies; the last effective policy stays.
+  POLICY_CHANGE_STATE_INVALID_HELD = 1;
+  // A valid digest that differs from the branch's effective digest, awaiting approvals.
+  POLICY_CHANGE_STATE_PENDING = 2;
+  // Every required slot is filled for this digest.
+  POLICY_CHANGE_STATE_APPROVED = 3;
+  // Appended as a policy version.
+  POLICY_CHANGE_STATE_EFFECTIVE = 4;
+  POLICY_CHANGE_STATE_SUPERSEDED = 5;
+  POLICY_CHANGE_STATE_REJECTED = 6;
+  POLICY_CHANGE_STATE_WITHDRAWN = 7;
+}
+
+// Why a change exists as it does: how its file reached the repository.
+enum PolicyChangeOrigin {
+  POLICY_CHANGE_ORIGIN_UNSPECIFIED = 0;
+  POLICY_CHANGE_ORIGIN_PULL_REQUEST = 1;
+  POLICY_CHANGE_ORIGIN_DIRECT_PUSH = 2;
+  // Merged before its approvals: held.
+  POLICY_CHANGE_ORIGIN_UNAPPROVED_MERGE = 3;
+  // A pure narrowing, applied at once and recorded.
+  POLICY_CHANGE_ORIGIN_NARROWING = 4;
+  // An existing v1 file found when the feature shipped: held, never grandfathered.
+  POLICY_CHANGE_ORIGIN_BOOTSTRAP = 5;
+  POLICY_CHANGE_ORIGIN_REVOCATION = 6;
+  // A change seen on the branch whose attribution (direct push or merge) is not known
+  // yet; a later release refines it to DIRECT_PUSH or UNAPPROVED_MERGE.
+  POLICY_CHANGE_ORIGIN_BRANCH_UNATTRIBUTED = 7;
+}
+
+// The approvals a change needs.
+enum PolicyTier {
+  POLICY_TIER_UNSPECIFIED = 0;
+  // Nothing widens (a pure narrowing, applied at once): no approval is needed. The values
+  // are ordered by strictness (NONE < T1 < T2 < T3), so a "highest tier" by value is right.
+  POLICY_TIER_NONE = 1;
+  // Exclusion of named rules or families outside Security Essentials that touches no
+  // compliance-family rule, or a change that only rewrites a reason or ticket: 1 technical.
+  // An exclusion with no rule filter includes the compliance families and is T2.
+  POLICY_TIER_T1 = 2;
+  // Any exception, or any entry touching a compliance-family rule: technical and governance,
+  // two different people.
+  POLICY_TIER_T2 = 3;
+  // A Security Essentials exact-file exception: technical and org admin, two different people.
+  POLICY_TIER_T3 = 4;
+}
+
+enum PolicyApprovalSlot {
+  POLICY_APPROVAL_SLOT_UNSPECIFIED = 0;
+  POLICY_APPROVAL_SLOT_TECHNICAL = 1;
+  POLICY_APPROVAL_SLOT_GOVERNANCE = 2;
+  POLICY_APPROVAL_SLOT_SE_ADMIN = 3;
+}
+
+enum PolicyApprovalSource {
+  POLICY_APPROVAL_SOURCE_UNSPECIFIED = 0;
+  POLICY_APPROVAL_SOURCE_TOEVAN = 1;
+  POLICY_APPROVAL_SOURCE_GITHUB_REVIEW = 2;
+  POLICY_APPROVAL_SOURCE_SLASH_COMMAND = 3;
+}
+
+// What the policy did to a finding. Absent (UNSPECIFIED) means the finding is in scope.
+enum PolicyDisposition {
+  POLICY_DISPOSITION_UNSPECIFIED = 0;
+  // Code Toevan does not judge: recorded and counted, never made invisible.
+  POLICY_DISPOSITION_OUT_OF_SCOPE = 1;
+  // Judged and accepted, with a reason, by the policy file.
+  POLICY_DISPOSITION_DECLARED_EXCEPTION = 2;
+}
+
+// ── Core types ──
+
+enum PolicyDeltaKind {
+  POLICY_DELTA_KIND_UNSPECIFIED = 0;
+  POLICY_DELTA_KIND_EXCLUSION_ADDED = 1;
+  POLICY_DELTA_KIND_EXCLUSION_WIDENED = 2;
+  POLICY_DELTA_KIND_EXCLUSION_NARROWED = 3;
+  POLICY_DELTA_KIND_EXCLUSION_REMOVED = 4;
+  POLICY_DELTA_KIND_EXCEPTION_ADDED = 5;
+  POLICY_DELTA_KIND_EXCEPTION_WIDENED = 6;
+  POLICY_DELTA_KIND_EXCEPTION_NARROWED = 7;
+  POLICY_DELTA_KIND_EXCEPTION_REMOVED = 8;
+  // The reason or ticket of a retained entry was rewritten.
+  POLICY_DELTA_KIND_JUSTIFICATION_REWRITTEN = 9;
+}
+
+enum PolicyVersionActivatedBy {
+  POLICY_VERSION_ACTIVATED_BY_UNSPECIFIED = 0;
+  POLICY_VERSION_ACTIVATED_BY_MERGE = 1;
+  POLICY_VERSION_ACTIVATED_BY_HELD_APPROVAL = 2;
+  POLICY_VERSION_ACTIVATED_BY_NARROWING = 3;
+  POLICY_VERSION_ACTIVATED_BY_REVOCATION = 4;
+}
+
+// One entry of a policy delta, in plain words.
+message PolicyDeltaEntry {
+  PolicyDeltaKind kind = 1;
+  repeated string paths = 2;
+  // Rules or families the entry names (empty: every rule outside Security Essentials).
+  repeated string rule_names = 3;
+  string reason = 4;
+  bool touches_security_essentials = 5;
+}
+
+message PolicyApproval {
+  string id = 1;
+  PolicyApprovalSlot slot = 2;
+  PolicyApprovalSource source = 3;
+  string approver_name = 4;
+  string github_login = 5;
+  int64 github_review_id = 6;
+  string reason = 7;
+  // False when the approver's GitHub identity could not be matched (for example a
+  // Google sign-in): the approval counts and says so.
+  bool author_identity_resolved = 8;
+  // True when no other eligible member existed for the slot.
+  bool sod_not_met = 9;
+  google.protobuf.Timestamp created_at = 10;
+}
+
+message PolicyChange {
+  string id = 1;
+  string org_id = 2;
+  string repo_id = 3;
+  string repo_name = 4;
+  string branch = 5;
+  PolicyChangeOrigin origin = 6;
+  PolicyChangeState state = 7;
+  PolicyTier tier = 8;
+  int32 pr_number = 9;
+  string commit_sha = 10;
+  string digest = 11;
+  // ERR_POLICY_* code when the state is INVALID_HELD.
+  string err_code = 12;
+  repeated PolicyDeltaEntry delta = 13;
+  // Current findings that would move out of scope or become excepted.
+  int32 findings_out_of_scope = 14;
+  int32 findings_excepted = 15;
+  repeated PolicyApproval approvals = 16;
+  repeated PolicyApprovalSlot required_slots = 17;
+  // The slots the caller may fill now, and why not when empty.
+  repeated PolicyApprovalSlot my_eligible_slots = 18;
+  string blocked_reason = 19;
+  repeated string author_logins = 20;
+  google.protobuf.Timestamp created_at = 21;
+  google.protobuf.Timestamp updated_at = 22;
+}
+
+message PolicyVersion {
+  string id = 1;
+  string repo_id = 2;
+  string branch = 3;
+  int32 version = 4;
+  string digest = 5;
+  string change_id = 6;
+  string effective_from_sha = 7;
+  PolicyVersionActivatedBy activated_by = 8;
+  int32 merge_pr_number = 9;
+  repeated PolicyDeltaEntry entries = 10;
+  google.protobuf.Timestamp created_at = 11;
+}
+
+// ── Requests and responses ──
+
+message ListPolicyChangesRequest {
+  string org_id = 1;
+  string repo_id = 2;   // optional
+  string branch = 3;    // optional
+  repeated PolicyChangeState states = 4;
+  int32 page_size = 5;
+  string page_token = 6;
+}
+
+message ListPolicyChangesResponse {
+  repeated PolicyChange changes = 1;
+  string next_page_token = 2;
+}
+
+message GetPolicyChangeRequest {
+  string org_id = 1;
+  string change_id = 2;
+}
+
+message GetPolicyChangeResponse {
+  PolicyChange change = 1;
+}
+
+message ApprovePolicyChangeRequest {
+  string org_id = 1;
+  string change_id = 2;
+  // The digest the caller was shown: a click is bound to what was displayed.
+  string digest = 3;
+  PolicyApprovalSlot slot = 4;
+  string reason = 5;
+}
+
+message ApprovePolicyChangeResponse {
+  PolicyChange change = 1;
+}
+
+message RejectPolicyChangeRequest {
+  string org_id = 1;
+  string change_id = 2;
+  string digest = 3;
+  string reason = 4;
+}
+
+message RejectPolicyChangeResponse {
+  PolicyChange change = 1;
+}
+
+message RevokePolicyApprovalRequest {
+  string org_id = 1;
+  string approval_id = 2;
+  string reason = 3;
+}
+
+message RevokePolicyApprovalResponse {
+  PolicyChange change = 1;
+}
+
+message RevokeEffectivePolicyRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  string branch = 3;
+  string reason = 4;
+}
+
+message RevokeEffectivePolicyResponse {
+  PolicyVersion version = 1;
+}
+
+message GetEffectivePolicyRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  string branch = 3;
+}
+
+message GetEffectivePolicyResponse {
+  // Unset when the branch has no effective policy (everything is in scope).
+  PolicyVersion version = 1;
+}
+
+message ListPolicyVersionsRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  string branch = 3;
+}
+
+message ListPolicyVersionsResponse {
+  repeated PolicyVersion versions = 1;
+}
+
+// Which org roles fill each approval slot. Defaults follow the decision record.
+message PolicyApprovalSettings {
+  repeated OrgRole technical_roles = 1;
+  repeated OrgRole governance_roles = 2;
+  repeated OrgRole se_admin_roles = 3;
+}
+
+message GetPolicyApprovalSettingsRequest {
+  string org_id = 1;
+}
+
+message GetPolicyApprovalSettingsResponse {
+  PolicyApprovalSettings settings = 1;
+}
+
+message UpdatePolicyApprovalSettingsRequest {
+  string org_id = 1;
+  PolicyApprovalSettings settings = 2;
+}
+
+message UpdatePolicyApprovalSettingsResponse {
+  PolicyApprovalSettings settings = 1;
+}

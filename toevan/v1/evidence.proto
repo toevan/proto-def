@@ -5,6 +5,7 @@ package toevan.v1;
 option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 import "google/protobuf/timestamp.proto";
+import "toevan/v1/policy.proto";
 
 // ============================================
 // EvidenceService — Compliance Audit Trail
@@ -518,6 +519,11 @@ message EvidenceRecord {
 
   // Exception reference (if result = EVIDENCE_RESULT_EXCEPTION)
   string exception_id = 17;
+
+  // What the repository policy did to this finding (UNSPECIFIED: in scope), and the policy
+  // entry that did it.
+  PolicyDisposition policy_disposition = 18;
+  string policy_entry = 19;
 }
 
 enum EvidenceResult {
