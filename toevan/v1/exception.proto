@@ -102,6 +102,9 @@ enum ApprovalStepStatus {
   APPROVAL_STEP_PENDING = 2;            // ready for this reviewer
   APPROVAL_STEP_APPROVED = 3;
   APPROVAL_STEP_REJECTED = 4;
+  // A step an approval left behind when it completed the chain (an escalation's pending step): the
+  // waiver was approved without it, and nobody can act on it. Additive, no version bump.
+  APPROVAL_STEP_SUPERSEDED = 5;
 }
 
 // ── Requests/Responses ──
