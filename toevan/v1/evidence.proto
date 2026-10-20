@@ -359,6 +359,7 @@ enum EvidenceBreakageKind {
   // being anchored.
   EVIDENCE_BREAKAGE_KIND_REJECTION_UNRECORDED = 10;
   EVIDENCE_BREAKAGE_KIND_REDACTION_UNRECORDED = 11; // a run's content is erased but no erasure recorded it: the ledger's content cannot be vouched for
+  EVIDENCE_BREAKAGE_KIND_POLICY_UNVERSIONED = 12; // a verdict's hashed record names a policy digest that has no version row for its repository
 }
 
 // What the Rekor leg did for this org.
@@ -457,6 +458,10 @@ message EvidenceVerification {
   // and runs no log of its own: nothing was meant to be published, so it is not a hole. Additive on purpose:
   // rekor_status stays a value every client already reads as a pass.
   bool public_log_off = 22;
+  // Verdicts whose hashed record names a policy digest that has no version row for its repository
+  // (TOEVAN-YAML-POLICY). Must be 0. Any is a failure: a verdict states a policy nobody can show.
+  // Verdicts that state source "none" name no digest and are not counted.
+  int64 policy_unversioned = 23;
 }
 
 message VerifyEvidenceChainRequest {
