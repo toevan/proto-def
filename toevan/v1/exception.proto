@@ -69,6 +69,13 @@ message ExceptionRequest {
   // covers (subtree-prefix suppression). Empty for every other lineage.
   // rule_id is '*' on an all-rules path waiver.
   string path_pattern = 22;
+
+  // True when the exception does not cover Security Essentials rules: a path exception for every rule
+  // ('*') covers every rule except those, which are excepted for an exact rule on exact files only
+  // (with an org admin's approval). The client shows scope_note beside it.
+  bool excludes_security_essentials = 23;
+  // Plain-language note on what the exception does not cover; empty when there is nothing to say.
+  string scope_note = 24;
 }
 
 enum ExceptionStatus {
