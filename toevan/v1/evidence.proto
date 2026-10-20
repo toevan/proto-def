@@ -66,6 +66,12 @@ service EvidenceService {
   // to the public log is always allowed.
   rpc GetOrgEvidenceLog(GetOrgEvidenceLogRequest) returns (GetOrgEvidenceLogResponse);
   rpc SetOrgEvidenceLog(SetOrgEvidenceLogRequest) returns (SetOrgEvidenceLogResponse);
+  // Whether the org's evidence is published to the PLATFORM's public transparency log. Default OFF.
+  // Org admin only (a support grant never writes), audited in the same transaction. Turning it on
+  // publishes only records sealed from that moment on; turning it off stops future publication;
+  // turning it on again starts a new window. Entries already published cannot be removed.
+  // Read: the public_opt_in fields of GetOrgEvidenceLogResponse.
+  rpc SetOrgPublicRekorOptIn(SetOrgPublicRekorOptInRequest) returns (SetOrgPublicRekorOptInResponse);
   // Org admin only (a support grant never writes), audited, with a written reason: clear the records and
   // chain heads a transparency log refused for good, so the next sweep offers them to their log again. A
   // refusal is therefore never permanent. Their history (who, why, when) is kept.
@@ -165,6 +171,24 @@ message GetOrgEvidenceLogResponse {
   // EVERY log the org's records are pinned to (the current one, earlier ones, the public one), each with
   // its own health. `health` above is the current log's.
   repeated EvidenceLogHealth logs = 4;
+  // The org's opt-in to publish to the platform's public log (default false). Independent of an
+  // org's own log, which needs no opt-in.
+  bool public_opt_in = 5;
+  // When the CURRENT publication window began; unset while public_opt_in is false.
+  google.protobuf.Timestamp public_opted_in_at = 6;
+  // True when the platform has a public log configured at all (evidence.rekor_url is set). With
+  // false, turning the opt-in on publishes nothing until the operator sets one.
+  bool public_log_configured = 7;
+}
+
+message SetOrgPublicRekorOptInRequest {
+  string org_id = 1;
+  bool enabled = 2;
+}
+
+message SetOrgPublicRekorOptInResponse {
+  bool public_opt_in = 1;
+  google.protobuf.Timestamp public_opted_in_at = 2;
 }
 
 message RequeueOrgEvidenceRejectionsRequest {
@@ -316,6 +340,9 @@ enum EvidenceRekorStatus {
   // The org has bundles and every one was checked under its pinned log key; the
   // proof counts say how many held.
   EVIDENCE_REKOR_STATUS_VERIFIED_ANCHORED = 3;
+  // The org has no stored proof bundle because it has not opted in to the platform's public log
+  // (and does not run its own). Not a failure and not a hole: render "not published (public log off)".
+  EVIDENCE_REKOR_STATUS_PUBLIC_LOG_OFF = 4;
 }
 
 // The first point verification failed. Never carries hashes: an auditor who
