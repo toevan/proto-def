@@ -711,6 +711,9 @@ enum RepoChangeReason {
   // not read the repositories row). Clients that predate this value degrade
   // to UNSPECIFIED and still converge via their reason-agnostic re-fetch.
   REPO_CHANGE_REASON_EXCEPTIONS_CHANGED = 7;
+  // The branch's effective policy moved, or a policy change was held or became invalid: the
+  // repository page banner and every scope-derived count are stale.
+  REPO_CHANGE_REASON_POLICY_CHANGED = 8;
 }
 
 message RepoChange {

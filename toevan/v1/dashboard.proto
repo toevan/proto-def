@@ -202,6 +202,9 @@ enum AttentionItemType {
   ATTENTION_ITEM_TYPE_COVERAGE_DROP = 5;
   ATTENTION_ITEM_TYPE_VULNERABILITY = 6;
   ATTENTION_ITEM_TYPE_IAC_VIOLATION = 7;
+  // A policy file change reached a branch without its approvals (held), or the policy file is
+  // invalid. The last approved policy stays in force.
+  ATTENTION_ITEM_TYPE_POLICY_CHANGE_HELD = 8;
 }
 
 enum AttentionSeverity {
