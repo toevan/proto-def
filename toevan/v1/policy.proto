@@ -14,15 +14,32 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 // A repository's .toevan.yaml declares path scope (code Toevan does not judge)
 // and permanent exceptions. A change takes effect only after its approvals in
 // Toevan, and only on the branch it is merged into. The messages and enums here are
-// what the policy store, the evidence record and the client share. The PolicyService
-// that serves them (ListPolicyChanges, GetPolicyChange, ApprovePolicyChange,
-// RejectPolicyChange, RevokePolicyApproval, RevokeEffectivePolicy, GetEffectivePolicy,
-// ListPolicyVersions, Get/UpdatePolicyApprovalSettings) is declared in the PR that
-// implements its handlers: a service without a handler fails the auditor, IDOR and
-// route ratchets. Every one of its calls carries org_id; a cross-org id answers NOT_FOUND.
+// what the policy store, the evidence record and the client share; PolicyService serves
+// them. Every one of its calls carries org_id; a cross-org id answers NOT_FOUND.
 //
 // Every response here is a code-free DTO: a governance approver may have no
-// repository access, so no message carries a snippet, line content or fix.
+// repository access, so no message carries a snippet, line content or fix. A test in
+// api-server pins the field set of every message that leaves the service.
+
+service PolicyService {
+  // Changes of the org's repositories. A member sees the repositories they may read; a
+  // governance-role member (compliance, admin) sees every repository of the org.
+  rpc ListPolicyChanges(ListPolicyChangesRequest) returns (ListPolicyChangesResponse);
+  rpc GetPolicyChange(GetPolicyChangeRequest) returns (GetPolicyChangeResponse);
+  // Fills one slot of a pending change. The digest echo binds the click to what was shown.
+  rpc ApprovePolicyChange(ApprovePolicyChangeRequest) returns (ApprovePolicyChangeResponse);
+  rpc RejectPolicyChange(RejectPolicyChangeRequest) returns (RejectPolicyChangeResponse);
+  // Withdraws an approval before the change takes effect: the approver or an org admin.
+  rpc RevokePolicyApproval(RevokePolicyApprovalRequest) returns (RevokePolicyApprovalResponse);
+  // Org admin only: appends the next version with the previous content.
+  rpc RevokeEffectivePolicy(RevokeEffectivePolicyRequest) returns (RevokeEffectivePolicyResponse);
+  // Org members and auditors (read only).
+  rpc GetEffectivePolicy(GetEffectivePolicyRequest) returns (GetEffectivePolicyResponse);
+  rpc ListPolicyVersions(ListPolicyVersionsRequest) returns (ListPolicyVersionsResponse);
+  // Org admin only.
+  rpc GetPolicyApprovalSettings(GetPolicyApprovalSettingsRequest) returns (GetPolicyApprovalSettingsResponse);
+  rpc UpdatePolicyApprovalSettings(UpdatePolicyApprovalSettingsRequest) returns (UpdatePolicyApprovalSettingsResponse);
+}
 
 // ── Enums ──
 
@@ -91,6 +108,20 @@ enum PolicyApprovalSource {
   POLICY_APPROVAL_SOURCE_SLASH_COMMAND = 3;
 }
 
+// Why the caller cannot fill a slot of a change right now (machine form of blocked_reason).
+enum PolicyBlockedReason {
+  POLICY_BLOCKED_REASON_UNSPECIFIED = 0;
+  POLICY_BLOCKED_REASON_NONE = 1;
+  // The change is not pending (terminal, or every slot is already filled).
+  POLICY_BLOCKED_REASON_NOT_PENDING = 2;
+  // The caller holds no role that fills a slot that is still open.
+  POLICY_BLOCKED_REASON_NOT_ELIGIBLE = 3;
+  // The caller wrote or pushed this change.
+  POLICY_BLOCKED_REASON_AUTHOR = 4;
+  // The caller already filled another slot of this change.
+  POLICY_BLOCKED_REASON_SAME_APPROVER = 5;
+}
+
 // What the policy did to a finding. Absent (UNSPECIFIED) means the finding is in scope.
 enum PolicyDisposition {
   POLICY_DISPOSITION_UNSPECIFIED = 0;
@@ -148,6 +179,8 @@ message PolicyApproval {
   // True when no other eligible member existed for the slot.
   bool sod_not_met = 9;
   google.protobuf.Timestamp created_at = 10;
+  // True when the caller gave this approval (they may withdraw it).
+  bool mine = 11;
 }
 
 message PolicyChange {
@@ -176,6 +209,9 @@ message PolicyChange {
   repeated string author_logins = 20;
   google.protobuf.Timestamp created_at = 21;
   google.protobuf.Timestamp updated_at = 22;
+  PolicyBlockedReason blocked_reason_code = 23;
+  // The effective version this change was measured against (0: the branch had none).
+  int32 base_version = 24;
 }
 
 message PolicyVersion {
