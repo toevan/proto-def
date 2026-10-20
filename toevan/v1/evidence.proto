@@ -67,6 +67,11 @@ service EvidenceService {
   // to the public log is always allowed.
   rpc GetOrgEvidenceLog(GetOrgEvidenceLogRequest) returns (GetOrgEvidenceLogResponse);
   rpc SetOrgEvidenceLog(SetOrgEvidenceLogRequest) returns (SetOrgEvidenceLogResponse);
+  // "Test connection" for the self-hosted log form: runs the SAME checks and the SAME probe a save runs (address
+  // rules, the egress policy, the supplied key against the log's own key) and writes NOTHING. Org admin only (a
+  // support grant never does it), Evidence Trail flag, Enterprise (the self_hosted feature), and rate limited per
+  // org because it makes an outbound request. The outcome is a typed reason, never a free string.
+  rpc TestOrgEvidenceLog(TestOrgEvidenceLogRequest) returns (TestOrgEvidenceLogResponse);
   // Whether the org's evidence is published to the PLATFORM's public transparency log. Default OFF.
   // Org admin only (a support grant never writes), audited in the same transaction. Turning it on
   // publishes only records sealed from that moment on; turning it off stops future publication;
@@ -196,6 +201,14 @@ message GetOrgEvidenceLogResponse {
   // Whether the platform can send to its public log right now. Anything other than READY is the reason
   // nothing is sent, whatever the org chose. Computed by the server from the same facts the sweep uses.
   EvidencePublicLogStatus public_log_status = 8;
+  // Entries of this org already in the PLATFORM's public log. They cannot be removed, so they are reported
+  // after an opt-out too: 0 for an org that never published.
+  int64 public_entries_published = 9;
+  // When the newest of them was published; unset while public_entries_published is 0.
+  google.protobuf.Timestamp public_last_published_at = 10;
+  // True when an org's own log must be reachable from Toevan's servers over the public internet (private,
+  // loopback and link-local addresses are refused by the egress policy). Render it beside the address field.
+  bool self_hosted_address_must_be_public = 11;
 }
 
 // Whether the platform's public log is able to receive an org's records now.
@@ -211,6 +224,32 @@ enum EvidencePublicLogStatus {
   EVIDENCE_PUBLIC_LOG_STATUS_URL_UNUSABLE = 4;
   // Signing and publication are paused (the attestation kill switch).
   EVIDENCE_PUBLIC_LOG_STATUS_PAUSED = 5;
+  // This deployment holds no attestation signing key, so nothing is signed and nothing can be published.
+  // Nothing is paused: signing was never set up. An older client reads an unknown value as no claim.
+  EVIDENCE_PUBLIC_LOG_STATUS_NOT_SIGNING = 6;
+}
+
+// Why a "test connection" of an org's own log did not pass.
+enum EvidenceLogTestReason {
+  EVIDENCE_LOG_TEST_REASON_UNSPECIFIED = 0;
+  EVIDENCE_LOG_TEST_REASON_OK = 1;                  // reachable, and it presents the supplied key
+  EVIDENCE_LOG_TEST_REASON_URL_INVALID = 2;         // not an https URL to a public host (egress policy)
+  EVIDENCE_LOG_TEST_REASON_KEY_INVALID = 3;         // not one PEM ECDSA P-256 public key
+  EVIDENCE_LOG_TEST_REASON_KEY_RESERVED = 4;        // a Toevan attestation signing key, not a log's
+  EVIDENCE_LOG_TEST_REASON_UNREACHABLE = 5;         // the log could not be reached from Toevan
+  EVIDENCE_LOG_TEST_REASON_KEY_MISMATCH = 6;        // the log presents a different key than the one supplied
+  EVIDENCE_LOG_TEST_REASON_RATE_LIMITED = 7;        // too many tests in a short time
+}
+
+message TestOrgEvidenceLogRequest {
+  string org_id = 1;
+  string url = 2;             // https URL of the Rekor
+  string public_key_pem = 3;  // the log's PEM public key (ECDSA P-256)
+}
+
+message TestOrgEvidenceLogResponse {
+  bool ok = 1;
+  EvidenceLogTestReason reason = 2;
 }
 
 message SetOrgPublicRekorOptInRequest {
@@ -462,6 +501,21 @@ message EvidenceVerification {
   // (TOEVAN-YAML-POLICY). Must be 0. Any is a failure: a verdict states a policy nobody can show.
   // Verdicts that state source "none" name no digest and are not counted.
   int64 policy_unversioned = 23;
+  // Signed attestations of an org that publishes to the PLATFORM's public log (opted in) that the log has not
+  // taken yet and has not refused. A backlog that is draining is "publishing, N pending", never a failure.
+  int64 public_log_pending = 24;
+  // Equals public_log_pending when the org's public-log publication is STALLED, else 0. Stalled means: entries are
+  // pending, the platform log is READY (public_log_status), and NOTHING was published for the org for longer than
+  // the grace (1 hour, measured from the org's last successful publish, or from when the log became able if it
+  // never published). A record's age alone is never lateness: a large backlog that keeps draining is not overdue,
+  // and a deliberate suppression (private beta, no signing key, no address, paused) is never a stall. A stall makes
+  // Verify NOT_ANCHORED; it is never a chain or signature failure.
+  int64 public_log_overdue = 25;
+  // Whether the platform's public log can receive records now (live, not stored). When it is not READY, the
+  // pending count is waiting for that reason; render the reason beside it.
+  EvidencePublicLogStatus public_log_status = 26;
+  // When the platform's public log last took an entry of this org (persisted); unset when it never has.
+  google.protobuf.Timestamp public_log_last_published_at = 27;
 }
 
 message VerifyEvidenceChainRequest {
