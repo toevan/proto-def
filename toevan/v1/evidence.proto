@@ -176,9 +176,26 @@ message GetOrgEvidenceLogResponse {
   bool public_opt_in = 5;
   // When the CURRENT publication window began; unset while public_opt_in is false.
   google.protobuf.Timestamp public_opted_in_at = 6;
-  // True when the platform has a public log configured at all (evidence.rekor_url is set). With
-  // false, turning the opt-in on publishes nothing until the operator sets one.
-  bool public_log_configured = 7;
+  reserved 7;
+  reserved "public_log_configured";
+  // Whether the platform can send to its public log right now. Anything other than READY is the reason
+  // nothing is sent, whatever the org chose. Computed by the server from the same facts the sweep uses.
+  EvidencePublicLogStatus public_log_status = 8;
+}
+
+// Whether the platform's public log is able to receive an org's records now.
+enum EvidencePublicLogStatus {
+  EVIDENCE_PUBLIC_LOG_STATUS_UNSPECIFIED = 0;
+  EVIDENCE_PUBLIC_LOG_STATUS_READY = 1;
+  // The operator has not set a public log (evidence.rekor_url is empty).
+  EVIDENCE_PUBLIC_LOG_STATUS_NOT_CONFIGURED = 2;
+  // The private beta is on: the platform log gets nothing.
+  EVIDENCE_PUBLIC_LOG_STATUS_PRIVATE_BETA = 3;
+  // The configured address cannot be used (it carries a credential, a query or a fragment, or no key is
+  // pinned to verify its answers).
+  EVIDENCE_PUBLIC_LOG_STATUS_URL_UNUSABLE = 4;
+  // Signing and publication are paused (the attestation kill switch).
+  EVIDENCE_PUBLIC_LOG_STATUS_PAUSED = 5;
 }
 
 message SetOrgPublicRekorOptInRequest {
@@ -340,9 +357,6 @@ enum EvidenceRekorStatus {
   // The org has bundles and every one was checked under its pinned log key; the
   // proof counts say how many held.
   EVIDENCE_REKOR_STATUS_VERIFIED_ANCHORED = 3;
-  // The org has no stored proof bundle because it has not opted in to the platform's public log
-  // (and does not run its own). Not a failure and not a hole: render "not published (public log off)".
-  EVIDENCE_REKOR_STATUS_PUBLIC_LOG_OFF = 4;
 }
 
 // The first point verification failed. Never carries hashes: an auditor who
@@ -424,6 +438,10 @@ message EvidenceVerification {
   // Counted, never a failure, never attestations_missing; an attestation found
   // over such a run IS a failure (an ATTESTATION_BINDING breakage).
   int64 not_eligible_coverage = 21;
+  // True when rekor_status is NOT_ANCHORED because the org has not opted in to the platform's public log
+  // and runs no log of its own: nothing was meant to be published, so it is not a hole. Additive on purpose:
+  // rekor_status stays a value every client already reads as a pass.
+  bool public_log_off = 22;
 }
 
 message VerifyEvidenceChainRequest {
