@@ -63,17 +63,18 @@ enum PolicyChangeOrigin {
 // The approvals a change needs.
 enum PolicyTier {
   POLICY_TIER_UNSPECIFIED = 0;
+  // Nothing widens (a pure narrowing, applied at once): no approval is needed. The values
+  // are ordered by strictness (NONE < T1 < T2 < T3), so a "highest tier" by value is right.
+  POLICY_TIER_NONE = 1;
   // Exclusion of named rules or families outside Security Essentials that touches no
   // compliance-family rule, or a change that only rewrites a reason or ticket: 1 technical.
   // An exclusion with no rule filter includes the compliance families and is T2.
-  POLICY_TIER_T1 = 1;
+  POLICY_TIER_T1 = 2;
   // Any exception, or any entry touching a compliance-family rule: technical and governance,
   // two different people.
-  POLICY_TIER_T2 = 2;
+  POLICY_TIER_T2 = 3;
   // A Security Essentials exact-file exception: technical and org admin, two different people.
-  POLICY_TIER_T3 = 3;
-  // Nothing widens (a pure narrowing, applied at once): no approval is needed.
-  POLICY_TIER_NONE = 4;
+  POLICY_TIER_T3 = 4;
 }
 
 enum PolicyApprovalSlot {
