@@ -101,6 +101,9 @@ message ApprovalStep {
   ApprovalStepStatus status = 4;
   string comment = 5;                    // reviewer's comment (optional)
   google.protobuf.Timestamp reviewed_at = 6;
+  // True on an org-admin step of a Security Essentials exception whose reviewer is the requester because no
+  // other admin exists (sole-member rule, recorded and disclosed). Distinct people review otherwise.
+  bool sod_not_met = 7;
 }
 
 enum ApprovalStepStatus {
