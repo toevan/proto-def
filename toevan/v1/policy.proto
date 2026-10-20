@@ -120,6 +120,19 @@ enum PolicyBlockedReason {
   POLICY_BLOCKED_REASON_AUTHOR = 4;
   // The caller already filled another slot of this change.
   POLICY_BLOCKED_REASON_SAME_APPROVER = 5;
+  // The people who wrote the change could not all be listed: approval waits until a later delivery
+  // lists them (fail closed).
+  POLICY_BLOCKED_REASON_AUTHORS_INCOMPLETE = 6;
+}
+
+// Why an approval was given although a person who wrote the change, or who filled the other slot,
+// gave it (separation of duties not met).
+enum PolicySodReason {
+  POLICY_SOD_REASON_UNSPECIFIED = 0;
+  // Every other eligible member of the slot also wrote the change.
+  POLICY_SOD_REASON_NO_OTHER_NON_AUTHOR = 1;
+  // Every other eligible member of the slot wrote the change or already holds an approval of it.
+  POLICY_SOD_REASON_NO_OTHER_DISTINCT_PERSON = 2;
 }
 
 // What the policy did to a finding. Absent (UNSPECIFIED) means the finding is in scope.
@@ -181,6 +194,10 @@ message PolicyApproval {
   google.protobuf.Timestamp created_at = 10;
   // True when the caller gave this approval (they may withdraw it).
   bool mine = 11;
+  PolicySodReason sod_reason = 12;
+  // The approver's email matches the email of a commit author of the change: possibly one person with
+  // two accounts. Disclosed, never blocked.
+  bool possible_same_person = 13;
 }
 
 message PolicyChange {
@@ -212,6 +229,12 @@ message PolicyChange {
   PolicyBlockedReason blocked_reason_code = 23;
   // The effective version this change was measured against (0: the branch had none).
   int32 base_version = 24;
+  // True while the people who wrote the change could not all be listed.
+  bool authors_incomplete = 25;
+  // findings_out_of_scope and findings_excepted are counted only by GetPolicyChange (false in a list).
+  bool findings_counted = 26;
+  // The count stopped at the cap: the real figure is larger.
+  bool findings_truncated = 27;
 }
 
 message PolicyVersion {
@@ -295,7 +318,10 @@ message RevokeEffectivePolicyRequest {
 }
 
 message RevokeEffectivePolicyResponse {
+  // The version appended at once, when restoring the previous content only narrows the policy.
   PolicyVersion version = 1;
+  // Otherwise the restoration needs its tier's approvals: a held change, with the revoker among its authors.
+  PolicyChange held_change = 2;
 }
 
 message GetEffectivePolicyRequest {
