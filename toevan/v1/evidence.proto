@@ -886,7 +886,10 @@ message EraseDataSubjectRequest {
   string github_login = 2;
   // The person's numeric GitHub user id, when the operator knows it (0 = not given). A login GitHub
   // recycled maps to more than one person; the erasure refuses it (ERR_EVIDENCE_ERASURE_AMBIGUOUS_LOGIN)
-  // until this id says which one. With an id the login only names a rename of the same person.
+  // until this id says which one. With an id, objects that carry the login AND an id match by that id, so a
+  // login on another id is left alone and a rename is followed. Mentions that carry the login with no id
+  // (a login with no id, a linked commit author's username, the pusher, a pre-2017 noreply address) go to
+  // this id, except in a delivery that pairs the login with a different id: that was another holder.
   int64 github_user_id = 3;
   // Emails of the person that Toevan does not know (an unlinked commit email, a Co-authored-by address),
   // given by the operator. Matched case-insensitively against the evidence inbox payloads, in commit author
