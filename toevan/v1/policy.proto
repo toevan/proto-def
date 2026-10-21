@@ -160,6 +160,35 @@ enum PolicyDeltaKind {
   POLICY_DELTA_KIND_JUSTIFICATION_REWRITTEN = 9;
 }
 
+// Why the people who wrote a change could not be established from GitHub's record of who pushed. The
+// acknowledgement of an org admin is allowed only for a definitive reason, never for UNVERIFIED, API_ERROR or
+// NO_GITHUB_SOURCE (those may clear on a retry).
+enum PolicyAuthorsReason {
+  POLICY_AUTHORS_REASON_UNSPECIFIED = 0;
+  // Not read yet.
+  POLICY_AUTHORS_REASON_UNVERIFIED = 1;
+  // No commit is known for the chain to reach (an existing file at install).
+  POLICY_AUTHORS_REASON_NO_ANCHOR = 2;
+  // The pull request head is in a fork: its pushes are not in this repository's activity.
+  POLICY_AUTHORS_REASON_HEAD_NOT_IN_REPOSITORY = 3;
+  // No entry of the ref's activity moved it to the head (retention, a force push).
+  POLICY_AUTHORS_REASON_HEAD_NOT_IN_ACTIVITY = 4;
+  // An entry does not link to the one before it, or the history ends short of the anchor.
+  POLICY_AUTHORS_REASON_CHAIN_GAP = 5;
+  // The walk read as many pages as it may without reaching the anchor.
+  POLICY_AUTHORS_REASON_PAGE_CAP = 6;
+  // GitHub could not be read.
+  POLICY_AUTHORS_REASON_API_ERROR = 7;
+  // An entry of the chain states no actor.
+  POLICY_AUTHORS_REASON_UNKNOWN_ACTOR = 8;
+  // The ref was deleted and created again inside the chain.
+  POLICY_AUTHORS_REASON_BRANCH_RECREATED = 9;
+  // The commits that changed the file could not be listed to the end.
+  POLICY_AUTHORS_REASON_FILE_HISTORY_INCOMPLETE = 10;
+  // GitHub is not wired in this deployment.
+  POLICY_AUTHORS_REASON_NO_GITHUB_SOURCE = 11;
+}
+
 enum PolicyVersionActivatedBy {
   POLICY_VERSION_ACTIVATED_BY_UNSPECIFIED = 0;
   POLICY_VERSION_ACTIVATED_BY_MERGE = 1;
@@ -238,10 +267,8 @@ message PolicyChange {
   bool findings_counted = 26;
   // The count stopped at the cap: the real figure is larger.
   bool findings_truncated = 27;
-  // Why the authors are not established while authors_incomplete: no_anchor, head_not_in_repository,
-  // head_not_in_activity, chain_gap, page_cap, api_error, unknown_actor, branch_recreated,
-  // file_history_incomplete, no_github_source, unverified. Empty when they are.
-  string authors_incomplete_reason = 28;
+  // Why the authors are not established while authors_incomplete (UNSPECIFIED when they are).
+  PolicyAuthorsReason authors_incomplete_reason = 28;
   // True when the caller is an org admin who is not a known author: they may approve this change by
   // acknowledging that its authors are not established (ApprovePolicyChangeRequest).
   bool can_acknowledge_incomplete_authors = 29;
