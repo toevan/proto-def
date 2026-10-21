@@ -123,6 +123,9 @@ enum PolicyBlockedReason {
   // The people who wrote the change could not all be listed: approval waits until a later delivery
   // lists them (fail closed).
   POLICY_BLOCKED_REASON_AUTHORS_INCOMPLETE = 6;
+  // The only open slots (governance, Security Essentials) come after the technical approval, which is not
+  // given yet.
+  POLICY_BLOCKED_REASON_AWAITING_TECHNICAL = 7;
 }
 
 // Why an approval was given although a person who wrote the change, or who filled the other slot,
