@@ -69,6 +69,13 @@ message ExceptionRequest {
   // covers (subtree-prefix suppression). Empty for every other lineage.
   // rule_id is '*' on an all-rules path waiver.
   string path_pattern = 22;
+
+  // True when the exception does not cover Security Essentials rules: a path exception for every rule
+  // ('*') covers every rule except those, which are excepted for an exact rule on exact files only
+  // (with an org admin's approval). The client shows scope_note beside it.
+  bool excludes_security_essentials = 23;
+  // Plain-language note on what the exception does not cover; empty when there is nothing to say.
+  string scope_note = 24;
 }
 
 enum ExceptionStatus {
@@ -94,6 +101,19 @@ message ApprovalStep {
   ApprovalStepStatus status = 4;
   string comment = 5;                    // reviewer's comment (optional)
   google.protobuf.Timestamp reviewed_at = 6;
+  // True on an org-admin step of a Security Essentials exception that distinct people could not fill: its
+  // reviewer is the requester (no other admin exists) or already reviewed an earlier step. Recorded and
+  // disclosed, and decided again at approval time. sod_reason says which.
+  bool sod_not_met = 7;
+  ExceptionSodReason sod_reason = 8;
+}
+
+// Why a separation-of-duties rule could not be met on an exception step (the names follow the policy side's
+// PolicySodReason: no other non-author becomes no other non-requester).
+enum ExceptionSodReason {
+  EXCEPTION_SOD_REASON_UNSPECIFIED = 0;
+  EXCEPTION_SOD_REASON_NO_OTHER_NON_REQUESTER = 1;
+  EXCEPTION_SOD_REASON_NO_OTHER_DISTINCT_PERSON = 2;
 }
 
 enum ApprovalStepStatus {
