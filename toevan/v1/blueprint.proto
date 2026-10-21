@@ -705,6 +705,14 @@ message GetInferredBlueprintResponse {
   google.protobuf.Timestamp inferred_at = 8;
   // The review state of THIS detection. UNSPECIFIED when there is no detection or it is adopted.
   InferredReviewState review_state = 9;
+  // True when the CALLER is authorized to adopt, keep as draft and dismiss this repository's
+  // detection: the server's own decision (the same repository-access rule those RPCs enforce,
+  // maintainer on the repository, honouring explicit repository and project member rows), so a client
+  // never approximates it from the org role. It is authorization only: a state refusal (an archived
+  // project, an already adopted detection, structural blueprints switched off) is still returned by
+  // the RPC itself. False when there is no detection, and false (never an error) if the decision
+  // could not be made; the mutation RPCs stay authoritative.
+  bool viewer_can_maintain = 10;
 }
 
 // Where an unadopted detection stands. Neither value enforces anything.
@@ -749,6 +757,10 @@ message InferredBlueprintSummary {
   int32 rule_count = 7;
   double confidence = 8;
   google.protobuf.Timestamp detected_at = 9;
+  // True when the CALLER is authorized to adopt, keep as draft and dismiss this repository's
+  // detection (authorization only; see GetInferredBlueprintResponse.viewer_can_maintain): the
+  // Blueprints page banner reads this.
+  bool viewer_can_maintain = 10;
 }
 
 message ListInferredBlueprintsResponse {
