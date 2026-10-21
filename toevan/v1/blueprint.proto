@@ -96,6 +96,11 @@ service BlueprintService {
   // Saves the repository's detected blueprint as a DRAFT: a persisted review decision that never
   // enforces, gates or writes evidence. Idempotent. Maintainer on the repository, like adopt.
   rpc KeepInferredBlueprintAsDraft(KeepInferredBlueprintAsDraftRequest) returns (KeepInferredBlueprintAsDraftResponse);
+  // Dismisses the repository's detected blueprint ("Suggested from your code" x): a persisted review
+  // decision that never enforces and is not offered again by GetInferredBlueprint or
+  // ListInferredBlueprints. Idempotent. Maintainer on the repository, like keep-as-draft. Refused with
+  // ERR_STRUCTURAL_BLUEPRINTS_DISABLED while the structural_blueprints flag is OFF.
+  rpc DismissInferredBlueprint(DismissInferredBlueprintRequest) returns (DismissInferredBlueprintResponse);
   // One row per repository (that the caller can access) with a detection no adoption governs.
   rpc ListInferredBlueprints(ListInferredBlueprintsRequest) returns (ListInferredBlueprintsResponse);
   rpc ReinferBlueprint(ReinferBlueprintRequest) returns (ReinferBlueprintResponse);
@@ -322,6 +327,9 @@ message SearchBlueprintsRequest {
   BlueprintSource source = 4;      // filter by source (0 = all)
   BlueprintType type = 5;          // filter by type (0 = all)
   string language = 6;             // filter by language
+  // The organization the caller is searching for (optional); same meaning as
+  // ListMarketplaceRequest.org_id.
+  string org_id = 7;
 }
 message SearchBlueprintsResponse {
   repeated Blueprint blueprints = 1;
@@ -352,6 +360,10 @@ message ListMarketplaceRequest {
   // = the project-scope catalog the onboarding wizard shows). Empty = no type
   // filter. When set, takes precedence over the single `type` field.
   repeated BlueprintType types = 12;
+  // The organization the caller is browsing for (optional). The structural_blueprints feature
+  // flag is evaluated for it: OFF removes the structural (architecture) blueprints from the
+  // listing. The caller must be a member of it. Empty = the global flag value.
+  string org_id = 13;
 }
 message ListMarketplaceResponse {
   repeated Blueprint blueprints = 1;
@@ -499,6 +511,9 @@ message AssignmentResult {
   string target_id = 1;                  // project_id or repo_id that was targeted
   ScopedBlueprintAssignment assignment = 2; // populated on success
   string error = 3;                      // populated on failure (savepoint rolled back)
+  // The domain ERR_ code of the failure (e.g. ERR_STRUCTURAL_BLUEPRINTS_DISABLED), empty on success
+  // or when the failure carries none. Localise on this, never on `error`.
+  string error_code = 4;
 }
 
 message BlueprintAssignResponse {
@@ -697,6 +712,7 @@ enum InferredReviewState {
   INFERRED_REVIEW_STATE_UNSPECIFIED = 0;
   INFERRED_REVIEW_STATE_PENDING = 1;        // detected, nobody has decided
   INFERRED_REVIEW_STATE_KEPT_AS_DRAFT = 2;  // saved as a draft, not enforced
+  INFERRED_REVIEW_STATE_DISMISSED = 3;      // dismissed; never offered again
 }
 
 message KeepInferredBlueprintAsDraftRequest {
@@ -705,6 +721,16 @@ message KeepInferredBlueprintAsDraftRequest {
 }
 
 message KeepInferredBlueprintAsDraftResponse {
+  InferredReviewState review_state = 1;
+  google.protobuf.Timestamp decided_at = 2;
+}
+
+message DismissInferredBlueprintRequest {
+  string repo_id = 1;
+  string blueprint_id = 2;
+}
+
+message DismissInferredBlueprintResponse {
   InferredReviewState review_state = 1;
   google.protobuf.Timestamp decided_at = 2;
 }
