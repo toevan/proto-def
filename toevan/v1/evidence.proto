@@ -884,6 +884,15 @@ message EraseDataSubjectRequest {
   // and PR-gate stores. There is no mapping from this login to a Toevan user
   // account — it is the only identifier held for the developer.
   string github_login = 2;
+  // The person's numeric GitHub user id, when the operator knows it (0 = not given). A login GitHub
+  // recycled maps to more than one person; the erasure refuses it (ERR_EVIDENCE_ERASURE_AMBIGUOUS_LOGIN)
+  // until this id says which one. With an id the login only names a rename of the same person.
+  int64 github_user_id = 3;
+  // Emails of the person that Toevan does not know (an unlinked commit email, a Co-authored-by address),
+  // given by the operator. Matched case-insensitively against the evidence inbox payloads, in commit author
+  // and committer objects and in Co-authored-by trailers. At most 20, each a plain address. They are never
+  // stored: the erasure audit row keeps only how many were given.
+  repeated string additional_emails = 4;
 }
 
 message EraseDataSubjectResponse {
@@ -892,6 +901,7 @@ message EraseDataSubjectResponse {
   int64 pr_checks_redacted = 3;         // pr_checks rows whose author was tombstoned
   int64 export_jobs_redacted = 4;       // evidence_export_jobs rows whose author filter was nulled
   int64 ledger_runs_redacted = 5;       // 0 today — the immutable ledger holds no PII
+  int64 inbox_payloads_erased = 6;      // evidence inbox rows whose received bytes named the person and were dropped
 }
 
 // ── Evidence retention ──

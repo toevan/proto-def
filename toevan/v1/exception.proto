@@ -82,6 +82,26 @@ message ExceptionRequest {
   // after which the client re-reads. Additive.
   bool viewer_can_revoke = 25;
   bool viewer_can_escalate = 26;
+  // What the exception covers NOW, decided by the server from the same facts the PR gate's coverage predicate reads
+  // (status, expiry, the Security Essentials rule scope, and whether an org admin has approved). The client shows
+  // this and never derives "covers nothing" itself. An unknown value reads as COVERS_NOTHING_YET. Additive.
+  ExceptionCoverageState coverage_state = 27;
+}
+
+// Whether an exception is waiving findings now.
+enum ExceptionCoverageState {
+  EXCEPTION_COVERAGE_STATE_UNSPECIFIED = 0;
+  // Waiting for its decision: nothing is waived yet.
+  EXCEPTION_COVERAGE_STATE_AWAITING_DECISION = 1;
+  // Approved and in force: it waives what it names.
+  EXCEPTION_COVERAGE_STATE_COVERING = 2;
+  // Approved, but a Security Essentials exception covers its finding only once an org admin has approved: nothing is
+  // waived until then.
+  EXCEPTION_COVERAGE_STATE_AWAITING_ADMIN = 3;
+  // Approved, but by its scope it can never waive anything (a whole-repository waiver of a Security Essentials rule).
+  EXCEPTION_COVERAGE_STATE_COVERS_NOTHING = 4;
+  // Rejected, revoked, expired, or past its expiry: nothing is waived.
+  EXCEPTION_COVERAGE_STATE_ENDED = 5;
 }
 
 enum ExceptionStatus {
