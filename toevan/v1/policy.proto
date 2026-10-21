@@ -145,6 +145,10 @@ enum PolicyDisposition {
   POLICY_DISPOSITION_OUT_OF_SCOPE = 1;
   // Judged and accepted, with a reason, by the policy file.
   POLICY_DISPOSITION_DECLARED_EXCEPTION = 2;
+  // Set aside by Toevan's own rule, not by the repository's policy: a finding of a rule that is not Security
+  // Essentials, located in a generated, vendored or build-output file (GENERATED-EXCLUSION-GOVERNANCE). Recorded and
+  // counted in the record's toevan_scope, never made invisible. Security Essentials is never set aside.
+  POLICY_DISPOSITION_NOT_JUDGED = 3;
 }
 
 // ── Core types ──

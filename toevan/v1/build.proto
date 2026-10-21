@@ -7,6 +7,7 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 import "google/protobuf/timestamp.proto";
 import "toevan/v1/types.proto";
 import "toevan/v1/agent.proto";
+import "toevan/v1/dashboard.proto";
 
 // ============================================
 // BuildService — Code Generation, Build Orchestration, Previews
@@ -243,6 +244,12 @@ message CanvasNode {
   // a follow-up PR will retire the style-map mirror once all
   // deployed clients prefer the typed surface.
   string module = 11;
+  // What kind of file the node's symbol sits in, from the ONE server-side path
+  // classifier (the same toevan.v1.FileClass a finding carries). A client hides
+  // GENERATED, VENDOR (and artifact) nodes by default behind a toggle. Additive:
+  // FILE_CLASS_UNSPECIFIED (0) from a server that predates it, and for a boundary
+  // node with no file, so an old payload shows every node as before.
+  FileClass file_class = 12;
 }
 
 // NodeMetrics carries structured detail data for the node info panel.
@@ -329,6 +336,9 @@ message GetRepositoryGraphRequest {
   string base_ref = 4;      // optional: for diff view
   string head_ref = 5;      // optional: for diff view
   bool include_tests = 6;   // include test file symbols (default false)
+  // Include the nodes of files the index ingests in the cheaper facts tier (generated, generator-header, vendored and
+  // build-output files). Default false: the canvas shows first-party code. Each node carries its file_class either way.
+  bool include_generated = 7;
 }
 
 // Server-supplied tuning for the CLIENT-SIDE force-directed canvas layout.
