@@ -336,6 +336,9 @@ message GetRepositoryGraphRequest {
   string base_ref = 4;      // optional: for diff view
   string head_ref = 5;      // optional: for diff view
   bool include_tests = 6;   // include test file symbols (default false)
+  // Include the nodes of files the index ingests in the cheaper facts tier (generated, generator-header, vendored and
+  // build-output files). Default false: the canvas shows first-party code. Each node carries its file_class either way.
+  bool include_generated = 7;
 }
 
 // Server-supplied tuning for the CLIENT-SIDE force-directed canvas layout.
