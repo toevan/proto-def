@@ -198,6 +198,9 @@ message PolicyApproval {
   // The approver's email matches the email of a commit author of the change: possibly one person with
   // two accounts. Disclosed, never blocked.
   bool possible_same_person = 13;
+  // An org admin approved while the change's authors were not established from GitHub, and
+  // acknowledged that. Disclosed with the approval.
+  bool authors_unverified = 14;
 }
 
 message PolicyChange {
@@ -235,6 +238,13 @@ message PolicyChange {
   bool findings_counted = 26;
   // The count stopped at the cap: the real figure is larger.
   bool findings_truncated = 27;
+  // Why the authors are not established while authors_incomplete: no_anchor, head_not_in_repository,
+  // head_not_in_activity, chain_gap, page_cap, api_error, unknown_actor, branch_recreated,
+  // file_history_incomplete, no_github_source, unverified. Empty when they are.
+  string authors_incomplete_reason = 28;
+  // True when the caller is an org admin who is not a known author: they may approve this change by
+  // acknowledging that its authors are not established (ApprovePolicyChangeRequest).
+  bool can_acknowledge_incomplete_authors = 29;
 }
 
 message PolicyVersion {
@@ -283,6 +293,10 @@ message ApprovePolicyChangeRequest {
   string digest = 3;
   PolicyApprovalSlot slot = 4;
   string reason = 5;
+  // An org admin's explicit statement that the people who wrote the change could not be established
+  // from GitHub's record of who pushed. Required (and only accepted from an org admin who is not a
+  // known author) while the change's authors_incomplete is true.
+  bool acknowledge_incomplete_authors = 6;
 }
 
 message ApprovePolicyChangeResponse {
