@@ -14,15 +14,32 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 // A repository's .toevan.yaml declares path scope (code Toevan does not judge)
 // and permanent exceptions. A change takes effect only after its approvals in
 // Toevan, and only on the branch it is merged into. The messages and enums here are
-// what the policy store, the evidence record and the client share. The PolicyService
-// that serves them (ListPolicyChanges, GetPolicyChange, ApprovePolicyChange,
-// RejectPolicyChange, RevokePolicyApproval, RevokeEffectivePolicy, GetEffectivePolicy,
-// ListPolicyVersions, Get/UpdatePolicyApprovalSettings) is declared in the PR that
-// implements its handlers: a service without a handler fails the auditor, IDOR and
-// route ratchets. Every one of its calls carries org_id; a cross-org id answers NOT_FOUND.
+// what the policy store, the evidence record and the client share; PolicyService serves
+// them. Every one of its calls carries org_id; a cross-org id answers NOT_FOUND.
 //
 // Every response here is a code-free DTO: a governance approver may have no
-// repository access, so no message carries a snippet, line content or fix.
+// repository access, so no message carries a snippet, line content or fix. A test in
+// api-server pins the field set of every message that leaves the service.
+
+service PolicyService {
+  // Changes of the org's repositories. A member sees the repositories they may read; a
+  // governance-role member (compliance, admin) sees every repository of the org.
+  rpc ListPolicyChanges(ListPolicyChangesRequest) returns (ListPolicyChangesResponse);
+  rpc GetPolicyChange(GetPolicyChangeRequest) returns (GetPolicyChangeResponse);
+  // Fills one slot of a pending change. The digest echo binds the click to what was shown.
+  rpc ApprovePolicyChange(ApprovePolicyChangeRequest) returns (ApprovePolicyChangeResponse);
+  rpc RejectPolicyChange(RejectPolicyChangeRequest) returns (RejectPolicyChangeResponse);
+  // Withdraws an approval before the change takes effect: the approver or an org admin.
+  rpc RevokePolicyApproval(RevokePolicyApprovalRequest) returns (RevokePolicyApprovalResponse);
+  // Org admin only: appends the next version with the previous content.
+  rpc RevokeEffectivePolicy(RevokeEffectivePolicyRequest) returns (RevokeEffectivePolicyResponse);
+  // Org members and auditors (read only).
+  rpc GetEffectivePolicy(GetEffectivePolicyRequest) returns (GetEffectivePolicyResponse);
+  rpc ListPolicyVersions(ListPolicyVersionsRequest) returns (ListPolicyVersionsResponse);
+  // Org admin only.
+  rpc GetPolicyApprovalSettings(GetPolicyApprovalSettingsRequest) returns (GetPolicyApprovalSettingsResponse);
+  rpc UpdatePolicyApprovalSettings(UpdatePolicyApprovalSettingsRequest) returns (UpdatePolicyApprovalSettingsResponse);
+}
 
 // ── Enums ──
 
@@ -91,6 +108,36 @@ enum PolicyApprovalSource {
   POLICY_APPROVAL_SOURCE_SLASH_COMMAND = 3;
 }
 
+// Why the caller cannot fill a slot of a change right now (machine form of blocked_reason).
+enum PolicyBlockedReason {
+  POLICY_BLOCKED_REASON_UNSPECIFIED = 0;
+  POLICY_BLOCKED_REASON_NONE = 1;
+  // The change is not pending (terminal, or every slot is already filled).
+  POLICY_BLOCKED_REASON_NOT_PENDING = 2;
+  // The caller holds no role that fills a slot that is still open.
+  POLICY_BLOCKED_REASON_NOT_ELIGIBLE = 3;
+  // The caller wrote or pushed this change.
+  POLICY_BLOCKED_REASON_AUTHOR = 4;
+  // The caller already filled another slot of this change.
+  POLICY_BLOCKED_REASON_SAME_APPROVER = 5;
+  // The people who wrote the change could not all be listed: approval waits until a later delivery
+  // lists them (fail closed).
+  POLICY_BLOCKED_REASON_AUTHORS_INCOMPLETE = 6;
+  // The only open slots (governance, Security Essentials) come after the technical approval, which is not
+  // given yet.
+  POLICY_BLOCKED_REASON_AWAITING_TECHNICAL = 7;
+}
+
+// Why an approval was given although a person who wrote the change, or who filled the other slot,
+// gave it (separation of duties not met).
+enum PolicySodReason {
+  POLICY_SOD_REASON_UNSPECIFIED = 0;
+  // Every other eligible member of the slot also wrote the change.
+  POLICY_SOD_REASON_NO_OTHER_NON_AUTHOR = 1;
+  // Every other eligible member of the slot wrote the change or already holds an approval of it.
+  POLICY_SOD_REASON_NO_OTHER_DISTINCT_PERSON = 2;
+}
+
 // What the policy did to a finding. Absent (UNSPECIFIED) means the finding is in scope.
 enum PolicyDisposition {
   POLICY_DISPOSITION_UNSPECIFIED = 0;
@@ -114,6 +161,35 @@ enum PolicyDeltaKind {
   POLICY_DELTA_KIND_EXCEPTION_REMOVED = 8;
   // The reason or ticket of a retained entry was rewritten.
   POLICY_DELTA_KIND_JUSTIFICATION_REWRITTEN = 9;
+}
+
+// Why the people who wrote a change could not be established from GitHub's record of who pushed. The
+// acknowledgement of an org admin is allowed only for a definitive reason, never for UNVERIFIED, API_ERROR or
+// NO_GITHUB_SOURCE (those may clear on a retry).
+enum PolicyAuthorsReason {
+  POLICY_AUTHORS_REASON_UNSPECIFIED = 0;
+  // Not read yet.
+  POLICY_AUTHORS_REASON_UNVERIFIED = 1;
+  // No commit is known for the chain to reach (an existing file at install).
+  POLICY_AUTHORS_REASON_NO_ANCHOR = 2;
+  // The pull request head is in a fork: its pushes are not in this repository's activity.
+  POLICY_AUTHORS_REASON_HEAD_NOT_IN_REPOSITORY = 3;
+  // No entry of the ref's activity moved it to the head (retention, a force push).
+  POLICY_AUTHORS_REASON_HEAD_NOT_IN_ACTIVITY = 4;
+  // An entry does not link to the one before it, or the history ends short of the anchor.
+  POLICY_AUTHORS_REASON_CHAIN_GAP = 5;
+  // The walk read as many pages as it may without reaching the anchor.
+  POLICY_AUTHORS_REASON_PAGE_CAP = 6;
+  // GitHub could not be read.
+  POLICY_AUTHORS_REASON_API_ERROR = 7;
+  // An entry of the chain states no actor.
+  POLICY_AUTHORS_REASON_UNKNOWN_ACTOR = 8;
+  // The ref was deleted and created again inside the chain.
+  POLICY_AUTHORS_REASON_BRANCH_RECREATED = 9;
+  // The commits that changed the file could not be listed to the end.
+  POLICY_AUTHORS_REASON_FILE_HISTORY_INCOMPLETE = 10;
+  // GitHub is not wired in this deployment.
+  POLICY_AUTHORS_REASON_NO_GITHUB_SOURCE = 11;
 }
 
 enum PolicyVersionActivatedBy {
@@ -148,6 +224,15 @@ message PolicyApproval {
   // True when no other eligible member existed for the slot.
   bool sod_not_met = 9;
   google.protobuf.Timestamp created_at = 10;
+  // True when the caller gave this approval (they may withdraw it).
+  bool mine = 11;
+  PolicySodReason sod_reason = 12;
+  // The approver's email matches the email of a commit author of the change: possibly one person with
+  // two accounts. Disclosed, never blocked.
+  bool possible_same_person = 13;
+  // An org admin approved while the change's authors were not established from GitHub, and
+  // acknowledged that. Disclosed with the approval.
+  bool authors_unverified = 14;
 }
 
 message PolicyChange {
@@ -176,6 +261,20 @@ message PolicyChange {
   repeated string author_logins = 20;
   google.protobuf.Timestamp created_at = 21;
   google.protobuf.Timestamp updated_at = 22;
+  PolicyBlockedReason blocked_reason_code = 23;
+  // The effective version this change was measured against (0: the branch had none).
+  int32 base_version = 24;
+  // True while the people who wrote the change could not all be listed.
+  bool authors_incomplete = 25;
+  // findings_out_of_scope and findings_excepted are counted only by GetPolicyChange (false in a list).
+  bool findings_counted = 26;
+  // The count stopped at the cap: the real figure is larger.
+  bool findings_truncated = 27;
+  // Why the authors are not established while authors_incomplete (UNSPECIFIED when they are).
+  PolicyAuthorsReason authors_incomplete_reason = 28;
+  // True when the caller is an org admin who is not a known author: they may approve this change by
+  // acknowledging that its authors are not established (ApprovePolicyChangeRequest).
+  bool can_acknowledge_incomplete_authors = 29;
 }
 
 message PolicyVersion {
@@ -224,6 +323,10 @@ message ApprovePolicyChangeRequest {
   string digest = 3;
   PolicyApprovalSlot slot = 4;
   string reason = 5;
+  // An org admin's explicit statement that the people who wrote the change could not be established
+  // from GitHub's record of who pushed. Required (and only accepted from an org admin who is not a
+  // known author) while the change's authors_incomplete is true.
+  bool acknowledge_incomplete_authors = 6;
 }
 
 message ApprovePolicyChangeResponse {
@@ -259,7 +362,10 @@ message RevokeEffectivePolicyRequest {
 }
 
 message RevokeEffectivePolicyResponse {
+  // The version appended at once, when restoring the previous content only narrows the policy.
   PolicyVersion version = 1;
+  // Otherwise the restoration needs its tier's approvals: a held change, with the revoker among its authors.
+  PolicyChange held_change = 2;
 }
 
 message GetEffectivePolicyRequest {
