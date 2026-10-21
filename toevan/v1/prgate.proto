@@ -7,6 +7,7 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 import "google/protobuf/timestamp.proto";
 import "toevan/v1/types.proto";
 import "toevan/v1/repo.proto"; // DeepCheckRequest (per-PR deep-check summary)
+import "toevan/v1/dashboard.proto"; // FileClass (PrFileClassChange)
 
 // ============================================
 // PRGateService — PR Enforcement & Violations
@@ -625,6 +626,23 @@ message PrCheckRun {
   string error_message = 15;
   google.protobuf.Timestamp finished_at = 16;
   google.protobuf.Timestamp created_at = 17;
+  // The changed files this run judged as source that take a generated, vendored or build-output class once the pull
+  // request merges, and the new paths that already take one in the pull request itself: the files the sticky comment
+  // lists under "Becomes generated after merge" and "New generated files in this pull request" (GENERATED-EXCLUSION-
+  // GOVERNANCE G3). One source with the comment, sorted by path, bounded: becomes_generated_total is the whole count.
+  // Empty on runs recorded before this field and on runs that changed no such file.
+  repeated PrFileClassChange becomes_generated_after_merge = 18;
+  int32 becomes_generated_total = 19;
+}
+
+// PrFileClassChange is a changed file of a pull request that is in a set-aside class at the head and had none at the
+// base. file_class is FILE_CLASS_GENERATED (a generated file, a generator header or a build output) or FILE_CLASS_VENDOR.
+message PrFileClassChange {
+  string path = 1;
+  FileClass file_class = 2;
+  // true: the base has no such path, so the findings of the rules that are not Security Essentials are already set
+  // aside in this run. false: an existing file, judged as source until the merge.
+  bool new_path = 3;
 }
 
 message ListPrCheckRunsRequest {
