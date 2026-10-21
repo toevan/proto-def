@@ -76,6 +76,12 @@ message ExceptionRequest {
   bool excludes_security_essentials = 23;
   // Plain-language note on what the exception does not cover; empty when there is nothing to say.
   string scope_note = 24;
+  // What the CALLING user may do with this exception now, decided by the server (the client shows an action only
+  // when its flag is set; the server refuses it regardless). Approve and reject are the pending step's flag:
+  // ApprovalStep.actionable_by_viewer. Set on reads (GetException, ListExceptions); false on a mutation's response,
+  // after which the client re-reads. Additive.
+  bool viewer_can_revoke = 25;
+  bool viewer_can_escalate = 26;
 }
 
 enum ExceptionStatus {
@@ -106,6 +112,11 @@ message ApprovalStep {
   // disclosed, and decided again at approval time. sod_reason says which.
   bool sod_not_met = 7;
   ExceptionSodReason sod_reason = 8;
+  // True when the CALLING user can approve or reject this step now: it is the pending step they are assigned,
+  // on a pending exception or the pending org admin step of an approved Security Essentials exception (the
+  // re-approval that restores its coverage), whatever the exception's status. Set on reads (GetException,
+  // ListExceptions); false on a mutation's response. Additive.
+  bool actionable_by_viewer = 9;
 }
 
 // Why a separation-of-duties rule could not be met on an exception step (the names follow the policy side's
@@ -218,6 +229,17 @@ message ListExceptionsRequest {
 message ListExceptionsResponse {
   repeated ExceptionRequest exceptions = 1;
   int32 total = 2;
+  // Whose exceptions the list holds: every exception of the org (an org admin, compliance, the CISO), or only
+  // those that concern the caller (a developer or team lead: ones they requested, were assigned or decided, or
+  // await a step they are eligible for). total counts the same set. Additive.
+  ExceptionListScope scope = 3;
+}
+
+// The set of exceptions a read covers for the calling user. Unknown values read as the narrow set.
+enum ExceptionListScope {
+  EXCEPTION_LIST_SCOPE_UNSPECIFIED = 0;
+  EXCEPTION_LIST_SCOPE_ALL = 1;
+  EXCEPTION_LIST_SCOPE_MINE = 2;
 }
 
 // Org-wide aggregate counts for the exceptions metric strip. Computed
@@ -236,7 +258,11 @@ message ExceptionMetrics {
   // in whole seconds. Zero when resolved_count is zero.
   int64 avg_review_seconds = 6;
 }
-message GetExceptionMetricsResponse { ExceptionMetrics metrics = 1; }
+message GetExceptionMetricsResponse {
+  ExceptionMetrics metrics = 1;
+  // Whose exceptions the numbers count (see ListExceptionsResponse.scope). Additive.
+  ExceptionListScope scope = 2;
+}
 
 message ApproveExceptionRequest {
   string exception_id = 1;
