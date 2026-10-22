@@ -1242,6 +1242,15 @@ message GetViolationDetailReply {
   // from an instant cache serve.
   bool served_from_cache = 38;
 
+  // vuln_fix_target is the upgrade decision of a vulnerable-dependency
+  // finding: the target version, the versions passed over and why, or the
+  // reason there is no deterministic target. Unset for every other rule. A
+  // finding recorded before the target was stored carries the decline
+  // ERR_VULN_FIX_TARGET_NOT_RECORDED once the fix cascade reaches it. Clients
+  // show the target and the skipped versions in the fix panel and key the
+  // decline text on vuln_fix_target.error_code.
+  VulnFixTarget vuln_fix_target = 39;
+
   // display_line_note is optional human-readable precision context
   // for the (file_path, line) display coordinate above. Hydrated
   // from the primary EvidenceLocation's Note field. Phase 1b's
@@ -1795,6 +1804,9 @@ message ViolationDetailFooter {
   // generated once and served to sibling violations reads as
   // "Cached", not as a fresh multi-minute generation).
   bool served_from_cache = 16;
+
+  // vuln_fix_target mirrors [GetViolationDetailReply.vuln_fix_target].
+  VulnFixTarget vuln_fix_target = 17;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
@@ -1934,6 +1946,84 @@ message ManualRefactorRemedy {
   string title = 1;
   // detail is an optional one-sentence elaboration.
   string detail = 2;
+}
+
+// VulnFixDeclineCode is the closed reason a vulnerable-dependency finding has
+// no deterministic upgrade target. Append new values, never renumber. The
+// client keys its localised text on error_code (the ERR_ string), not on the
+// server's English decline_message.
+enum VulnFixDeclineCode {
+  VULN_FIX_DECLINE_CODE_UNSPECIFIED = 0;
+  // The version index or the package's advisories could not be read (the
+  // registry, proxy or advisory source was unreachable). The server never
+  // guesses a version it cannot see.
+  VULN_FIX_DECLINE_CODE_VERSION_INDEX_UNAVAILABLE = 1;
+  // The package name is private (or unknown), so it is never sent to a public
+  // registry or proxy; there is no list of published versions to choose from.
+  VULN_FIX_DECLINE_CODE_VERSION_INDEX_REFUSED = 2;
+  // No published stable release above the current version, in the same major
+  // version, is outside every known advisory range.
+  VULN_FIX_DECLINE_CODE_NO_SAFE_VERSION_IN_MAJOR = 3;
+  // An advisory range could not be read as versions, so the server cannot say
+  // that any release is outside it.
+  VULN_FIX_DECLINE_CODE_ADVISORY_RANGE_UNREADABLE = 4;
+  // No advisory of the finding states a version range or an enumerated version
+  // (GIT ranges name commits), so nothing says which releases are safe.
+  VULN_FIX_DECLINE_CODE_NO_ADVISORY_RANGE = 5;
+  // The package is installed at more than one version (or nested), so no single
+  // upgrade target answers the finding.
+  VULN_FIX_DECLINE_CODE_NO_SINGLE_DECLARED_COPY = 6;
+  // The finding was recorded before upgrade targets were stored; the next scan
+  // chooses one.
+  VULN_FIX_DECLINE_CODE_FIX_TARGET_NOT_RECORDED = 7;
+}
+
+// VulnSkippedVersionReason is why a version was passed over while the lowest
+// safe upgrade target was chosen.
+enum VulnSkippedVersionReason {
+  VULN_SKIPPED_VERSION_REASON_UNSPECIFIED = 0;
+  // An advisory names this version as the fix, but it is not published.
+  VULN_SKIPPED_VERSION_REASON_NOT_PUBLISHED = 1;
+  // This published version is inside the range of the named advisory.
+  VULN_SKIPPED_VERSION_REASON_INSIDE_ADVISORY = 2;
+  // A safe release exists only in a higher major version; it is never chosen
+  // automatically.
+  VULN_SKIPPED_VERSION_REASON_OTHER_MAJOR_ONLY = 3;
+}
+
+// VulnSkippedVersion is one version passed over, with the advisory that
+// explains it.
+message VulnSkippedVersion {
+  string version = 1;
+  VulnSkippedVersionReason reason = 2;
+  // advisory_id is the GHSA, CVE or GO id of the advisory behind the reason.
+  string advisory_id = 3;
+}
+
+// VulnFixTarget is the structured upgrade decision of a vulnerable-dependency
+// finding: the lowest PUBLISHED stable version, in the same major version, that
+// is outside every known advisory range; or the reason there is none. The
+// server persists it with the finding, and every fix surface reads it instead
+// of parsing the finding's message.
+message VulnFixTarget {
+  // target_version is the version to upgrade to. Empty when decline_code is set.
+  string target_version = 1;
+  // skipped lists the versions passed over on the way to the target, or the
+  // ones that explain a decline, in ascending version order. It is bounded: at
+  // most 20 entries, the unpublished fixes first, then the versions inside an
+  // advisory nearest the target. skipped_total is how many were passed over.
+  repeated VulnSkippedVersion skipped = 2;
+  VulnFixDeclineCode decline_code = 3;
+  // error_code is the ERR_ code of decline_code, the client's localisation key.
+  string error_code = 4;
+  // decline_message is the English fallback for error_code.
+  string decline_message = 5;
+  // skipped_total is how many versions were passed over, which can exceed
+  // len(skipped).
+  int32 skipped_total = 6;
+  // skipped_truncated is true when skipped holds fewer entries than
+  // skipped_total.
+  bool skipped_truncated = 7;
 }
 
 // ManualRefactorGuidance is the STRUCTURED form of the manual-refactor
