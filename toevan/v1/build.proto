@@ -589,6 +589,15 @@ message NodeViolation {
   // events, "Add to exceptions" admin actions) don't need a second
   // lookup to resolve from adoption_id → blueprint_id.
   string blueprint_id = 24;
+
+  // vuln_fix_target is the stored upgrade decision of a vulnerable-dependency
+  // finding (the same message GetViolationDetailReply and the PR Gate list
+  // carry): the target version, or the typed decline, or the major-upgrade
+  // information. The inline card renders its upgrade line from THIS field,
+  // never from `message`. Unset for every other rule, for a finding recorded
+  // before decisions were stored and from a server that predates the field:
+  // the client then makes no upgrade claim.
+  VulnFixTarget vuln_fix_target = 26;
 }
 
 // FileViolation represents a violation on a file with no architectural node.
@@ -646,6 +655,10 @@ message FileViolation {
   // blueprint_id mirrors NodeViolation.blueprint_id — see field docs
   // there.
   string blueprint_id = 24;
+
+  // vuln_fix_target mirrors NodeViolation.vuln_fix_target (the code-view inline
+  // card and the hover popup render their upgrade line from it).
+  VulnFixTarget vuln_fix_target = 26;
 }
 
 message GraphMetrics {
@@ -1976,6 +1989,10 @@ enum VulnFixDeclineCode {
   // The finding was recorded before upgrade targets were stored; the next scan
   // chooses one.
   VULN_FIX_DECLINE_CODE_FIX_TARGET_NOT_RECORDED = 7;
+  // An advisory of the finding has an affected range with no fixed version (an
+  // unmaintained or unsafe-by-design package), so no upgrade can clear it. The
+  // honest remedy is to stop using the affected packages, or request an exception.
+  VULN_FIX_DECLINE_CODE_NO_FIXED_VERSION = 8;
 }
 
 // VulnSkippedVersionReason is why a version was passed over while the lowest
@@ -2024,6 +2041,12 @@ message VulnFixTarget {
   // skipped_truncated is true when skipped holds fewer entries than
   // skipped_total.
   bool skipped_truncated = 7;
+  // major_upgrade_version is set only with decline_code
+  // NO_SAFE_VERSION_IN_MAJOR: the lowest published stable release in a HIGHER
+  // major version that is outside every advisory. It is information, never a
+  // target: Apply Fix does not use it, and a major upgrade is the user's call.
+  // Empty otherwise (a target, any other decline, or no safe release at all).
+  string major_upgrade_version = 8;
 }
 
 // ManualRefactorGuidance is the STRUCTURED form of the manual-refactor
