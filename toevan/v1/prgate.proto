@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 import "toevan/v1/types.proto";
 import "toevan/v1/repo.proto"; // DeepCheckRequest (per-PR deep-check summary)
 import "toevan/v1/dashboard.proto"; // FileClass (PrFileClassChange)
+import "toevan/v1/build.proto"; // VulnFixTarget (the upgrade decision on the list)
 
 // ============================================
 // PRGateService — PR Enforcement & Violations
@@ -354,6 +355,12 @@ message EnrichedViolation {
   // the "pre-existing" vs "introduced" reason for an advisory is composed
   // client-side from is_new_in_pr (field 20), which is already carried here.
   GateEffect gate_effect = 30;
+
+  // vuln_fix_target is the same upgrade decision GetViolationDetailReply
+  // carries, read from the stored decision on the finding, so a card shows
+  // "Upgrade to X" (or the plain decline) without fetching the detail. Unset for
+  // every other rule and for a finding recorded before decisions were stored.
+  VulnFixTarget vuln_fix_target = 31;
 }
 
 // GateEffect is the block-vs-advisory axis of a SURFACED violation's gate
