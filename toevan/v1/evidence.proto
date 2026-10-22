@@ -905,6 +905,13 @@ message EraseDataSubjectResponse {
   int64 export_jobs_redacted = 4;       // evidence_export_jobs rows whose author filter was nulled
   int64 ledger_runs_redacted = 5;       // 0 today — the immutable ledger holds no PII
   int64 inbox_payloads_erased = 6;      // evidence inbox rows whose received bytes named the person and were dropped
+  // Rows that name the login with NO numeric GitHub id and were KEPT, because another person held the same login
+  // (GitHub recycles logins) and such a row cannot be told from that person's: evidence records, PR checks and
+  // export jobs of the login, policy approvals and author rows of the login with no id, and inbox payloads whose
+  // only mention of the person has no id (a login alone, a pusher, a pre-2017 noreply address). Server-filled;
+  // 0 when nothing was kept, which is the case whenever the login was held by one person only. The operator can
+  // erase these by hand only after deciding whose they are.
+  int64 login_only_rows_kept = 7;
 }
 
 // ── Evidence retention ──
