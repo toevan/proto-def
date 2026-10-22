@@ -890,6 +890,8 @@ message EraseDataSubjectRequest {
   // login on another id is left alone and a rename is followed. Mentions that carry the login with no id
   // (a login with no id, a linked commit author's username, the pusher, a pre-2017 noreply address) go to
   // this id, except in a delivery that pairs the login with a different id: that was another holder.
+  // Required (ERR_EVIDENCE_ERASURE_GITHUB_ID_REQUIRED) when the only source of the person's id is a sign-in
+  // row: its username is written once, at sign-up, and may name someone who renamed.
   int64 github_user_id = 3;
   // Emails of the person that Toevan does not know (an unlinked commit email, a Co-authored-by address),
   // given by the operator. Matched case-insensitively against the evidence inbox payloads, in commit author
@@ -909,8 +911,10 @@ message EraseDataSubjectResponse {
   // (GitHub recycles logins) and such a row cannot be told from that person's: evidence records, PR checks and
   // export jobs of the login, policy approvals and author rows of the login with no id, and inbox payloads whose
   // only mention of the person has no id (a login alone, a pusher, a pre-2017 noreply address). Server-filled;
-  // 0 when nothing was kept, which is the case whenever the login was held by one person only. The operator can
-  // erase these by hand only after deciding whose they are.
+  // 0 when nothing was kept. One holder of the login usually keeps nothing, but a former login of the person that
+  // another person also held, and an ambiguous <digits> noreply address that may be another person's, are counted
+  // even when the requested login had one holder. The operator can erase these by hand only after deciding whose
+  // they are.
   int64 login_only_rows_kept = 7;
 }
 
