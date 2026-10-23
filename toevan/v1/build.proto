@@ -2047,6 +2047,11 @@ message VulnFixTarget {
   // target: Apply Fix does not use it, and a major upgrade is the user's call.
   // Empty otherwise (a target, any other decline, or no safe release at all).
   string major_upgrade_version = 8;
+  // unresolved_advisory_ids lists the advisories with no fixed version that
+  // target_version leaves open: the target is the lowest release outside every
+  // advisory that has a fix, and these have none. Empty when the target resolves
+  // every advisory of the card, for a decline, and from an older server.
+  repeated string unresolved_advisory_ids = 9;
 }
 
 // ManualRefactorGuidance is the STRUCTURED form of the manual-refactor
