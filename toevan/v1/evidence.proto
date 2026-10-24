@@ -131,6 +131,22 @@ service EvidenceService {
   rpc ListChangeEvidenceReports(ListChangeEvidenceReportsRequest) returns (ListChangeEvidenceReportsResponse);
   rpc GetChangeEvidenceReport(GetChangeEvidenceReportRequest) returns (GetChangeEvidenceReportResponse);
   rpc DownloadChangeEvidenceReport(DownloadChangeEvidenceReportRequest) returns (DownloadChangeEvidenceReportResponse);
+
+  // Retrieves, from GitHub, the process facts of an audit period that began before capture did, and seals them labelled
+  // as retrieved later (never as captured at the event). One step of a backfill of ONE repository and ONE period: it seals
+  // a bounded number of the merged changes (or, in its second phase, of the commits no merged change explains), makes a
+  // bounded number of GitHub requests, and returns a cursor. Call it again with next_cursor until done. There is no
+  // scheduler: nothing runs unless an admin calls this. When GitHub's quota runs out it stops and sets deferred_until;
+  // it never waits the quota out. A change that already has a record (live capture or an earlier backfill) is left as it
+  // is: the first seal wins.
+  //
+  // Authorization: org ADMIN of org_id, or platform staff holding an ACTIVE admin-scope support grant on it (the guard
+  // is RequireOrgAdmin; a read-scope grant, an auditor, a compliance member and an API key are refused). repo_id is
+  // resolved against org_id. Same Compliance Reports flag and plan gate as GenerateChangeEvidenceReport.
+  // Errors: PERMISSION_DENIED, NOT_FOUND (no such repository in the org), INVALID_ARGUMENT (the period is empty, over 366
+  // days or in the future; the cursor is not one a backfill returned), FAILED_PRECONDITION (the backfill is not enabled
+  // on this server, or GitHub does not show the repository to the installation).
+  rpc BackfillProcessEvidence(BackfillProcessEvidenceRequest) returns (BackfillProcessEvidenceResponse);
 }
 
 // ── Transparency log setting ──
@@ -1085,6 +1101,43 @@ message GetChangeEvidenceReportResponse {
   // The canonical manifest JSON of a COMPLETED report, byte for byte what was digested. Empty
   // until completed. The client renders the viewer from it.
   bytes manifest_json = 2;
+}
+
+message BackfillProcessEvidenceRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  // The period, inclusive start and exclusive end, at most 366 days, not in the future. Required.
+  google.protobuf.Timestamp period_from = 3;
+  google.protobuf.Timestamp period_to = 4;
+  // Empty starts; otherwise the next_cursor of the previous step.
+  string cursor = 5;
+  // How many changes (or commits) this step may take: default 10, at most 25.
+  int32 max_changes = 6;
+}
+message BackfillCounts {
+  // Records this step wrote.
+  int32 sealed = 1;
+  // Already had a record (live capture or an earlier backfill); left as it is.
+  int32 already_sealed = 2;
+  // GitHub did not give the item (deleted, or it changed under the read); nothing was sealed for it.
+  int32 unreadable = 3;
+}
+message BackfillProcessEvidenceResponse {
+  // The merged changes met in this step.
+  BackfillCounts changes = 1;
+  // The commits of the history walk met in this step (sealed: unreviewed changes written).
+  BackfillCounts history = 2;
+  // Commits of the walk that a merged pull request explains, so none was written for them.
+  int32 linked_commits = 3;
+  // Continue with this; empty when done.
+  string next_cursor = 4;
+  bool done = 5;
+  // Set when GitHub's quota ran out: call again with next_cursor after this time.
+  google.protobuf.Timestamp deferred_until = 6;
+  // The installation may not list what the step needed: a gap was sealed and the phase is over.
+  bool permission_missing = 7;
+  // GitHub requests this step made.
+  int32 github_requests = 8;
 }
 
 message DownloadChangeEvidenceReportRequest {
