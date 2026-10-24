@@ -1138,6 +1138,9 @@ message BackfillProcessEvidenceResponse {
   bool permission_missing = 7;
   // GitHub requests this step made.
   int32 github_requests = 8;
+  // Commits of the history walk that a sealed push record already lists: push capture sealed them, so the walk wrote
+  // nothing for them. (The walk also never enters the period in which push capture was live.)
+  int32 already_captured_commits = 9;
 }
 
 message DownloadChangeEvidenceReportRequest {
