@@ -1057,6 +1057,9 @@ enum ChangeEvidenceArtifactKind {
   // The canonical manifest the PDF and the viewer both render. Its SHA-256 is the report's
   // content digest printed on the cover.
   CHANGE_EVIDENCE_ARTIFACT_KIND_MANIFEST = 3;
+  // One row per commit that reached a default branch in the period, with the sealed record it matched
+  // (or the reason it matched none). Its SHA-256 is bound into the manifest's content digest.
+  CHANGE_EVIDENCE_ARTIFACT_KIND_POPULATION_CSV = 4;
 }
 
 // Why a report is FAILED. A closed set so a client never shows a raw error.
@@ -1079,6 +1082,8 @@ message GenerateChangeEvidenceReportRequest {
   google.protobuf.Timestamp period_to = 5;
   // Free text printed on the cover ("Prepared for"), at most 200 characters. Optional.
   string prepared_for = 6;
+  // A contact for questions about the report ("How to check" prints it), at most 200 characters. Optional.
+  string contact = 7;
 }
 message GenerateChangeEvidenceReportResponse {
   ChangeEvidenceReportRow report = 1;
@@ -1179,4 +1184,18 @@ message ChangeEvidenceReportRow {
   int32 record_count = 13;               // sealed code-verdict records in scope and period
   string engine_version = 14;            // the generating server's engine commit
   repeated ChangeEvidenceArtifact artifacts = 15;  // empty until completed
+  // Pages in the PDF; 0 until completed, and for reports made before the page map existed.
+  int32 pdf_page_count = 16;
+  // Where each section starts in the PDF, in print order. Empty until completed, and for older reports.
+  repeated ChangeEvidenceReportSection sections = 17;
+}
+
+// One section of the report and the pages it occupies in the PDF (the viewer's thumbnail rail and its
+// "page N" links read this).
+message ChangeEvidenceReportSection {
+  string key = 1;          // stable key: "cover", "summary", "scope", ...
+  string number = 2;       // "1", "2", ... ; empty for the cover and the appendix
+  string title = 3;
+  int32 first_page = 4;    // 1-based
+  int32 page_count = 5;
 }
