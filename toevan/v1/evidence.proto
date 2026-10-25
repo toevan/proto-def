@@ -1060,6 +1060,10 @@ enum ChangeEvidenceArtifactKind {
   // One row per commit that reached a default branch in the period, with the sealed record it matched
   // (or the reason it matched none). Its SHA-256 is bound into the manifest's content digest.
   CHANGE_EVIDENCE_ARTIFACT_KIND_POPULATION_CSV = 4;
+  // The page document (schema 3): the sections and blocks the viewer and the PDF both draw. Built
+  // from the manifest's facts and stored beside it with its own SHA-256; never part of the content
+  // digest.
+  CHANGE_EVIDENCE_ARTIFACT_KIND_DOCUMENT = 5;
 }
 
 // Why a report is FAILED. A closed set so a client never shows a raw error.
@@ -1106,6 +1110,10 @@ message GetChangeEvidenceReportResponse {
   // The canonical manifest JSON of a COMPLETED report, byte for byte what was digested. Empty
   // until completed. The client renders the viewer from it.
   bytes manifest_json = 2;
+  // The page document JSON of a COMPLETED schema 3 report, byte for byte the stored document and
+  // checked against its recorded SHA-256. The client draws the viewer from it. Empty until
+  // completed, and for a report built before schema 3 (its manifest carries its own pages).
+  bytes document_json = 3;
 }
 
 message BackfillProcessEvidenceRequest {
