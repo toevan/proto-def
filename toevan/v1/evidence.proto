@@ -944,6 +944,12 @@ message EraseDataSubjectRequest {
   // this id, except in a delivery that pairs the login with a different id: that was another holder.
   // Required (ERR_EVIDENCE_ERASURE_GITHUB_ID_REQUIRED) when the only source of the person's id is a sign-in
   // row: its username is written once, at sign-up, and may name someone who renamed.
+  // Without it, the erasure goes on only when GitHub confirms (GET /users/{login}) that the login's current
+  // holder is the id the organisation's data names; otherwise nothing is erased and the answer asks for this id:
+  // ERR_EVIDENCE_ERASURE_GITHUB_ID_REQUIRED (the data names no id for the login), or
+  // ERR_EVIDENCE_ERASURE_LOGIN_HOLDER_MISMATCH (GitHub's holder is another account, or none). A lookup GitHub
+  // could not answer now is UNAVAILABLE with ERR_EVIDENCE_ERASURE_LOGIN_LOOKUP_UNAVAILABLE: try again later, or
+  // give this id.
   int64 github_user_id = 3;
   // Emails of the person that Toevan does not know (an unlinked commit email, a Co-authored-by address),
   // given by the operator. Matched case-insensitively against the evidence inbox payloads, in commit author
