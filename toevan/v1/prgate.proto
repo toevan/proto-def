@@ -592,7 +592,9 @@ message ListPullRequestsResponse {
   repeated PullRequest pull_requests = 1;
   int32 total = 2;
   // total counts only the open pull requests the server read: a repository's open list was cut at the GitHub
-  // client's page bound (100 pages), or GitHub did not answer for a repository whose list was then skipped. The
+  // client's page bound (100 pages), GitHub did not answer for a repository whose list was then skipped, a connected
+  // repository could not be asked at all (its full name or installation id does not parse), or GitHub did not answer for
+  // any repository and the stored gate state is served (no list was read, so total is the stored rows' count). The
   // organisation has at least total; render it as "at least N". False when every repository's list was read whole.
   // Additive: an older server never sets it.
   bool total_is_lower_bound = 3;
