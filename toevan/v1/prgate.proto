@@ -592,12 +592,19 @@ message ListPullRequestsResponse {
   repeated PullRequest pull_requests = 1;
   int32 total = 2;
   // total counts only the open pull requests the server read: a repository's open list was cut at the GitHub
-  // client's page bound (100 pages), GitHub did not answer for a repository whose list was then skipped, a connected
-  // repository could not be asked at all (its full name or installation id does not parse), or GitHub did not answer for
-  // any repository and the stored gate state is served (no list was read, so total is the stored rows' count). The
-  // organisation has at least total; render it as "at least N". False when every repository's list was read whole.
-  // Additive: an older server never sets it.
+  // client's page bound (100 pages), GitHub did not answer for a repository whose list was then skipped, or a connected
+  // repository could not be asked at all (its full name or installation id does not parse). The organisation has at
+  // least total open pull requests; render it as "at least N". False when every repository's list was read whole.
+  // Always false when served_from_stored is true: a total that counts no open pull requests is not a lower bound of
+  // them. Additive: an older server never sets it.
   bool total_is_lower_bound = 3;
+  // True when GitHub could not be read for any repository and the list is the stored gate state: the last verdicts of
+  // the pull requests the gate has checked, open or since merged or closed, not the open pull requests of now. Then
+  // total is not a count of open pull requests and must not be shown as one (it is the number of pull requests in this
+  // response), and no pull request of the list is known to still be open. Show the list as the last known gate state,
+  // not as the organisation's open pull requests. False when GitHub was read for at least one repository. Additive: an
+  // older server never sets it.
+  bool served_from_stored = 4;
 }
 
 message ListPrHistoryRequest {
