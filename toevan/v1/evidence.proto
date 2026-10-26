@@ -136,16 +136,18 @@ service EvidenceService {
   // as retrieved later (never as captured at the event). One step of a backfill of ONE repository and ONE period: it seals
   // a bounded number of the merged changes (or, in its second phase, of the commits no merged change explains), makes a
   // bounded number of GitHub requests, and returns a cursor. Call it again with next_cursor until done. There is no
-  // scheduler: nothing runs unless an admin calls this. When GitHub's quota runs out it stops and sets deferred_until;
-  // it never waits the quota out. A change that already has a record (live capture or an earlier backfill) is left as it
-  // is: the first seal wins.
+  // scheduler: nothing runs unless an admin calls this. When GitHub's quota runs out, or GitHub answers a 403 that no
+  // documented header explains, it stops and sets deferred_until with deferred_reason; it never waits it out. A change
+  // that already has a record (live capture or an earlier backfill) is left as it is: the first seal wins.
   //
   // Authorization: org ADMIN of org_id, or platform staff holding an ACTIVE admin-scope support grant on it (the guard
   // is RequireOrgAdmin; a read-scope grant, an auditor, a compliance member and an API key are refused). repo_id is
   // resolved against org_id. Same Compliance Reports flag and plan gate as GenerateChangeEvidenceReport.
   // Errors: PERMISSION_DENIED, NOT_FOUND (no such repository in the org), INVALID_ARGUMENT (the period is empty, over 366
   // days or in the future; the cursor is not one a backfill returned), FAILED_PRECONDITION (the backfill is not enabled
-  // on this server, or GitHub does not show the repository to the installation).
+  // on this server, GitHub does not show the repository to the installation, or ERR_EVIDENCE_BACKFILL_GITHUB_REFUSED:
+  // GitHub kept answering a 403 that no documented header explains past the backfill's retry bound; call again with
+  // the same cursor once the cause is fixed, for example an organisation IP allow list that does not admit the App).
   rpc BackfillProcessEvidence(BackfillProcessEvidenceRequest) returns (BackfillProcessEvidenceResponse);
 }
 
@@ -537,6 +539,40 @@ message EvidenceVerification {
   EvidencePublicLogStatus public_log_status = 26;
   // When the platform's public log last took an entry of this org (persisted); unset when it never has.
   google.protobuf.Timestamp public_log_last_published_at = 27;
+  // Signed attestations of a record kind this server's verifier version does not know (a newer image signed
+  // them). Their signature, payload hash and binding to the ledger (record hash, chain link, record id, subject)
+  // held; their kind-specific content was NOT judged. They are neither verified nor failed: any makes the result
+  // PARTIAL (all_checks_passed false, no first_breakage). Additive: a client that does not read it still sees
+  // all_checks_passed false and must not render the result as a pass.
+  int64 attestations_not_judged = 28;
+  // The outcome in one word, the same three outcomes `toevan audit verify-attestations` prints (PASS, PARTIAL,
+  // FAIL, exit codes 0, 3 and 1) and the stored org verification keeps. Render it, never derive it again from
+  // the counts: a PARTIAL is neither a pass nor a failure.
+  EvidenceVerificationOutcome outcome = 29;
+  // attestations_not_judged by record kind (the kind as the stored record names it), sorted by kind. Empty when
+  // attestations_not_judged is 0.
+  repeated EvidenceNotJudgedKind not_judged_kinds = 30;
+}
+
+// The outcome of one verification.
+enum EvidenceVerificationOutcome {
+  // Not stated (a server older than this field): read all_checks_passed and nothing_to_verify.
+  EVIDENCE_VERIFICATION_OUTCOME_UNSPECIFIED = 0;
+  // Something was verified and every check held: all_checks_passed is true.
+  EVIDENCE_VERIFICATION_OUTCOME_PASSED = 1;
+  // Nothing failed, but some attestations were not judged by this server's verifier version
+  // (attestations_not_judged > 0). Not a pass and not a failure; first_breakage is unset.
+  EVIDENCE_VERIFICATION_OUTCOME_PARTIAL = 2;
+  // A check failed: first_breakage names the first one.
+  EVIDENCE_VERIFICATION_OUTCOME_FAILED = 3;
+  // The org has no ledger records yet (nothing_to_verify). Never a pass.
+  EVIDENCE_VERIFICATION_OUTCOME_NOTHING_TO_VERIFY = 4;
+}
+
+// How many attestations of one record kind were not judged.
+message EvidenceNotJudgedKind {
+  string kind = 1;
+  int64 count = 2;
 }
 
 message VerifyEvidenceChainRequest {
@@ -1145,7 +1181,8 @@ message BackfillProcessEvidenceResponse {
   // Continue with this; empty when done.
   string next_cursor = 4;
   bool done = 5;
-  // Set when GitHub's quota ran out: call again with next_cursor after this time.
+  // Set when the step stopped to wait for GitHub: call again with next_cursor after this time. deferred_reason
+  // says why.
   google.protobuf.Timestamp deferred_until = 6;
   // The installation may not list what the step needed: a gap was sealed and the phase is over.
   bool permission_missing = 7;
@@ -1154,6 +1191,19 @@ message BackfillProcessEvidenceResponse {
   // Commits of the history walk that a sealed push record already lists: push capture sealed them, so the walk wrote
   // nothing for them. (The walk also never enters the period in which push capture was live.)
   int32 already_captured_commits = 9;
+  // Why deferred_until is set; UNSPECIFIED when it is not.
+  BackfillDeferReason deferred_reason = 10;
+}
+
+// Why a backfill step stopped to wait for GitHub.
+enum BackfillDeferReason {
+  BACKFILL_DEFER_REASON_UNSPECIFIED = 0;
+  // GitHub's rate limit: a 429, or a 403 whose Retry-After or x-ratelimit-remaining: 0 headers say so.
+  BACKFILL_DEFER_REASON_RATE_LIMITED = 1;
+  // A 403 that no documented header explains (no rate-limit header, no X-Accepted-GitHub-Permissions the
+  // installation lacks): GitHub's guidance is to wait at least a minute and back off exponentially. Repeated
+  // past the backfill's bound, the step is refused with ERR_EVIDENCE_BACKFILL_GITHUB_REFUSED instead.
+  BACKFILL_DEFER_REASON_GITHUB_FORBIDDEN = 2;
 }
 
 message DownloadChangeEvidenceReportRequest {
