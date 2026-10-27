@@ -1294,11 +1294,28 @@ message ChangeEvidenceReportRow {
   repeated ChangeEvidenceReportSection sections = 17;
   // What generated_by is, so a viewer can say "no name is set on GitHub" instead of presenting a login as a name.
   ChangeEvidenceGeneratedByBasis generated_by_basis = 18;
+  // Where the GitHub profile behind generated_by was read: at the request (GitHub was asked when the report was
+  // requested) or at the user's last sign-in (GitHub could not be asked then, so the stored profile is stated with the
+  // date it was read). Unspecified for a non-GitHub generator and for a report made before the source was recorded.
+  ChangeEvidenceGeneratedBySource generated_by_source = 19;
+  // When that profile was read, on Toevan's clock (unset when generated_by_source is unspecified).
+  google.protobuf.Timestamp generated_by_read_at = 20;
+}
+
+// Where the GitHub profile a report names its generator from was read.
+enum ChangeEvidenceGeneratedBySource {
+  CHANGE_EVIDENCE_GENERATED_BY_SOURCE_UNSPECIFIED = 0;
+  // GitHub was asked with the user's own token when the report was requested.
+  CHANGE_EVIDENCE_GENERATED_BY_SOURCE_GITHUB_AT_REQUEST = 1;
+  // GitHub could not be asked at the request; the profile Toevan read at the user's last GitHub sign-in is stated, with
+  // the date it was read.
+  CHANGE_EVIDENCE_GENERATED_BY_SOURCE_GITHUB_AT_SIGN_IN = 2;
 }
 
 // What a report's generated_by names.
 enum ChangeEvidenceGeneratedByBasis {
-  // A report made before the basis was recorded: generated_by is whatever was snapshotted then (possibly an email).
+  // A report made before the basis was recorded: generated_by is whatever was snapshotted then (possibly an email, or
+  // empty).
   CHANGE_EVIDENCE_GENERATED_BY_BASIS_UNSPECIFIED = 0;
   // The full name GitHub states for the user.
   CHANGE_EVIDENCE_GENERATED_BY_BASIS_GITHUB_NAME = 1;
@@ -1306,7 +1323,8 @@ enum ChangeEvidenceGeneratedByBasis {
   CHANGE_EVIDENCE_GENERATED_BY_BASIS_GITHUB_LOGIN = 2;
   // The user did not sign in with GitHub; generated_by is the name their sign-in provider states.
   CHANGE_EVIDENCE_GENERATED_BY_BASIS_ACCOUNT_NAME = 3;
-  // No name is held for the caller (for example an API key whose creator is gone); generated_by is "unknown".
+  // Nothing is named: no name is held for the caller (for example an API key whose creator is gone) or their GitHub
+  // profile was never read. generated_by is EMPTY, never a placeholder; the viewer says "not stated".
   CHANGE_EVIDENCE_GENERATED_BY_BASIS_NOT_STATED = 4;
 }
 
