@@ -1151,8 +1151,11 @@ message GenerateChangeEvidenceReportRequest {
   google.protobuf.Timestamp period_to = 5;
   // Free text printed on the cover ("Prepared for"), at most 200 characters. Optional.
   string prepared_for = 6;
-  // A contact for questions about the report ("How to check" prints it), at most 200 characters. Optional.
-  string contact = 7;
+  // The contact for questions is no longer typed per report: every report prints the org's VERIFIED audit
+  // contact (OrgService.SetOrgAuditContact), or states that none is set. A value an older client sends in
+  // field 7 is ignored.
+  reserved 7;
+  reserved "contact";
 }
 message GenerateChangeEvidenceReportResponse {
   ChangeEvidenceReportRow report = 1;
@@ -1274,7 +1277,10 @@ message ChangeEvidenceReportRow {
   google.protobuf.Timestamp period_from = 6;
   google.protobuf.Timestamp period_to = 7;
   string prepared_for = 8;
-  string generated_by = 9;               // display name or email of the caller
+  // Who generated the report: the user's full name as GitHub states it, or their GitHub login when GitHub states
+  // none (see generated_by_basis). Never an email address on a report made after generated_by_basis existed; a
+  // report made before it may hold the email the caller was signed in with.
+  string generated_by = 9;
   google.protobuf.Timestamp created_at = 10;
   google.protobuf.Timestamp completed_at = 11;
   // The report id's content digest, "sha256:<hex>" of the canonical manifest. Empty until completed.
@@ -1286,6 +1292,22 @@ message ChangeEvidenceReportRow {
   int32 pdf_page_count = 16;
   // Where each section starts in the PDF, in print order. Empty until completed, and for older reports.
   repeated ChangeEvidenceReportSection sections = 17;
+  // What generated_by is, so a viewer can say "no name is set on GitHub" instead of presenting a login as a name.
+  ChangeEvidenceGeneratedByBasis generated_by_basis = 18;
+}
+
+// What a report's generated_by names.
+enum ChangeEvidenceGeneratedByBasis {
+  // A report made before the basis was recorded: generated_by is whatever was snapshotted then (possibly an email).
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_UNSPECIFIED = 0;
+  // The full name GitHub states for the user.
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_GITHUB_NAME = 1;
+  // GitHub states no name for the user, so generated_by is their GitHub login.
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_GITHUB_LOGIN = 2;
+  // The user did not sign in with GitHub; generated_by is the name their sign-in provider states.
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_ACCOUNT_NAME = 3;
+  // No name is held for the caller (for example an API key whose creator is gone); generated_by is "unknown".
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_NOT_STATED = 4;
 }
 
 // One section of the report and the pages it occupies in the PDF (the viewer's thumbnail rail and its
