@@ -131,6 +131,15 @@ service EvidenceService {
   rpc ListChangeEvidenceReports(ListChangeEvidenceReportsRequest) returns (ListChangeEvidenceReportsResponse);
   rpc GetChangeEvidenceReport(GetChangeEvidenceReportRequest) returns (GetChangeEvidenceReportResponse);
   rpc DownloadChangeEvidenceReport(DownloadChangeEvidenceReportRequest) returns (DownloadChangeEvidenceReportResponse);
+  // The stored PDF of a COMPLETED report, as bytes through the API (for a viewer that cannot read the storage link:
+  // a browser cannot fetch it from a bucket that sends no CORS headers). Same authorization, org scope and
+  // not-found answer as GetChangeEvidenceReport (org admin, compliance or auditor; another org's report is NOT_FOUND),
+  // and like Download it is recorded in the audit trail. The server reads the stored file, computes its SHA-256 and
+  // compares it with the digest the report recorded for its PDF: bytes that do not match are never returned.
+  // Errors: PERMISSION_DENIED, NOT_FOUND (no such report in the org, or the stored file is gone: ERR_REPORT_PDF_MISSING),
+  // FAILED_PRECONDITION (the report is not completed: ERR_REPORT_NOT_READY; the stored file is not the one the report
+  // recorded: ERR_REPORT_PDF_MISMATCH; the file is larger than the server serves this way: ERR_REPORT_PDF_TOO_LARGE).
+  rpc GetChangeEvidenceReportPdf(GetChangeEvidenceReportPdfRequest) returns (GetChangeEvidenceReportPdfResponse);
 
   // Retrieves, from GitHub, the process facts of an audit period that began before capture did, and seals them labelled
   // as retrieved later (never as captured at the event). One step of a backfill of ONE repository and ONE period: it seals
@@ -1236,6 +1245,17 @@ message DownloadChangeEvidenceReportResponse {
   string filename = 2;
   string sha256 = 3;                     // the file's SHA-256, "sha256:<hex>"
   int64 size_bytes = 4;
+}
+
+message GetChangeEvidenceReportPdfRequest {
+  string org_id = 1;
+  string report_id = 2;
+}
+message GetChangeEvidenceReportPdfResponse {
+  // The PDF, byte for byte the stored file, already checked against sha256.
+  bytes pdf = 1;
+  // The PDF's SHA-256, "sha256:<hex>", the digest the report recorded for its PDF (the same as Download's sha256).
+  string sha256 = 2;
 }
 
 message ChangeEvidenceArtifact {
