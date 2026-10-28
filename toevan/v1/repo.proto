@@ -248,6 +248,8 @@ enum IndexPhase {
   INDEX_PHASE_INCREMENTAL_INDEXING = 12;
   // Terminal: a newer run took over; this run's results were discarded. Not a failure.
   INDEX_PHASE_SUPERSEDED = 13;
+  // Terminal: the repository was disconnected while this run was in progress and the disconnect ended the run. Not a failure.
+  INDEX_PHASE_DISCONNECTED = 14;
 }
 
 message LanguageLspStatus {
