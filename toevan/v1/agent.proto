@@ -324,6 +324,12 @@ message AgentProgressUpdate {
   // is then the whole reason). A code a client does not know is shown as the
   // server's `message`, never guessed. Empty on success and non-terminal frames.
   string decline_code = 14;
+
+  // What a declined fix asks the user to do by hand: the package and the version of the
+  // upgrade (for example "golang.org/x/text v0.3.9"; several are joined by ", "), set with
+  // decline_code ERR_VULN_FIX_NEEDS_MANUAL_EDIT so the client can say WHICH upgrade to apply.
+  // A typed field, never read from `message`. Empty when the run stated none.
+  string decline_target = 15;
 }
 
 // ApplyFixViolationOutcome reports whether one violation in an Apply Fix
