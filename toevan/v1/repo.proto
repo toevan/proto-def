@@ -20,7 +20,12 @@ service RepoService {
   rpc OnboardRepos(OnboardReposRequest) returns (OnboardReposResponse);
   rpc GetRepo(GetRepoRequest) returns (GetRepoResponse);
   rpc ListRepos(ListReposRequest) returns (ListReposResponse);
+  // Disconnect a repository in Toevan: its PR gate and evidence capture stop, a capture_stopped is sealed saying a person did it, and every
+  // sealed record is kept. The repository stays listed as disconnected. Org admin only; audited.
   rpc DisconnectRepo(DisconnectRepoRequest) returns (DisconnectRepoResponse);
+  // Connect a disconnected repository again: a read of the GitHub installation must show it, the repository re-indexes and the capture
+  // starts again from that action. Org admin only; audited; counts against the plan's repository limit again.
+  rpc ReconnectRepo(ReconnectRepoRequest) returns (ReconnectRepoResponse);
 
   // Indexing
   rpc ReindexRepo(ReindexRepoRequest) returns (ReindexRepoResponse);
@@ -135,6 +140,32 @@ message Repo {
   // compliance_rate (it covers evaluated rules only) and never count as passing, so a
   // client can say "100% of evaluated rules, 3 pending".
   int32 rules_pending = 29;
+
+  // Why Toevan is not capturing this repository, from the capture state (the one source). NONE while capture runs, never began, or the
+  // cause is not stated. Read together with status: DISCONNECTED status with a person's stop is "disconnected in Toevan".
+  RepoCaptureStop capture_stop = 30;
+
+  // Why the repository's status was flipped to DISCONNECTED, as Toevan STATED it in the same write as the flip. NONE while the repository is
+  // not disconnected, and for a flip made before causes were recorded: Toevan did not record why, and nothing infers it (not from the
+  // capture's stop, not from the absence of an audit entry).
+  RepoDisconnectCause disconnect_cause = 31;
+}
+
+// Why a repository was disconnected (repositories.disconnect_cause).
+enum RepoDisconnectCause {
+  REPO_DISCONNECT_CAUSE_NONE = 0;                 // not disconnected, or not recorded
+  REPO_DISCONNECT_CAUSE_PERSON = 1;               // a person with the organization's admin role; the audit log names who
+  REPO_DISCONNECT_CAUSE_SUPPORT_GRANT = 2;        // Toevan support under an admin-scope access grant the organization approved
+  REPO_DISCONNECT_CAUSE_API_KEY = 3;              // an API key of the organization
+  REPO_DISCONNECT_CAUSE_INSTALLATION_REMOVED = 4; // GitHub said the App was uninstalled; Toevan disconnected the repository
+}
+
+// Why a repository's capture is stopped (evidence_capture_state.stopped_reason).
+enum RepoCaptureStop {
+  REPO_CAPTURE_STOP_NONE = 0;               // running, never started, or the cause is not stated
+  REPO_CAPTURE_STOP_DISCONNECTED = 1;       // disconnected in Toevan (a person, Toevan support under a grant, or an API key); the sealed stop says which
+  REPO_CAPTURE_STOP_ACCESS_LOST = 2;        // GitHub's installation no longer lists the repository (removed from its selection, transferred, deleted)
+  REPO_CAPTURE_STOP_INSTALLATION_ENDED = 3; // the installation is suspended or removed: restoring it on GitHub, not the repository access, is the remedy
 }
 
 enum RepoStatus {
@@ -217,6 +248,8 @@ enum IndexPhase {
   INDEX_PHASE_INCREMENTAL_INDEXING = 12;
   // Terminal: a newer run took over; this run's results were discarded. Not a failure.
   INDEX_PHASE_SUPERSEDED = 13;
+  // Terminal: the repository was disconnected while this run was in progress and the disconnect ended the run. Not a failure.
+  INDEX_PHASE_DISCONNECTED = 14;
 }
 
 message LanguageLspStatus {
@@ -465,11 +498,12 @@ message ListReposRequest {
 // Counts are over ALL repos in the org (or project), not just the current page.
 message RepoListSummary {
   int32 total            = 1;   // all non-deleted repos
-  int32 healthy          = 2;   // violation_count == 0
-  int32 warning          = 3;   // violation_count 1–5
-  int32 critical         = 4;   // violation_count > 5
+  int32 healthy          = 2;   // governed repos with violation_count == 0
+  int32 warning          = 3;   // governed repos with violation_count 1–5
+  int32 critical         = 4;   // governed repos with violation_count > 5
   int32 open_violations  = 5;   // SUM(violation_count) across all repos — OPEN only: actively-excepted findings are excluded
   int32 excepted_findings = 6;  // current violations under an ACTIVE approved exception — accepted risk, shown, never hidden; open + excepted = every current violation
+  int32 disconnected     = 7;   // repos disconnected in Toevan (or whose GitHub access ended): listed, not evaluated. total = healthy + warning + critical + disconnected
 }
 
 message ListReposResponse {
@@ -482,6 +516,12 @@ message DisconnectRepoRequest { string repo_id = 1; }
 message DisconnectRepoResponse {
   bool success = 1;
   string error = 2;
+  Repo repo = 3;                         // the repository after the call (status DISCONNECTED)
+}
+
+message ReconnectRepoRequest { string repo_id = 1; }
+message ReconnectRepoResponse {
+  Repo repo = 1;                         // the repository after the call (re-indexing)
 }
 
 message SetRepoBadgeEnabledRequest {

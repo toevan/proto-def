@@ -86,7 +86,7 @@ message Notification {
   // violation|blueprint|agent|exception|system|report.
   string category = 4;
   // Machine discriminator the canvas dispatches reactivity on:
-  // pr_closed|pr_merged|index_started|index_completed|index_failed.
+  // pr_closed|pr_merged|index_started|index_completed|index_failed|index_disconnected.
   string event_type = 5;
   string title = 6;
   string body = 7;
