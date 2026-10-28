@@ -6,6 +6,7 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 import "google/protobuf/timestamp.proto";
 import "toevan/v1/blueprint.proto";
+import "toevan/v1/types.proto";
 
 // ============================================
 // RepoService — GitHub Repos, Onboarding, Indexing
@@ -74,6 +75,14 @@ service RepoService {
   rpc AssignBlueprint(AssignBlueprintRequest) returns (AssignBlueprintResponse);
   rpc RemoveBlueprint(RemoveBlueprintRequest) returns (RemoveBlueprintResponse);
   rpc ListRepoBlueprints(ListRepoBlueprintsRequest) returns (ListRepoBlueprintsResponse);
+
+  // The repository's OPEN findings on its default branch, one page at a time. The rows are
+  // open_violation_findings, the view behind every per-repository open number (the Repositories
+  // list, the repo page header and the per-rule counts), so the list and those numbers cannot
+  // disagree: an excepted, set-aside or retired finding is on neither. total is counted by the
+  // same query as the page. A failed read is an error, never an empty list. Read-only: whoever
+  // can read the repository can read its findings.
+  rpc ListRepositoryOpenFindings(ListRepositoryOpenFindingsRequest) returns (ListRepositoryOpenFindingsResponse);
 }
 
 // ── Core Types ──
@@ -744,4 +753,33 @@ message RepoChange {
   // and subscribes to the per-job progress stream exactly as the dispatching
   // device does.
   string index_job_id = 6;
+}
+
+message ListRepositoryOpenFindingsRequest {
+  string repo_id = 1;
+  // Rows per page; 0 takes the server default, and the server caps it.
+  int32 page_size = 2;
+  // The next_page_token of the previous page; empty for the first page. Opaque.
+  string page_token = 3;
+}
+
+message ListRepositoryOpenFindingsResponse {
+  repeated RepositoryOpenFinding findings = 1;
+  // Empty on the last page.
+  string next_page_token = 2;
+  // Every open finding of the repository (not just this page), from the same query.
+  int32 total = 3;
+}
+
+// One open finding. evidence_id is the identity the canvas takes in its violation-id address
+// (NodeViolation.violation_id / FileViolation.violation_id): the evidence row, never a rule id or a
+// pull-request violation id. The view states no per-instance message, so none is sent.
+message RepositoryOpenFinding {
+  string evidence_id = 1;
+  string rule_id = 2;
+  string rule_name = 3;
+  ViolationSeverity severity = 4;
+  // The finding's display coordinate (the one the canvas draws it at); line 0 when it states none.
+  string file_path = 5;
+  int32 line = 6;
 }
