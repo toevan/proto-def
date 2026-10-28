@@ -313,6 +313,23 @@ message AgentProgressUpdate {
   // overall status). Not every requested violation need appear; a
   // violation absent from the list has no reported per-entry outcome.
   repeated ApplyFixViolationOutcome violation_outcomes = 13;
+
+  // The typed reason a fix was DECLINED, set on the terminal frame when
+  // `failure_code` is AGENT_RUN_FAILURE_CODE_FIX_DECLINED (and on a NO_OP_FIX
+  // that states one). It is the stable `ERR_VULN_FIX_...` code of the decline
+  // (for example ERR_VULN_FIX_ALREADY_AT_TARGET, ERR_VULN_FIX_NEEDS_MANUAL_EDIT),
+  // the same code the fix target decision carries: clients localise the reason by
+  // it, and word the next step (re-open the finding, or change it by hand) from it.
+  // Empty when the run stated none (a decline with no typed reason; `message`
+  // is then the whole reason). A code a client does not know is shown as the
+  // server's `message`, never guessed. Empty on success and non-terminal frames.
+  string decline_code = 14;
+
+  // What a declined fix asks the user to do by hand: the package and the version of the
+  // upgrade (for example "golang.org/x/text v0.3.9"; several are joined by ", "), set with
+  // decline_code ERR_VULN_FIX_NEEDS_MANUAL_EDIT so the client can say WHICH upgrade to apply.
+  // A typed field, never read from `message`. Empty when the run stated none.
+  string decline_target = 15;
 }
 
 // ApplyFixViolationOutcome reports whether one violation in an Apply Fix
@@ -570,6 +587,7 @@ enum AgentRunFailureCode {
   AGENT_RUN_FAILURE_CODE_MARSHAL_FAILED = 9;       // dispatcher couldn't serialize Params
   AGENT_RUN_FAILURE_CODE_REFACTOR_BLAST_RADIUS = 10; // FixPlan rename has uncovered callers OR post-fix build failed; see docs/architecture/refactor-blast-radius-validation.md
   AGENT_RUN_FAILURE_CODE_NO_OP_FIX = 11;             // the fix produced no change (no diffs / no PR opened); the violation may already be resolved — a benign terminal, NOT an error
+  AGENT_RUN_FAILURE_CODE_FIX_DECLINED = 12;          // the fix was declined with a typed reason (`decline_code`): a deterministic outcome a retry cannot change, NOT a transient error. A client that does not know 12 reads it as UNSPECIFIED.
 }
 
 // ── Steps & Logs ──
