@@ -1149,8 +1149,14 @@ message GetBlueprintRequirementCoverageRequest {
 }
 
 message GetBlueprintRequirementCoverageResponse {
-  // Unset when the blueprint declares no compliance framework.
+  // The coverage of the FIRST framework edition the blueprint declares; unset when it declares none.
+  // Kept for one release for clients that read a single framework: read `coverages`, which holds every
+  // declared edition including this one.
   FrameworkRequirementCoverage coverage = 1;
+  // The coverage of EVERY framework edition the blueprint declares, in declaration order (a pack for one
+  // framework has one entry; Security Essentials has seven). Empty when it declares none. Each entry
+  // counts only the controls of its own framework.
+  repeated FrameworkRequirementCoverage coverages = 2;
 }
 
 // RequirementNotCheckableReason is why a requirement cannot be evidenced from code.
