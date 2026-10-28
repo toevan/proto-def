@@ -144,6 +144,20 @@ message Repo {
   // Why Toevan is not capturing this repository, from the capture state (the one source). NONE while capture runs, never began, or the
   // cause is not stated. Read together with status: DISCONNECTED status with a person's stop is "disconnected in Toevan".
   RepoCaptureStop capture_stop = 30;
+
+  // Why the repository's status was flipped to DISCONNECTED, as Toevan STATED it in the same write as the flip. NONE while the repository is
+  // not disconnected, and for a flip made before causes were recorded: Toevan did not record why, and nothing infers it (not from the
+  // capture's stop, not from the absence of an audit entry).
+  RepoDisconnectCause disconnect_cause = 31;
+}
+
+// Why a repository was disconnected (repositories.disconnect_cause).
+enum RepoDisconnectCause {
+  REPO_DISCONNECT_CAUSE_NONE = 0;                 // not disconnected, or not recorded
+  REPO_DISCONNECT_CAUSE_PERSON = 1;               // a person with the organization's admin role; the audit log names who
+  REPO_DISCONNECT_CAUSE_SUPPORT_GRANT = 2;        // Toevan support under an admin-scope access grant the organization approved
+  REPO_DISCONNECT_CAUSE_API_KEY = 3;              // an API key of the organization
+  REPO_DISCONNECT_CAUSE_INSTALLATION_REMOVED = 4; // GitHub said the App was uninstalled; Toevan disconnected the repository
 }
 
 // Why a repository's capture is stopped (evidence_capture_state.stopped_reason).
