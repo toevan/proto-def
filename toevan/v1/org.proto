@@ -64,6 +64,21 @@ service OrgService {
   // (FailedPrecondition) if no billing email is set or verification is unconfigured.
   rpc SendOrgBillingEmailVerification(SendOrgBillingEmailVerificationRequest) returns (SendOrgBillingEmailVerificationResponse);
 
+  // GetOrgAuditContact reads the org's audit contact: the address every change evidence report prints as
+  // "Questions", and whether it is verified. Org admin or compliance (the roles that generate reports).
+  rpc GetOrgAuditContact(GetOrgAuditContactRequest) returns (GetOrgAuditContactResponse);
+
+  // SetOrgAuditContact sets (or clears) the org's audit contact. Admin-only. A new address is unverified
+  // until its owner clicks the link mailed by SendOrgAuditContactVerification; a report prints the
+  // address only while it is verified, and otherwise states that no verified contact is set.
+  rpc SetOrgAuditContact(SetOrgAuditContactRequest) returns (SetOrgAuditContactResponse);
+
+  // SendOrgAuditContactVerification mails a signed, time-limited link to the org's CURRENT audit contact;
+  // clicking it verifies the address (the same verification mechanism as the billing email, with its own
+  // purpose). Admin-only. Fails closed (FailedPrecondition) if no contact is set or verification is
+  // unconfigured.
+  rpc SendOrgAuditContactVerification(SendOrgAuditContactVerificationRequest) returns (SendOrgAuditContactVerificationResponse);
+
   // GetBillingOverview is what the billing page renders: the org's REAL plan, and
   // usage measured against what that plan advertises. Everything here is
   // usage-visibility, which every tier includes; cost/spend breakdowns are a
@@ -427,6 +442,40 @@ message SetOrgBillingEmailRequest {
 message SetOrgBillingEmailResponse {
   // The persisted value, echoed back (empty when cleared/unset) so the client confirms.
   string billing_email = 1;
+}
+
+message GetOrgAuditContactRequest { string org_id = 1; }
+
+message GetOrgAuditContactResponse {
+  // The address on record; empty when none is set.
+  string email = 1;
+  // Whether the address on record has been verified by its owner (the mailed link was clicked).
+  bool verified = 2;
+  // When it was verified; unset while it is not.
+  google.protobuf.Timestamp verified_at = 3;
+  // Whether this deployment can verify an address at all (a signing key is configured). When false no
+  // contact can become verified, so no report prints one.
+  bool verification_available = 4;
+}
+
+message SetOrgAuditContactRequest {
+  string org_id = 1;
+  // The new audit contact. Empty CLEARS it; a non-empty value must be a valid single address.
+  string email = 2;
+}
+
+message SetOrgAuditContactResponse {
+  // The persisted value, echoed back (empty when cleared). A changed address is unverified.
+  string email = 1;
+}
+
+message SendOrgAuditContactVerificationRequest { string org_id = 1; }
+
+message SendOrgAuditContactVerificationResponse {
+  // Whether the verification email was queued (or already queued within the rate-limit window).
+  bool sent = 1;
+  // The address the link was mailed to (the org's audit contact), server-side value.
+  string to = 2;
 }
 
 message SendOrgBillingEmailVerificationRequest { string org_id = 1; }
