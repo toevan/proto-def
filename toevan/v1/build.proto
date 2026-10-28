@@ -2321,6 +2321,16 @@ message DispatchApplyFixResponse {
   // error message on failure. Clients classify failure kind from this (same
   // as the seed-replayed terminal frame, which also carries no typed code).
   string message = 7;
+  // The typed failure category of a terminal FAILED run, the same value the
+  // stream and the seed carry on [AgentProgressUpdate.failure_code]: the unary
+  // response is the canvas Apply Fix button's only completion signal, so it
+  // states the category too instead of leaving the client to read `message`.
+  // UNSPECIFIED on success, when not completed, from an older server, and for
+  // a run that stated none.
+  AgentRunFailureCode failure_code = 8;
+  // The typed decline behind `failure_code == FIX_DECLINED` (or a NO_OP_FIX that
+  // states one); see [AgentProgressUpdate.decline_code].
+  string decline_code = 9;
 }
 
 // ── What-If Simulation ──
