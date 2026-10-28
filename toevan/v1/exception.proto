@@ -86,6 +86,30 @@ message ExceptionRequest {
   // (status, expiry, the Security Essentials rule scope, and whether an org admin has approved). The client shows
   // this and never derives "covers nothing" itself. An unknown value reads as COVERS_NOTHING_YET. Additive.
   ExceptionCoverageState coverage_state = 27;
+  // What the exception is scoped to, decided by the server from the facts of the row (where it was requested from, the
+  // identity of that finding, the path it carries). The client states the scope in its own words and never derives it from
+  // path_pattern alone. An unknown value says nothing about the scope. Additive.
+  ExceptionScopeKind scope_kind = 28;
+  // Where the finding an exception was requested from was flagged: its file and line, as the finding's row records them.
+  // Empty and 0 for a path or a rule scope (no finding). For scope kind FINDING the exception covers that finding by its
+  // identity, which stays covered when its line moves: the line is where it was flagged when it was requested. Additive.
+  string finding_file = 29;
+  int32 finding_line = 30;
+}
+
+// What an exception covers, by where it was requested from.
+enum ExceptionScopeKind {
+  EXCEPTION_SCOPE_KIND_UNSPECIFIED = 0;
+  // Requested from a flagged finding: THAT FINDING, by its stable identity (rule, file, the finding itself). It stays
+  // covered when the finding's line moves, and nothing else flagged in the file is waived (owner decision 52).
+  EXCEPTION_SCOPE_KIND_FINDING = 1;
+  // Requested from a flagged finding before finding identities existed, or for a finding with no identity: that rule at the
+  // file and line the finding was flagged on, and nothing else. Such a row keeps what it was approved for.
+  EXCEPTION_SCOPE_KIND_FINDING_AT_LINE = 2;
+  // A path waiver (the guided flow or the canvas "exempt"): a file or a directory (path_pattern), one rule or every rule.
+  EXCEPTION_SCOPE_KIND_PATH = 3;
+  // A waiver of the rule across the repository (the guided flow).
+  EXCEPTION_SCOPE_KIND_RULE_REPOSITORY = 4;
 }
 
 // Whether an exception is waiving findings now.
