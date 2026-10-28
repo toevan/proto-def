@@ -44,6 +44,11 @@ message NotificationPrefs {
   bool pr_gate_blocked_email = 1;
   // Email when an agent run reaches a failed terminal state.
   bool agent_run_failed_email = 2;
+  // Email when your role in the org changes in a way that is not security relevant. A security relevant
+  // change (an admin, CISO or compliance role gained or lost, or a removal from the org) is always emailed.
+  // Optional: a client that predates it omits the field on save and the stored value is kept (the save otherwise
+  // replaces the whole message, so an old client would switch the opt-in off).
+  optional bool role_change_email = 3;
 }
 
 message GetMyNotificationPrefsRequest { string org_id = 1; }
