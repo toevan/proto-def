@@ -148,9 +148,10 @@ message Repo {
 
 // Why a repository's capture is stopped (evidence_capture_state.stopped_reason).
 enum RepoCaptureStop {
-  REPO_CAPTURE_STOP_NONE = 0;            // running, never started, or the cause is not stated
-  REPO_CAPTURE_STOP_DISCONNECTED = 1;    // a person disconnected the repository in Toevan
-  REPO_CAPTURE_STOP_ACCESS_LOST = 2;     // GitHub's installation no longer lists or sees the repository, or it was suspended or removed
+  REPO_CAPTURE_STOP_NONE = 0;               // running, never started, or the cause is not stated
+  REPO_CAPTURE_STOP_DISCONNECTED = 1;       // disconnected in Toevan (a person, Toevan support under a grant, or an API key); the sealed stop says which
+  REPO_CAPTURE_STOP_ACCESS_LOST = 2;        // GitHub's installation no longer lists the repository (removed from its selection, transferred, deleted)
+  REPO_CAPTURE_STOP_INSTALLATION_ENDED = 3; // the installation is suspended or removed: restoring it on GitHub, not the repository access, is the remedy
 }
 
 enum RepoStatus {
