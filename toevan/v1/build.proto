@@ -111,6 +111,13 @@ service BuildService {
   // ERR_SECRET_REVEAL_AUDIT_FAILED, ERR_RATE_LIMITED are the typed refusals.
   rpc RevealFindingSecret(RevealFindingSecretRequest) returns (RevealFindingSecretReply);
 
+  // RevealFileContent is RevealFindingSecret for the canvas code viewer: GetFileContent sends a file's detected
+  // secrets masked (secret_masked on the reply), and this returns the same file UNMASKED (content, language,
+  // violation_lines). Same gates as RevealFindingSecret: a governance role through real membership and repository
+  // read access, a per-user rate limit, and an audit row (finding.secret_revealed, resource_type "file", never
+  // the value) written before the content is read. ERR_NO_SECRET_TO_REVEAL when the file holds none.
+  rpc RevealFileContent(GetFileContentRequest) returns (GetFileContentReply);
+
   // WarmViolationDetail is a fire-and-forget pre-compute trigger.
   // Returns immediately after either confirming the result is
   // already in Redis (cache_hit=true) OR launching a background
@@ -881,6 +888,12 @@ message GetFileContentReply {
   string content = 1;
   string language = 2;         // detected language for syntax highlighting
   repeated int32 violation_lines = 3;
+  // secret_masked is true when the file holds a detected secret and `content` was sent with it masked (owner
+  // decision 62: the first and last few characters, the rest hidden; a finding whose span was not recorded is
+  // masked on its whole line). The line count never changes. (additive)
+  bool secret_masked = 4;
+  // can_reveal_secret is whether RevealFileContent would be allowed for the caller (the role check alone).
+  bool can_reveal_secret = 5;
 }
 
 // ── File Violations (hover popup) ──
