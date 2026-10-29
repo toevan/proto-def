@@ -223,6 +223,9 @@ message BlueprintReview {
   google.protobuf.Timestamp created_at = 6;
   string user_name = 7;
   string user_avatar_url = 8;
+  // The name GitHub states for the reviewer; empty when it states none (`user_name` falls
+  // back to the login): the name the person or GitHub stated; empty when none; never the login.
+  string user_stated_name = 9;
 }
 
 message BlueprintAdoption {

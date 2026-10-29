@@ -64,6 +64,9 @@ message PlatformTeamMember {
   string name = 5;
   string email = 6;
   int64 joined_at = 7;     // unix seconds
+  // The name GitHub states for this person; empty when it states none (`name` falls back to
+  // the login): the name the person or GitHub stated; empty when none; never the login.
+  string stated_name = 8;
 }
 
 // PlatformInvitation is one platform-team invitation.

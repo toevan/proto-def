@@ -247,6 +247,10 @@ message OrgMember {
   OrgRole role = 8;
   google.protobuf.Timestamp joined_at = 9;
   google.protobuf.Timestamp last_active_at = 10;
+  // The name GitHub states for this person; empty when it states none. `name` falls back to
+  // the login, and `initials` is derived from this field only (empty when none, so a client
+  // draws a neutral glyph): the name the person or GitHub stated; empty when none; never the login.
+  string stated_name = 11;
 }
 
 enum OrgRole {
