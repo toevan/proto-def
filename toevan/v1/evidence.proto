@@ -1320,6 +1320,11 @@ message ChangeEvidenceReportRow {
   ChangeEvidenceGeneratedBySource generated_by_source = 19;
   // When that profile was read, on Toevan's clock (unset when generated_by_source is unspecified).
   google.protobuf.Timestamp generated_by_read_at = 20;
+  // The page each anchored block of the report starts on (a page reference such as "process.pushes" or
+  // "howto.route2" names one), from the same layout as sections. A reference resolves through sections (its key is a
+  // section key: that section's first page) or through anchors (its key is an anchor key: that block's page). Empty
+  // until completed, and for reports made before anchors were recorded: a reference to an anchor then has no known page.
+  repeated ChangeEvidenceReportAnchor anchors = 21;
 }
 
 // Where the GitHub profile a report names its generator from was read.
@@ -1358,6 +1363,1362 @@ message ChangeEvidenceReportSection {
   int32 page_count = 5;
 }
 
+// EvidenceService — Compliance Audit Trail
+// ============================================
+
+service EvidenceService {
+  rpc ListEvidence(ListEvidenceRequest) returns (ListEvidenceResponse);
+  rpc GetEvidenceRecord(GetEvidenceRecordRequest) returns (GetEvidenceRecordResponse);
+  rpc ExportEvidence(ExportEvidenceRequest) returns (ExportEvidenceResponse);
+  rpc GetEvidenceExportJob(GetEvidenceExportJobRequest) returns (GetEvidenceExportJobResponse);
+  rpc GetEvidenceSummary(GetEvidenceSummaryRequest) returns (GetEvidenceSummaryResponse);
+  // Distinct authors appearing in the org's evidence records — powers the
+  // audit-trail author filter dropdown.
+  rpc ListEvidenceAuthors(ListEvidenceAuthorsRequest) returns (ListEvidenceAuthorsResponse);
+  // What Toevan's own generated-code rule set aside, and what the index ingested and left out, for the sealed
+  // run(s) of one commit: read from the HASHED record, never recomputed. One summary per run (one run per
+  // blueprint adoption). Org evidence reader (membership or an active support grant) for org_id, then the
+  // Evidence Trail flag; a repository or commit of another org is not found, never an empty answer.
+  rpc GetEvidenceRunScope(GetEvidenceRunScopeRequest) returns (GetEvidenceRunScopeResponse);
+  rpc GenerateSBOM(GenerateSBOMRequest) returns (GenerateSBOMResponse);
+
+  // Compliance report history: a generated report is an evidence export
+  // (same filters, same store) plus a durable metadata row. Download URLs
+  // are RE-SIGNED on every list — presigned links expire, the artifact
+  // and its filename do not.
+  rpc GenerateComplianceReport(GenerateComplianceReportRequest) returns (GenerateComplianceReportResponse);
+  rpc ListComplianceReports(ListComplianceReportsRequest) returns (ListComplianceReportsResponse);
+
+  // Compliance reports
+  rpc GenerateDPIA(GenerateDPIARequest) returns (GenerateDPIAResponse);
+  rpc GenerateControlMapping(GenerateControlMappingRequest) returns (GenerateControlMappingResponse);
+
+  // GDPR Art. 17 right-to-erasure. Org-admin only. Redacts a data subject's
+  // personal data (their recorded GitHub login) across the evidence + PR-gate
+  // stores and writes an audit-log record. The immutable evidence ledger holds
+  // no personal data and is not affected.
+  rpc EraseDataSubject(EraseDataSubjectRequest) returns (EraseDataSubjectResponse);
+
+  // Signed supply-chain attestations for one evaluated commit — the
+  // distribution read behind "verify without Toevan". Envelopes are
+  // returned VERBATIM (in-toto SLSA-VSA statement in a DSSE envelope);
+  // verification runs against exactly these bytes with stock cosign and the
+  // published public key. Authorization derives the owning org from the REPO
+  // row (viewer floor), never from the request.
+  rpc ListVerdictAttestations(ListVerdictAttestationsRequest) returns (ListVerdictAttestationsResponse);
+
+  // Re-verify the org's whole evidence ledger from the stored records: the
+  // hash chain of every repository, the attestation signatures under the
+  // published key(s), and the Rekor inclusion proofs when the org's log
+  // anchoring applies. Same permission as ListEvidence (org member, or platform
+  // staff with a support-access grant), scoped by org_id. Bounded work: one run
+  // per org at a time (a second caller joins it), a per-org minimum interval (a
+  // repeat inside it returns the stored result with its time,
+  // served_from_stored = true), a server deadline, and the caller's
+  // cancellation stops the run. The result is persisted and also returned by
+  // GetEvidenceSummary as last_verification.
+  rpc VerifyEvidenceChain(VerifyEvidenceChainRequest) returns (VerifyEvidenceChainResponse);
+
+  // The org's transparency-log setting: the public log (the default) or a
+  // self-hosted log the org operates. Read: any org member (the setting is
+  // not a secret; the log's PUBLIC key is shown). Write: org admin only, a
+  // support-access grant never writes, Enterprise (the self_hosted feature)
+  // for a self-hosted log, audited in the same transaction. Switching back
+  // to the public log is always allowed.
+  rpc GetOrgEvidenceLog(GetOrgEvidenceLogRequest) returns (GetOrgEvidenceLogResponse);
+  rpc SetOrgEvidenceLog(SetOrgEvidenceLogRequest) returns (SetOrgEvidenceLogResponse);
+  // "Test connection" for the self-hosted log form: runs the SAME checks and the SAME probe a save runs (address
+  // rules, the egress policy, the supplied key against the log's own key) and writes NOTHING. Org admin only (a
+  // support grant never does it), Evidence Trail flag, Enterprise (the self_hosted feature), and rate limited per
+  // org because it makes an outbound request. The outcome is a typed reason, never a free string.
+  rpc TestOrgEvidenceLog(TestOrgEvidenceLogRequest) returns (TestOrgEvidenceLogResponse);
+  // Whether the org's evidence is published to the PLATFORM's public transparency log. Default OFF.
+  // Org admin only (a support grant never writes), audited in the same transaction. Turning it on
+  // publishes only records sealed from that moment on; turning it off stops future publication;
+  // turning it on again starts a new window. Entries already published cannot be removed.
+  // Read: the public_opt_in fields of GetOrgEvidenceLogResponse.
+  rpc SetOrgPublicRekorOptIn(SetOrgPublicRekorOptInRequest) returns (SetOrgPublicRekorOptInResponse);
+  // Org admin only (a support grant never writes), audited, with a written reason: clear the records and
+  // chain heads a transparency log refused for good, so the next sweep offers them to their log again. A
+  // refusal is therefore never permanent. Their history (who, why, when) is kept.
+  rpc RequeueOrgEvidenceRejections(RequeueOrgEvidenceRejectionsRequest) returns (RequeueOrgEvidenceRejectionsResponse);
+
+  // GetEvidenceRetention states how long the org's evidence is kept: the ONE
+  // retention policy, read by General and by the Evidence page. It is a PER-ORG
+  // minimum period in years (a floor, not a ceiling; default 3). Evidence is kept
+  // at least that long; automatic deletion at the end of the period is NOT yet
+  // enforced (purge_enforced = false), so no client may claim evidence is kept
+  // "indefinitely". Org membership (or platform staff with a support-access
+  // grant) for org_id, like ListEvidence, but NOT behind the Evidence Trail
+  // rollout flag: the policy is a fact about the system.
+  rpc GetEvidenceRetention(GetEvidenceRetentionRequest) returns (GetEvidenceRetentionResponse);
+
+  // SetEvidenceRetention raises (or restores) the org's evidence retention
+  // period. Org ADMIN only (a support-access grant never writes) and Enterprise
+  // only: the plan gate is the server's entitlement check, never a client check.
+  // retention_years must be one of allowed_years, and never below the 3 year
+  // floor. Audited in the same transaction (who, when, old and new period).
+  // Returns the policy as GetEvidenceRetention now reads it. It starts no
+  // deletion: nothing is purged by this call or by the period elapsing.
+  // Errors: PERMISSION_DENIED (not an org admin), FAILED_PRECONDITION (plan
+  // does not include the change; the error carries the entitlement code),
+  // INVALID_ARGUMENT (value not in allowed_years).
+  rpc SetEvidenceRetention(SetEvidenceRetentionRequest) returns (SetEvidenceRetentionResponse);
+
+  // The Coverage Gate for one repository: the share of its production source
+  // files that the index parsed at the indexed commit, the gate in force, and
+  // whether the next index-dependent verdict would be signed. A stored read (no
+  // re-index, no git). Viewer floor on the REPO row; the owning org derives
+  // from the row, never from the request. Ungated by plan, like the
+  // attestations it explains.
+  rpc GetRepoIndexCoverage(GetRepoIndexCoverageRequest) returns (GetRepoIndexCoverageResponse);
+
+  // The Change evidence report, v1: a generated report of CODE evidence only (the sealed code
+  // verdicts, coverage, waivers, records and how to check them). Change-process (merge event) and
+  // deployment evidence are not part of it yet and the report says so. Generation is asynchronous:
+  // Generate records a PENDING row and the job completes it.
+  //
+  // Authorization (org scope, from org_id; every repository id is resolved against that org):
+  //   Generate: org admin or compliance. List / Get / Download: org admin, compliance or auditor.
+  //   An auditor never generates. Plan gate and the Compliance Reports rollout flag like
+  //   GenerateComplianceReport; List / Get / Download stay ungated by plan (grandfathered history).
+  rpc GenerateChangeEvidenceReport(GenerateChangeEvidenceReportRequest) returns (GenerateChangeEvidenceReportResponse);
+  rpc ListChangeEvidenceReports(ListChangeEvidenceReportsRequest) returns (ListChangeEvidenceReportsResponse);
+  rpc GetChangeEvidenceReport(GetChangeEvidenceReportRequest) returns (GetChangeEvidenceReportResponse);
+  rpc DownloadChangeEvidenceReport(DownloadChangeEvidenceReportRequest) returns (DownloadChangeEvidenceReportResponse);
+  // The stored PDF of a COMPLETED report, as bytes through the API (for a viewer that cannot read the storage link:
+  // a browser cannot fetch it from a bucket that sends no CORS headers). Same authorization, org scope and
+  // not-found answer as GetChangeEvidenceReport (org admin, compliance or auditor; another org's report is NOT_FOUND),
+  // and like Download it is recorded in the audit trail. The server reads the stored file, computes its SHA-256 and
+  // compares it with the digest the report recorded for its PDF: bytes that do not match are never returned.
+  // Errors: PERMISSION_DENIED, NOT_FOUND (no such report in the org, or the stored file is gone: ERR_REPORT_PDF_MISSING),
+  // FAILED_PRECONDITION (the report is not completed: ERR_REPORT_NOT_READY; the stored file is not the one the report
+  // recorded: ERR_REPORT_PDF_MISMATCH; the file is larger than the server serves this way: ERR_REPORT_PDF_TOO_LARGE).
+  rpc GetChangeEvidenceReportPdf(GetChangeEvidenceReportPdfRequest) returns (GetChangeEvidenceReportPdfResponse);
+
+  // Retrieves, from GitHub, the process facts of an audit period that began before capture did, and seals them labelled
+  // as retrieved later (never as captured at the event). One step of a backfill of ONE repository and ONE period: it seals
+  // a bounded number of the merged changes (or, in its second phase, of the commits no merged change explains), makes a
+  // bounded number of GitHub requests, and returns a cursor. Call it again with next_cursor until done. There is no
+  // scheduler: nothing runs unless an admin calls this. When GitHub's quota runs out, or GitHub answers a 403 that no
+  // documented header explains, it stops and sets deferred_until with deferred_reason; it never waits it out. A change
+  // that already has a record (live capture or an earlier backfill) is left as it is: the first seal wins.
+  //
+  // Authorization: org ADMIN of org_id, or platform staff holding an ACTIVE admin-scope support grant on it (the guard
+  // is RequireOrgAdmin; a read-scope grant, an auditor, a compliance member and an API key are refused). repo_id is
+  // resolved against org_id. Same Compliance Reports flag and plan gate as GenerateChangeEvidenceReport.
+  // Errors: PERMISSION_DENIED, NOT_FOUND (no such repository in the org), INVALID_ARGUMENT (the period is empty, over 366
+  // days or in the future; the cursor is not one a backfill returned), FAILED_PRECONDITION (the backfill is not enabled
+  // on this server, GitHub does not show the repository to the installation, or ERR_EVIDENCE_BACKFILL_GITHUB_REFUSED:
+  // GitHub kept answering a 403 that no documented header explains past the backfill's retry bound; call again with
+  // the same cursor once the cause is fixed, for example an organisation IP allow list that does not admit the App).
+  rpc BackfillProcessEvidence(BackfillProcessEvidenceRequest) returns (BackfillProcessEvidenceResponse);
+
+  // PRODUCTION DESIGNATION (hold H13, owner decision 58). The environments Toevan has seen in the org's sealed deployment records,
+  // the org's designations of them as production (active and withdrawn, the history), and what GitHub's own record said of each
+  // environment. Org ADMIN of org_id (RequireOrgAdmin; a read-scope support grant is refused like every admin read). org_id scopes
+  // every row: another org's environments and designations are never read.
+  rpc ListProductionEnvironments(ListProductionEnvironmentsRequest) returns (ListProductionEnvironmentsResponse);
+  // An org admin designates an environment as production by its EXACT name, compared without regard to case (no pattern, no
+  // wildcard). The name must be one Toevan has seen in the org's sealed deployment records (in the named repository, when
+  // repo_ids names any). Org-wide when repo_ids is empty; otherwise one designation per listed repository. The designation is
+  // sealed as a control_change (control type production_designation) in the chain of every repository it concerns, with the actor
+  // as the identity rules state it, and audited. It applies from its own time forward: it never reclassifies a deployment that
+  // happened before it, and the change evidence report says so. Designating what is already designated seals nothing new.
+  // Org admin only: a support grant and an API key are refused. Errors: PERMISSION_DENIED, INVALID_ARGUMENT (the name is empty or
+  // not seen; a repository is not the org's), UNAVAILABLE (evidence capture is not running here: nothing could be sealed).
+  rpc DesignateProductionEnvironment(DesignateProductionEnvironmentRequest) returns (DesignateProductionEnvironmentResponse);
+  // An org admin withdraws a designation. The withdrawal is sealed as a control_change too, and audited; the designation stays in
+  // the history. Deployments that happened while the designation stood stay production in the report. Same authorization as
+  // DesignateProductionEnvironment. Errors: PERMISSION_DENIED, NOT_FOUND (no such designation in the org), FAILED_PRECONDITION
+  // (already withdrawn).
+  rpc WithdrawProductionDesignation(WithdrawProductionDesignationRequest) returns (WithdrawProductionDesignationResponse);
+}
+
+// ── Transparency log setting ──
+
+enum EvidenceLogKind {
+  EVIDENCE_LOG_KIND_UNSPECIFIED = 0;
+  // The platform's transparency log (Sigstore Rekor by default). No url or key.
+  EVIDENCE_LOG_KIND_PUBLIC = 1;
+  // A Rekor the organization operates. Anchoring there is third-party only in
+  // the sense that the log is not Toevan's: its operator can rewrite it, so
+  // render it as "anchored in a log operated by the organization".
+  EVIDENCE_LOG_KIND_SELF_HOSTED = 2;
+}
+
+// What the anchoring sweeps are doing for ONE log an org's records are pinned to.
+message EvidenceLogHealth {
+  // Signed attestations pinned to this log that are not anchored yet and not refused.
+  int64 pending = 1;
+  google.protobuf.Timestamp oldest_pending_at = 2;  // unset when none pending
+  google.protobuf.Timestamp last_attempt_at = 3;    // unset when never attempted
+  google.protobuf.Timestamp last_success_at = 4;    // unset when never succeeded
+  // "" when the last attempt succeeded. Otherwise one of: unreachable, slow, rejected_<status> (a
+  // refusal, e.g. rejected_422), rejected_all, circuit_open, invalid_proof, no_proof, log_id_mismatch,
+  // lookup_failed, egress_blocked, stamp_failed (our database refused the stamp), queue_failed (our
+  // database could not read the work queue), pin_mismatch, key_not_held, config_missing. Never carries the
+  // host or the response body.
+  string last_error_kind = 5;
+  int32 consecutive_failures = 6;
+  // The log this entry is about: "" = the public log, otherwise the self-hosted log's id. Records stay
+  // pinned to the log they were signed for, so an earlier log keeps its own entry and keeps draining.
+  string log_id = 7;
+  // Records this log refused for good (terminal until an org admin re-queues them). Not pending. Render
+  // as "not anchored: rejected by the log".
+  int64 rejected = 8;
+  google.protobuf.Timestamp last_rejected_at = 9;  // unset when none
+  // The org's repositories whose CURRENT chain head this log refused for good. A newer head supersedes
+  // it and anchors normally. Render as "chain head not anchored: rejected by the log".
+  int64 rejected_chain_heads = 10;
+  string url = 11;         // the log's newest recorded locator; empty for the public log
+  bool is_current = 12;    // the org's current setting names this log
+}
+
+message OrgEvidenceLog {
+  EvidenceLogKind kind = 1;
+  string url = 2;             // empty for the public log
+  string log_id = 3;          // hex sha256 of the log key's SPKI; empty for the public log
+  string public_key_pem = 4;  // the log's PUBLIC key; empty for the public log
+  int32 version = 5;          // 0 = never configured (the public log by default)
+  google.protobuf.Timestamp set_at = 6;
+  string set_by_user_id = 7;
+}
+
+message GetOrgEvidenceLogRequest {
+  string org_id = 1;
+}
+
+message GetOrgEvidenceLogResponse {
+  OrgEvidenceLog log = 1;
+  EvidenceLogHealth health = 2;
+  // Whether the org's plan allows a self-hosted log (Enterprise; the beta
+  // unlock applies through the same entitlement gate).
+  bool self_hosted_allowed = 3;
+  // EVERY log the org's records are pinned to (the current one, earlier ones, the public one), each with
+  // its own health. `health` above is the current log's.
+  repeated EvidenceLogHealth logs = 4;
+  // The org's opt-in to publish to the platform's public log (default false). Independent of an
+  // org's own log, which needs no opt-in.
+  bool public_opt_in = 5;
+  // When the CURRENT publication window began; unset while public_opt_in is false.
+  google.protobuf.Timestamp public_opted_in_at = 6;
+  reserved 7;
+  reserved "public_log_configured";
+  // Whether the platform can send to its public log right now. Anything other than READY is the reason
+  // nothing is sent, whatever the org chose. Computed by the server from the same facts the sweep uses.
+  EvidencePublicLogStatus public_log_status = 8;
+  // Entries of this org already in the PLATFORM's public log. They cannot be removed, so they are reported
+  // after an opt-out too: 0 for an org that never published.
+  int64 public_entries_published = 9;
+  // When the newest of them was published; unset while public_entries_published is 0.
+  google.protobuf.Timestamp public_last_published_at = 10;
+  // True when an org's own log must be reachable from Toevan's servers over the public internet (private,
+  // loopback and link-local addresses are refused by the egress policy). Render it beside the address field.
+  bool self_hosted_address_must_be_public = 11;
+}
+
+// Whether the platform's public log is able to receive an org's records now.
+enum EvidencePublicLogStatus {
+  EVIDENCE_PUBLIC_LOG_STATUS_UNSPECIFIED = 0;
+  EVIDENCE_PUBLIC_LOG_STATUS_READY = 1;
+  // The operator has not set a public log (evidence.rekor_url is empty).
+  EVIDENCE_PUBLIC_LOG_STATUS_NOT_CONFIGURED = 2;
+  // The private beta is on: the platform log gets nothing.
+  EVIDENCE_PUBLIC_LOG_STATUS_PRIVATE_BETA = 3;
+  // The configured address cannot be used (it carries a credential, a query or a fragment, or no key is
+  // pinned to verify its answers).
+  EVIDENCE_PUBLIC_LOG_STATUS_URL_UNUSABLE = 4;
+  // Signing and publication are paused (the attestation kill switch).
+  EVIDENCE_PUBLIC_LOG_STATUS_PAUSED = 5;
+  // This deployment holds no attestation signing key, so nothing is signed and nothing can be published.
+  // Nothing is paused: signing was never set up. An older client reads an unknown value as no claim.
+  EVIDENCE_PUBLIC_LOG_STATUS_NOT_SIGNING = 6;
+}
+
+// Why a "test connection" of an org's own log did not pass.
+enum EvidenceLogTestReason {
+  EVIDENCE_LOG_TEST_REASON_UNSPECIFIED = 0;
+  EVIDENCE_LOG_TEST_REASON_OK = 1;                  // reachable, and it presents the supplied key
+  EVIDENCE_LOG_TEST_REASON_URL_INVALID = 2;         // not an https URL to a public host (egress policy)
+  EVIDENCE_LOG_TEST_REASON_KEY_INVALID = 3;         // not one PEM ECDSA P-256 public key
+  EVIDENCE_LOG_TEST_REASON_KEY_RESERVED = 4;        // a Toevan attestation signing key, not a log's
+  EVIDENCE_LOG_TEST_REASON_UNREACHABLE = 5;         // the log could not be reached from Toevan
+  EVIDENCE_LOG_TEST_REASON_KEY_MISMATCH = 6;        // the log presents a different key than the one supplied
+  EVIDENCE_LOG_TEST_REASON_RATE_LIMITED = 7;        // too many tests in a short time
+}
+
+message TestOrgEvidenceLogRequest {
+  string org_id = 1;
+  string url = 2;             // https URL of the Rekor
+  string public_key_pem = 3;  // the log's PEM public key (ECDSA P-256)
+}
+
+message TestOrgEvidenceLogResponse {
+  bool ok = 1;
+  EvidenceLogTestReason reason = 2;
+}
+
+message SetOrgPublicRekorOptInRequest {
+  string org_id = 1;
+  bool enabled = 2;
+}
+
+message SetOrgPublicRekorOptInResponse {
+  bool public_opt_in = 1;
+  google.protobuf.Timestamp public_opted_in_at = 2;
+}
+
+message RequeueOrgEvidenceRejectionsRequest {
+  string org_id = 1;
+  string reason = 2;  // required, 1 to 500 characters; recorded with who and when
+}
+
+message RequeueOrgEvidenceRejectionsResponse {
+  int64 attestations = 1;  // records cleared
+  int64 chain_heads = 2;   // chain heads cleared
+}
+
+message SetOrgEvidenceLogRequest {
+  string org_id = 1;
+  EvidenceLogKind kind = 2;
+  string url = 3;             // https URL of the Rekor; required when SELF_HOSTED
+  string public_key_pem = 4;  // the log's PEM public key (ECDSA P-256); required when SELF_HOSTED
+}
+
+message SetOrgEvidenceLogResponse {
+  OrgEvidenceLog log = 1;
+}
+
+// ── Coverage Gate ──
+
+// Why a verdict is, or would be, left unsigned by the Coverage Gate. An
+// eligible verdict carries UNSPECIFIED, or INDEX_NOT_USED when its blueprint's
+// rules never judge through the index (it is signed whatever the coverage).
+enum CoverageGateReason {
+  COVERAGE_GATE_REASON_UNSPECIFIED = 0;
+  // The index resolved less of the production code than the gate requires.
+  COVERAGE_GATE_REASON_BELOW_THRESHOLD = 1;
+  // No coverage figure exists for the indexed commit (an index from before the
+  // gate, or one whose figure could not be written).
+  COVERAGE_GATE_REASON_NOT_MEASURED = 2;
+  // The repository has no production source file in a language the index
+  // supports, so the share is undefined.
+  COVERAGE_GATE_REASON_NO_PRODUCTION_FILES = 3;
+  // Eligible: every rule the blueprint runs reads files directly (IaC,
+  // secrets, dependency and license scanners), never the index.
+  COVERAGE_GATE_REASON_INDEX_NOT_USED = 4;
+}
+
+// One rule of the coverage figure. The first five EXCLUDE a file from the
+// production denominator; the last four count a production file as NOT
+// resolved.
+enum CoverageFileRule {
+  COVERAGE_FILE_RULE_UNSPECIFIED = 0;
+  COVERAGE_FILE_RULE_UNSUPPORTED_LANGUAGE = 1; // production source in a language the index does not parse
+  COVERAGE_FILE_RULE_NON_PRODUCTION = 2;       // a test, docs, fixture, example, vendored or blueprint file
+  COVERAGE_FILE_RULE_GENERATED = 3;            // generated by path convention, header or .gitattributes
+  COVERAGE_FILE_RULE_REPO_IGNORE = 4;          // excluded by the repository's index.ignore
+  COVERAGE_FILE_RULE_LINK_OR_SPECIAL = 5;      // a committed symbolic link
+  COVERAGE_FILE_RULE_LANGUAGE_NOT_SELECTED = 6; // supported, but not in the repository's languages
+  COVERAGE_FILE_RULE_NOT_WALKED = 7;           // under a directory the index walk skips
+  COVERAGE_FILE_RULE_PARSE_FAILED = 8;         // unreadable, or the parser failed on it
+  COVERAGE_FILE_RULE_SYNTAX_ERROR = 9;         // parsed with syntax errors in a language whose errors are trusted
+}
+
+// The file count of one rule.
+message CoverageFileCount {
+  CoverageFileRule rule = 1;
+  int64 files = 2;
+}
+
+message GetRepoIndexCoverageRequest {
+  string repo_id = 1;
+}
+
+message GetRepoIndexCoverageResponse {
+  RepoIndexCoverage coverage = 1;
+}
+
+// RepoIndexCoverage is the Coverage Gate card's read.
+message RepoIndexCoverage {
+  string repo_id = 1;
+  // The repository's indexed commit; empty before its first index.
+  string indexed_commit = 2;
+  // A figure exists for the indexed commit. False: reason NOT_MEASURED and
+  // every count is 0.
+  bool measured = 3;
+  google.protobuf.Timestamp measured_at = 4;
+  // resolved_files * 10000 / production_files, rounded DOWN (9499 = 94.99%),
+  // so a figure below the gate never reads as at it. 0 when production_files
+  // is 0.
+  int32 percent_bp = 5;
+  // The gate in force now, in basis points (9000 = 90%).
+  int32 threshold_bp = 6;
+  // Whether the next verdict of an index-dependent blueprint would be signed,
+  // judged against threshold_bp: measured, production_files > 0 and
+  // resolved_files * 10000 >= threshold_bp * production_files.
+  bool eligible = 7;
+  CoverageGateReason reason = 8; // UNSPECIFIED when eligible
+  int64 production_files = 9;
+  int64 resolved_files = 10;
+  // Files kept out of the denominator (the sum of excluded).
+  int64 excluded_files = 11;
+  repeated CoverageFileCount excluded = 12;   // by rule, rules with no file left out
+  repeated CoverageFileCount unresolved = 13; // by rule, rules with no file left out
+}
+
+// One verdict at a commit that the Coverage Gate left unsigned. Its facts are
+// read from the verdict's hashed ledger record.
+message UnsignedVerdict {
+  string run_id = 1;
+  int64 chain_seq = 2;
+  string blueprint_id = 3;
+  string blueprint_name = 4; // joined at read time; empty when the blueprint row is gone
+  string decision = 5;       // pass | blocked | exception
+  CoverageGateReason reason = 6;
+  int32 percent_bp = 7;      // the recorded figure (0 when not measured)
+  int32 gate_min_bp = 8;     // the gate recorded with the verdict
+  string indexed_commit = 9; // the commit whose index the figure measures
+}
+
+// ── Chain verification ──
+
+// How the first failed check failed. The first four are the hash-chain
+// invariants (the same kinds `toevan audit verify` reports); the rest are the
+// attestation legs.
+enum EvidenceBreakageKind {
+  EVIDENCE_BREAKAGE_KIND_UNSPECIFIED = 0;
+  EVIDENCE_BREAKAGE_KIND_SEQ_CONTIGUITY = 1;   // chain_seq is not the gap-free 1-based sequence
+  EVIDENCE_BREAKAGE_KIND_CONTENT_HASH = 2;     // record_hash != sha256(stored record): tampered content
+  EVIDENCE_BREAKAGE_KIND_GENESIS_LINK = 3;     // first record does not link to the repository genesis
+  EVIDENCE_BREAKAGE_KIND_PREV_LINK = 4;        // a record does not link to its predecessor
+  EVIDENCE_BREAKAGE_KIND_SIGNATURE = 5;        // an attestation signature (or its envelope) does not verify
+  EVIDENCE_BREAKAGE_KIND_ATTESTATION_BINDING = 6; // a signed statement disagrees with its ledger record
+  EVIDENCE_BREAKAGE_KIND_INCLUSION_PROOF = 7;  // a Rekor inclusion proof does not verify
+  EVIDENCE_BREAKAGE_KIND_ATTESTATION_MISSING = 8; // an attestable run inside the attested stretch has no signed attestation
+  // Records or chain heads a transparency log refused for good, or that an org's own log has not taken
+  // for longer than the grace. The chain and the signatures hold; the anchoring does not, so the result
+  // is not green. The counts (rejected_by_log, rejected_chain_heads, anchoring_overdue) say how many.
+  EVIDENCE_BREAKAGE_KIND_NOT_ANCHORED = 9;
+  // A refusal in force with no matching history: something other than the sweep stopped a record from
+  // being anchored.
+  EVIDENCE_BREAKAGE_KIND_REJECTION_UNRECORDED = 10;
+  EVIDENCE_BREAKAGE_KIND_REDACTION_UNRECORDED = 11; // a run's content is erased but no erasure recorded it: the ledger's content cannot be vouched for
+  EVIDENCE_BREAKAGE_KIND_POLICY_UNVERSIONED = 12; // a verdict's hashed record names a policy digest that has no version row for its repository
+}
+
+// What the Rekor leg did for this org.
+enum EvidenceRekorStatus {
+  EVIDENCE_REKOR_STATUS_UNSPECIFIED = 0;
+  // The org has no stored Rekor proof bundle: nothing to check, proof counts are 0.
+  EVIDENCE_REKOR_STATUS_NOT_ANCHORED = 1;
+  // The org has bundles but this deployment lacks the pinned log key for at least one of
+  // them, so they cannot be checked here. Proof counts are 0; this is not a pass of the proofs.
+  EVIDENCE_REKOR_STATUS_NOT_CHECKABLE = 2;
+  // The org has bundles and every one was checked under its pinned log key; the
+  // proof counts say how many held.
+  EVIDENCE_REKOR_STATUS_VERIFIED_ANCHORED = 3;
+}
+
+// The first point verification failed. Never carries hashes: an auditor who
+// wants them runs the CLI; the page links to the record.
+message EvidenceBreakage {
+  string repo_id = 1;
+  string repo_name = 2;                  // display name; empty when the repository row is gone
+  int64 chain_seq = 3;                   // position in that repository's chain
+  EvidenceBreakageKind kind = 4;
+  string record_id = 5;                  // the ledger run's id; empty when no row sits at that position (a gap)
+}
+
+// One verification result. Counts are real: a leg that did not run is reported through
+// rekor_status (NOT_ANCHORED or NOT_CHECKABLE), never as "0 ok".
+message EvidenceVerification {
+  google.protobuf.Timestamp verified_at = 1;
+  int64 records_checked = 2;             // ledger records whose chain position was verified
+  int32 repos_checked = 3;
+  bool chain_intact = 4;                 // the hash chain of every repository holds
+  int64 signatures_checked = 5;
+  int64 signatures_valid = 6;
+  EvidenceRekorStatus rekor_status = 7;
+  int64 inclusion_proofs_checked = 8;    // 0 unless rekor_status is VERIFIED_ANCHORED
+  int64 inclusion_proofs_ok = 9;         // 0 unless rekor_status is VERIFIED_ANCHORED
+  // True only when there is something to verify, the chain is intact, every stored
+  // signature and binding verified, no attestation inside the attested stretch is missing,
+  // and no inclusion proof that was checked failed.
+  //
+  // WHAT IT DOES NOT MEAN (do not render it as "untampered"): it proves the stored ledger is
+  // internally consistent and that every stored attestation verifies. It cannot detect a
+  // rewrite of a repository's records from some point to its head whose attestations were
+  // also removed: the chain link is inside every hashed record, so a rewrite always runs to
+  // the head, and the unattested stretch reads as the signing sweep's backlog (or as runs
+  // from before attestation, when the removal includes the org's earliest attestations); the
+  // sweep would sign it afresh. Only the external anchors (Rekor log, git twin, Kosli)
+  // defend against that, and this verification does not consult them (its Rekor leg checks
+  // only the proof bundles stored with the attestations that remain). Never show a pass as
+  // "verified" when signatures_checked is 0.
+  bool all_checks_passed = 10;
+  // The first finding. Unset when all_checks_passed, when nothing_to_verify, and on a PARTIAL where nothing was found
+  // (attestations not judged are no finding). A NOT_ANCHORED finding whose every fact of integrity held is anchoring
+  // information, not a failure: it is set beside a PASSED or PARTIAL outcome (see outcome).
+  EvidenceBreakage first_breakage = 11;
+  // Attestable runs that have no attestation although a LATER run of the same repository
+  // has one. Not counted: runs before the repository's first attested run that are ALSO older
+  // than the org's first attestation (legacy, see attestations_before_attestation), and the
+  // unattested tail after the repository's newest attested run (the signing sweep's backlog).
+  // A run before its repository's first attested run but NOT older than the org's first
+  // attestation is counted here. Any is a failure. Facts are signed values (the record's
+  // timestamp and decision, the attestation's own time), not table columns. A run the signing
+  // sweep failed to sign reads as missing until it is signed.
+  int64 attestations_missing = 12;
+  // Attestable runs recorded before attestation began for the org: counted, never a failure.
+  int64 attestations_before_attestation = 13;
+  // The org has no ledger records. all_checks_passed is false and no breakage is named:
+  // render "nothing to verify yet", never a green pass.
+  bool nothing_to_verify = 14;
+  // Of inclusion_proofs_checked, the proofs checked under a log the ORGANIZATION
+  // operates (a self-hosted log). Those prove what the org's log says, not what a
+  // third party witnessed: render them as such. Always 0 unless rekor_status is
+  // VERIFIED_ANCHORED.
+  int64 self_hosted_proofs_checked = 15;
+  // Signed attestations pinned to a self-hosted log that are not anchored yet.
+  // Reported, never counted as a failure (anchoring is asynchronous), never
+  // dropped: a log that stays unreachable shows here until it is reachable.
+  int64 self_hosted_awaiting = 16;
+  // Signed attestations a transparency log (any) REFUSED for good: never anchored, terminal, reported
+  // here as "not anchored: rejected by the log". Not a failure of the chain or the signatures.
+  int64 rejected_by_log = 17;
+  // Repositories whose current chain head a log refused for good: "chain head not anchored: rejected
+  // by the log". Terminal; a newer head supersedes it. Not a failure of the chain or the signatures.
+  int64 rejected_chain_heads = 18;
+  // Of self_hosted_awaiting, the records that have waited longer than the grace (1 hour): an org that
+  // runs a log with records the log has not taken for that long is not green.
+  int64 anchoring_overdue = 19;
+  // Refusals in force with no matching history (something other than the sweep marked them).
+  int64 unrecorded_rejections = 20;
+  // (renumbered from 15 on consolidation: org-rekor holds 15 to 20)
+  // Runs the Coverage Gate left unsigned on purpose: their hashed record says the
+  // index resolved less of the production code than the gate recorded with it
+  // (or no figure existed). Read from the hashed record, never a table column.
+  // Counted, never a failure, never attestations_missing; an attestation found
+  // over such a run IS a failure (an ATTESTATION_BINDING breakage).
+  int64 not_eligible_coverage = 21;
+  // True when rekor_status is NOT_ANCHORED because the org has not opted in to the platform's public log
+  // and runs no log of its own: nothing was meant to be published, so it is not a hole. Additive on purpose:
+  // rekor_status stays a value every client already reads as a pass.
+  bool public_log_off = 22;
+  // Verdicts whose hashed record names a policy digest that has no version row for its repository
+  // (TOEVAN-YAML-POLICY). Must be 0. Any is a failure: a verdict states a policy nobody can show.
+  // Verdicts that state source "none" name no digest and are not counted.
+  int64 policy_unversioned = 23;
+  // Signed attestations of an org that publishes to the PLATFORM's public log (opted in) that the log has not
+  // taken yet and has not refused. A backlog that is draining is "publishing, N pending", never a failure.
+  int64 public_log_pending = 24;
+  // Equals public_log_pending when the org's public-log publication is STALLED, else 0. Stalled means: entries are
+  // pending, the platform log is READY (public_log_status), and NOTHING was published for the org for longer than
+  // the grace (1 hour, measured from the org's last successful publish, or from when the log became able if it
+  // never published). A record's age alone is never lateness: a large backlog that keeps draining is not overdue,
+  // and a deliberate suppression (private beta, no signing key, no address, paused) is never a stall. A stall makes
+  // Verify NOT_ANCHORED; it is never a chain or signature failure.
+  int64 public_log_overdue = 25;
+  // Whether the platform's public log can receive records now (live, not stored). When it is not READY, the
+  // pending count is waiting for that reason; render the reason beside it.
+  EvidencePublicLogStatus public_log_status = 26;
+  // When the platform's public log last took an entry of this org (persisted); unset when it never has.
+  google.protobuf.Timestamp public_log_last_published_at = 27;
+  // Signed attestations of a record kind this server's verifier version does not know (a newer image signed
+  // them). Their signature, payload hash and binding to the ledger (record hash, chain link, record id, subject)
+  // held; their kind-specific content was NOT judged. They are neither verified nor failed: any makes all_checks_passed
+  // false, and attestations not judged with no breakage of integrity are PARTIAL (first_breakage is then unset, or is a
+  // NOT_ANCHORED finding whose every fact of integrity held). A breakage of integrity outranks them: FAILED. Additive:
+  // a client that does not read it still sees all_checks_passed false and must not render the result as a pass.
+  int64 attestations_not_judged = 28;
+  // The outcome in one word, the same three outcomes `toevan audit verify-attestations` prints (PASS, PARTIAL,
+  // FAIL, exit codes 0, 3 and 1) and the stored org verification keeps. Render it, never derive it again from
+  // the counts: a PARTIAL is neither a pass nor a failure. One rule states it here and in the change evidence
+  // report: a breakage of integrity is a failure (it outranks anything unjudged), no record is nothing to verify,
+  // attestations not judged with no breakage are PARTIAL, and everything else passed. A NOT_ANCHORED first_breakage
+  // whose every fact of integrity held (the chain, every checked signature and inclusion proof, no attestation
+  // missing, no unrecorded refusal, no unversioned policy) is anchoring information, not a breakage of integrity: the
+  // outcome is then PASSED or PARTIAL, while first_breakage keeps the finding and all_checks_passed stays false.
+  // Render the finding and the public log fields beside the outcome.
+  EvidenceVerificationOutcome outcome = 29;
+  // attestations_not_judged by record kind (the kind as the stored record names it), sorted by kind. Empty when
+  // attestations_not_judged is 0.
+  repeated EvidenceNotJudgedKind not_judged_kinds = 30;
+}
+
+// The outcome of one verification.
+enum EvidenceVerificationOutcome {
+  // Not stated (a server older than this field): read all_checks_passed and nothing_to_verify.
+  EVIDENCE_VERIFICATION_OUTCOME_UNSPECIFIED = 0;
+  // Something was verified, no breakage of integrity was found and every attestation was judged. all_checks_passed is
+  // true when first_breakage is also unset; a NOT_ANCHORED first_breakage whose every fact of integrity held (anchoring
+  // information, not a failure) leaves the outcome PASSED with all_checks_passed false and first_breakage set.
+  EVIDENCE_VERIFICATION_OUTCOME_PASSED = 1;
+  // No breakage of integrity was found, but some attestations were not judged by this server's verifier version
+  // (attestations_not_judged > 0). Not a pass and not a failure: all_checks_passed is false, and first_breakage is
+  // unset or is a NOT_ANCHORED finding whose every fact of integrity held (anchoring information).
+  EVIDENCE_VERIFICATION_OUTCOME_PARTIAL = 2;
+  // A breakage of integrity: first_breakage names the first one. It outranks attestations not judged.
+  EVIDENCE_VERIFICATION_OUTCOME_FAILED = 3;
+  // The org has no ledger records yet (nothing_to_verify). Never a pass.
+  EVIDENCE_VERIFICATION_OUTCOME_NOTHING_TO_VERIFY = 4;
+}
+
+// How many attestations of one record kind were not judged.
+message EvidenceNotJudgedKind {
+  string kind = 1;
+  int64 count = 2;
+}
+
+message VerifyEvidenceChainRequest {
+  string org_id = 1;
+}
+
+message VerifyEvidenceChainResponse {
+  EvidenceVerification verification = 1;
+  // true: the org verified inside the minimum interval, so this is the stored
+  // result (verification.verified_at says when it ran), not a new run.
+  bool served_from_stored = 2;
+}
+
+// ── Verdict attestations ──
+
+message ListVerdictAttestationsRequest {
+  string repo_id = 1;
+  string head_sha = 2;  // the evaluated commit
+}
+
+// VerdictAttestation is one signed verdict envelope plus its distribution
+// facts. Numeric zero / empty string mean "not (yet) there": rekor fields are
+// empty until the transparency-log sweep lands the entry, twin_commit_sha is
+// empty until the git-twin mirror carries the file.
+message VerdictAttestation {
+  string run_id = 1;            // evidence_runs.id the envelope attests
+  int64  chain_seq = 2;         // position in the repo's tamper-evident chain
+  string blueprint_id = 3;
+  string decision = 4;          // pass | blocked | exception (gap is unattestable)
+  bytes  envelope = 5;          // DSSE envelope JSON, VERBATIM
+  string payload_hash = 6;      // "sha256:<hex>" of the signed payload bytes
+  string key_id = 7;            // SPKI fingerprint of the signing key
+  int64  rekor_log_index = 8;   // transparency-log inclusion; 0 = not logged yet
+  string rekor_log_url = 9;     // WHICH log holds the proof; "" = not logged yet
+  string twin_commit_sha = 10;  // evidence-branch commit carrying the file; "" = not mirrored yet
+  // Display name of the blueprint at read time (joined, not stored in the
+  // immutable record). Empty when the blueprint row is gone; the id above
+  // remains the stable key. Clients render THIS, never the UUID.
+  string blueprint_name = 11;
+}
+
+message ListVerdictAttestationsResponse {
+  repeated VerdictAttestation attestations = 1;
+  // The verdicts at this commit that the Coverage Gate left unsigned, so a
+  // client can tell "not signed: coverage" from "not signed yet". In chain order.
+  repeated UnsignedVerdict unsigned = 2;
+}
+
+// ── Core Types ──
+
+message EvidenceRecord {
+  string id = 1;
+  string org_id = 2;
+  google.protobuf.Timestamp timestamp = 3;
+
+  // What was checked
+  string blueprint_id = 4;
+  string blueprint_name = 5;
+  string blueprint_version = 6;
+  string rule_id = 7;
+  string rule_name = 8;
+
+  // Result
+  EvidenceResult result = 9;
+
+  // Context
+  string repo_id = 10;
+  string repo_name = 11;
+  string file_path = 12;
+  int32 line = 13;
+  string pr_number = 14;
+  string author = 15;
+  string commit_sha = 16;
+
+  // Exception reference (if result = EVIDENCE_RESULT_EXCEPTION)
+  string exception_id = 17;
+
+  // What the repository policy did to this finding (UNSPECIFIED: in scope), and the policy
+  // entry that did it.
+  PolicyDisposition policy_disposition = 18;
+  string policy_entry = 19;
+}
+
+message GetEvidenceRunScopeRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  string commit_sha = 3;                 // the evaluated commit (a PR head, or a merged commit)
+}
+message GetEvidenceRunScopeResponse {
+  // Oldest run first. Empty when the commit has no sealed run.
+  repeated RunScopeSummary runs = 1;
+}
+
+// The grain of a run's counts, as the record states it.
+enum RunScopeGrain {
+  RUN_SCOPE_GRAIN_UNSPECIFIED = 0;
+  RUN_SCOPE_GRAIN_COMMIT = 1;            // the whole evaluated commit
+  RUN_SCOPE_GRAIN_CHANGED_FILES = 2;     // an incremental index: only the files it examined
+  RUN_SCOPE_GRAIN_PULL_REQUEST = 3;      // the pull request's diff scope
+}
+
+// A class of file Toevan's generated-code rule treats apart. Finer than FileClass: it keeps the generator-header
+// and build-output classes the auditor counts apart.
+enum SetAsideClass {
+  SET_ASIDE_CLASS_UNSPECIFIED = 0;       // a class this server does not know
+  SET_ASIDE_CLASS_GENERATED = 1;
+  SET_ASIDE_CLASS_GENERATED_HEADER = 2;  // generated by its first lines, not its path
+  SET_ASIDE_CLASS_VENDOR = 3;
+  SET_ASIDE_CLASS_ARTIFACT = 4;          // build, bundle or tool-cache output
+}
+
+enum ScanCapUnread {
+  SCAN_CAP_UNREAD_UNSPECIFIED = 0;
+  SCAN_CAP_UNREAD_ARTIFACT = 1;
+  SCAN_CAP_UNREAD_SOURCE = 2;
+}
+
+enum FactsIngestMode {
+  FACTS_INGEST_MODE_UNSPECIFIED = 0;
+  FACTS_INGEST_MODE_FULL = 1;            // every edge
+  FACTS_INGEST_MODE_DECLARATIONS = 2;    // no edge the function bodies produce
+}
+
+message NotJudgedCount {
+  SetAsideClass file_class = 1;
+  string rule_id = 2;
+  int32 count = 3;
+}
+message SetAsideClassCount {
+  SetAsideClass file_class = 1;
+  int32 count = 2;
+}
+message ScanCapSummary {
+  int32 max_files = 1;
+  int64 max_bytes = 2;
+  ScanCapUnread unread = 3;              // what the capped scan left unread
+}
+
+// The toevan_scope of ONE sealed run. stated = false: the record carries none (written before this was recorded,
+// a gap run, or erased), and every other field is empty: that says NOTHING about what was set aside.
+message RunScopeSummary {
+  string run_id = 1;
+  string blueprint_id = 2;
+  bool stated = 3;
+  RunScopeGrain scope = 4;
+  repeated NotJudgedCount not_judged = 5;          // findings set aside, per class and rule; sorted
+  repeated SetAsideClass not_read = 6;             // classes the full scan did not read at all
+  ScanCapSummary scan_cap = 7;                     // unset when the bound was not hit
+  repeated SetAsideClassCount ingested = 8;        // files ingested in the facts tier, per class
+  FactsIngestMode facts_mode = 9;                  // stated whenever ingested is
+  repeated SetAsideClassCount not_ingested = 10;   // files the facts-tier bound left out, per class
+  int32 facts_bound_max_files = 11;                // the bound applied; 0 when not_ingested is empty
+  int64 facts_bound_max_bytes = 12;
+  int32 not_ingested_too_large = 13;               // files over the repository read cap, any class
+}
+
+enum EvidenceResult {
+  EVIDENCE_RESULT_UNSPECIFIED = 0;
+  EVIDENCE_RESULT_PASSED = 1;
+  EVIDENCE_RESULT_VIOLATION = 2;
+  EVIDENCE_RESULT_WARNING = 3;
+  EVIDENCE_RESULT_EXCEPTION = 4;        // violation waived by approved exception
+}
+
+message EvidenceSummary {
+  string org_id = 1;
+  int32 total_checks = 2;
+  int32 passed = 3;
+  int32 violations = 4;
+  int32 warnings = 5;
+  int32 exceptions = 6;
+  float compliance_rate = 7;             // passed / total
+  google.protobuf.Timestamp period_start = 8;
+  google.protobuf.Timestamp period_end = 9;
+
+  // Per-blueprint breakdown
+  repeated BlueprintComplianceRate per_blueprint = 10;
+
+  // The org's last chain verification (VerifyEvidenceChain); unset when the
+  // org has never been verified.
+  EvidenceVerification last_verification = 11;
+}
+
+message BlueprintComplianceRate {
+  string blueprint_id = 1;
+  string blueprint_name = 2;
+  int32 checks = 3;
+  int32 passed = 4;
+  float rate = 5;
+}
+
+// ── Requests/Responses ──
+
+message ListEvidenceRequest {
+  string org_id = 1;
+  string repo_id = 2;                    // optional
+  string blueprint_id = 3;              // optional
+  string author = 4;                     // optional
+  EvidenceResult result_filter = 5;     // optional
+  google.protobuf.Timestamp from = 6;   // optional date range
+  google.protobuf.Timestamp to = 7;
+  int32 limit = 8;
+  int32 offset = 9;
+}
+message ListEvidenceAuthorsRequest { string org_id = 1; }
+message ListEvidenceAuthorsResponse { repeated string authors = 1; }
+
+message ListEvidenceResponse {
+  repeated EvidenceRecord records = 1;
+  int32 total = 2;
+}
+
+message GetEvidenceRecordRequest { string record_id = 1; }
+message GetEvidenceRecordResponse { EvidenceRecord record = 1; }
+
+message ExportEvidenceRequest {
+  string org_id = 1;
+  string format = 2;                     // "csv" or "pdf"
+  // Same filters as ListEvidenceRequest
+  string repo_id = 3;
+  string blueprint_id = 4;
+  string author = 5;
+  EvidenceResult result_filter = 6;
+  google.protobuf.Timestamp from = 7;
+  google.protobuf.Timestamp to = 8;
+}
+message ExportEvidenceResponse {
+  string download_url = 1;              // pre-signed URL to download the export
+  string filename = 2;
+  int32 record_count = 3;
+  string job_id = 4;                    // set for async exports
+  EvidenceExportJobStatus status = 5;   // completed for sync path
+}
+
+message GenerateComplianceReportRequest {
+  string org_id = 1;
+  string name = 2;                      // display name, e.g. "GDPR baseline — July"
+  string format = 3;                    // "csv" or "pdf"
+  string blueprint_id = 4;              // optional filter (empty = all)
+  string repo_id = 5;                   // optional filter (empty = all)
+  google.protobuf.Timestamp from = 6;   // optional
+  google.protobuf.Timestamp to = 7;     // optional
+}
+message GenerateComplianceReportResponse {
+  ComplianceReportRow report = 1;
+}
+message ListComplianceReportsRequest {
+  string org_id = 1;
+  int32 limit = 2;                      // default 50
+}
+message ListComplianceReportsResponse {
+  repeated ComplianceReportRow reports = 1;
+}
+message ComplianceReportRow {
+  string id = 1;
+  string name = 2;
+  string format = 3;                    // "csv" or "pdf"
+  string status = 4;                    // completed | pending | failed
+  string blueprint_name = 5;            // empty = all blueprints
+  string repo_name = 6;                 // empty = all repos
+  google.protobuf.Timestamp period_from = 7;
+  google.protobuf.Timestamp period_to = 8;
+  int32 record_count = 9;
+  string generated_by = 10;
+  google.protobuf.Timestamp created_at = 11;
+  string download_url = 12;             // freshly presigned; empty while pending/failed
+}
+
+enum EvidenceExportJobStatus {
+  EVIDENCE_EXPORT_JOB_STATUS_UNSPECIFIED = 0;
+  EVIDENCE_EXPORT_JOB_STATUS_PENDING = 1;
+  EVIDENCE_EXPORT_JOB_STATUS_RUNNING = 2;
+  EVIDENCE_EXPORT_JOB_STATUS_COMPLETED = 3;
+  EVIDENCE_EXPORT_JOB_STATUS_FAILED = 4;
+}
+
+message EvidenceExportJob {
+  string id = 1;
+  string org_id = 2;
+  string format = 3;
+  EvidenceExportJobStatus status = 4;
+  string filename = 5;
+  string download_url = 6;
+  int32 record_count = 7;
+  string error_message = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  google.protobuf.Timestamp completed_at = 11;
+}
+
+message GetEvidenceExportJobRequest {
+  string org_id = 1;
+  string job_id = 2;
+}
+
+message GetEvidenceExportJobResponse {
+  EvidenceExportJob job = 1;
+}
+
+message GetEvidenceSummaryRequest {
+  string org_id = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+}
+message GetEvidenceSummaryResponse { EvidenceSummary summary = 1; }
+
+// ── SBOM Generation ──
+
+message GenerateSBOMRequest {
+  string org_id = 1;
+  string repo_id = 2;                   // repository to generate SBOM for
+  string format = 3;                    // "cyclonedx" or "spdx"
+  string commit_sha = 4;               // optional: specific commit (defaults to HEAD)
+  int64 github_installation_id = 5;    // GitHub app installation for file fetch
+  string github_owner = 6;             // GitHub repo owner
+  string github_repo = 7;              // GitHub repo name
+}
+
+message GenerateSBOMResponse {
+  string download_url = 1;             // pre-signed URL to download SBOM
+  string filename = 2;
+  string format = 3;                    // "cyclonedx" or "spdx"
+  EvidenceExportJobStatus status = 4;  // always COMPLETED for sync
+}
+
+// ── DPIA Generation (GDPR Art 35) ──
+
+message GenerateDPIARequest {
+  string org_id = 1;
+  string repo_id = 2;                   // Neo4j project ID for data flow query
+  string format = 3;                    // "dpia" or "processing_inventory"
+  string commit_sha = 4;               // optional
+}
+
+message GenerateDPIAResponse {
+  string json_content = 1;              // full DPIA or processing inventory JSON
+  string format = 2;
+}
+
+// ── Control Mapping Report ──
+
+message GenerateControlMappingRequest {
+  string org_id = 1;
+  string framework = 2;                 // optional — all frameworks if empty
+  // Ignored. The server builds the active set from the org's adopted, compiled, evaluable rules and
+  // matches shipped rules by blueprint id and rule id; a caller's list of constraint types credited every
+  // shipped rule of a listed type whether or not the org runs it. Kept on the wire for old clients.
+  repeated string active_constraints = 3 [deprecated = true];
+}
+
+message GenerateControlMappingResponse {
+  string json_content = 1;              // JSON report (single or array of reports)
+  string framework = 2;                 // framework name (empty if all)
+}
+
+// ── GDPR Right to Erasure (Art. 17) ──
+
+message EraseDataSubjectRequest {
+  string org_id = 1;
+  // The data subject's GitHub login as recorded in `author` across the evidence
+  // and PR-gate stores. There is no mapping from this login to a Toevan user
+  // account — it is the only identifier held for the developer.
+  string github_login = 2;
+  // The person's numeric GitHub user id, when the operator knows it (0 = not given). A login GitHub
+  // recycled maps to more than one person; the erasure refuses it (ERR_EVIDENCE_ERASURE_AMBIGUOUS_LOGIN)
+  // until this id says which one. With an id, objects that carry the login AND an id match by that id, so a
+  // login on another id is left alone and a rename is followed. Mentions that carry the login with no id
+  // (a login with no id, a linked commit author's username, the pusher, a pre-2017 noreply address) go to
+  // this id, except in a delivery that pairs the login with a different id: that was another holder.
+  // Required (ERR_EVIDENCE_ERASURE_GITHUB_ID_REQUIRED) when the only source of the person's id is a sign-in
+  // row: its username is written once, at sign-up, and may name someone who renamed.
+  // Without it, the erasure goes on only when GitHub confirms (GET /users/{login}) that the login's current
+  // holder is the id the organisation's data names; otherwise nothing is erased and the answer asks for this id.
+  // INVALID_ARGUMENT with ERR_EVIDENCE_ERASURE_GITHUB_ID_REQUIRED in two cases: the organisation's data names no
+  // id for the login, or GitHub cannot be asked at all (the organisation has no GitHub installation to ask with,
+  // or the server has no GitHub client). INVALID_ARGUMENT with ERR_EVIDENCE_ERASURE_LOGIN_HOLDER_MISMATCH: GitHub's
+  // holder is another account, or none. A lookup GitHub could not answer now is UNAVAILABLE with
+  // ERR_EVIDENCE_ERASURE_LOGIN_LOOKUP_UNAVAILABLE: try again later, or give this id.
+  int64 github_user_id = 3;
+  // Emails of the person that Toevan does not know (an unlinked commit email, a Co-authored-by address),
+  // given by the operator. Matched case-insensitively against the evidence inbox payloads, in commit author
+  // and committer objects and in Co-authored-by trailers. At most 20, each a plain address. They are never
+  // stored: the erasure audit row keeps only how many were given.
+  repeated string additional_emails = 4;
+}
+
+message EraseDataSubjectResponse {
+  string github_login = 1;
+  int64 evidence_records_redacted = 2;  // evidence_records rows whose author was nulled
+  int64 pr_checks_redacted = 3;         // pr_checks rows whose author was tombstoned
+  int64 export_jobs_redacted = 4;       // evidence_export_jobs rows whose author filter was nulled
+  int64 ledger_runs_redacted = 5;       // 0 today — the immutable ledger holds no PII
+  int64 inbox_payloads_erased = 6;      // evidence inbox rows whose received bytes named the person and were dropped
+  // Rows that name the login with NO numeric GitHub id and were KEPT, because another person held the same login
+  // (GitHub recycles logins) and such a row cannot be told from that person's: evidence records, PR checks and
+  // export jobs of the login, policy approvals and author rows of the login with no id, and inbox payloads whose
+  // only mention of the person has no id (a login alone, a pusher, a pre-2017 noreply address). Server-filled;
+  // 0 when nothing was kept. One holder of the login usually keeps nothing, but a former login of the person that
+  // another person also held, and an ambiguous <digits> noreply address that may be another person's, are counted
+  // even when the requested login had one holder. The operator can erase these by hand only after deciding whose
+  // they are.
+  int64 login_only_rows_kept = 7;
+}
+
+// ── Evidence retention ──
+
+enum EvidenceRetentionMode {
+  EVIDENCE_RETENTION_MODE_UNSPECIFIED = 0;
+  // SUPERSEDED by the owner decision of 2026-10-19 (the landing model): the server
+  // no longer returns this value and no client may claim evidence is kept
+  // "indefinitely". Kept so the number is never reused.
+  EVIDENCE_RETENTION_MODE_INDEFINITE = 1;
+  reserved 2;
+  reserved "EVIDENCE_RETENTION_MODE_LIMITED";
+  // The org's evidence is kept AT LEAST retention_years (a floor). Nothing is
+  // deleted at the end of the period yet (purge_enforced = false). The only mode
+  // the server returns.
+  EVIDENCE_RETENTION_MODE_MINIMUM_PERIOD = 3;
+}
+
+// The two cases in which the CONTENT of evidence changes although the policy is
+// a minimum period (no purge yet). Hashes are kept in both. What each does and does not reach is in
+// GetEvidenceRetentionResponse.statement.
+enum EvidenceRetentionException {
+  EVIDENCE_RETENTION_EXCEPTION_UNSPECIFIED = 0;
+  // Personal-data erasure on request: the content of the affected runs is
+  // emptied and the author is cleared on their records, in the database copy
+  // only. A published transparency-log entry, the customer's git twin and any
+  // export already taken are not reached. Each erased run is recorded.
+  EVIDENCE_RETENTION_EXCEPTION_PERSONAL_DATA_ERASURE = 1;
+  // Organisation deletion: on evidence records the author is blanked and the
+  // repository and exception links are cleared. Runs, attestations and
+  // canonical records are kept as they are.
+  EVIDENCE_RETENTION_EXCEPTION_ORGANISATION_DELETION = 2;
+}
+
+message GetEvidenceRetentionRequest { string org_id = 1; }
+
+// Where this deployment publishes attestations now. NONE is the default: publication is
+// an operator choice (evidence.rekor_url), and nothing is published while it is empty.
+enum EvidenceTransparencyLog {
+  EVIDENCE_TRANSPARENCY_LOG_UNSPECIFIED = 0;
+  EVIDENCE_TRANSPARENCY_LOG_NONE = 1;
+  // The public Sigstore Rekor log: an entry there is permanent and public.
+  EVIDENCE_TRANSPARENCY_LOG_PUBLIC = 2;
+  // Any other log (self-hosted): whether an entry can be removed is that log's policy.
+  EVIDENCE_TRANSPARENCY_LOG_SELF_HOSTED = 3;
+}
+
+message GetEvidenceRetentionResponse {
+  EvidenceRetentionMode mode = 1;
+  reserved 2;
+  reserved "days";
+  repeated EvidenceRetentionException exceptions = 3;
+  // The policy in one English statement, for clients without their own copy. It is
+  // built per request from the facts below and states only what is true of THIS
+  // deployment and org: evidence is kept at least retention_years (purge_enforced says whether deletion happens); what erasure and
+  // organisation deletion change; the transparency log claim ONLY for the state in
+  // transparency_log / log_entries_published; the git twin only if enabled; and what
+  // the audit-log sweep actually is here.
+  string statement = 4;
+  // The facts the statement is built from, so a client can render its own copy.
+  EvidenceTransparencyLog transparency_log = 5;
+  // This deployment signs attestations, or the org already holds some.
+  bool attestations_signed = 6;
+  // The org already has entries in a transparency log (published earlier, whatever the
+  // log setting is now).
+  bool log_entries_published = 7;
+  // The git twin (toevan/evidence) is exported to the customer's repository. Toevan only
+  // appends to it and never deletes or rewrites it.
+  bool git_twin_enabled = 8;
+  // Audit logs older than this many days are deleted by the optional sweep; 0 = no sweep
+  // (the default). Audit logs are not evidence. A sweep that is on never reads 0: the age is
+  // rounded up to whole days, with a minimum of 1.
+  int32 audit_log_sweep_days = 9;
+  // Private beta is on (or could not be read, which fails toward on): nothing is published to
+  // a transparency log whatever the log setting is, and transparency_log is NONE.
+  bool beta_suppresses_publication = 10;
+  // OWNER DECISION 2026-10-19 (landing model), added in place with no version bump.
+  // The org's configured evidence retention period in whole years: a FLOOR, not a
+  // ceiling. Default 3 for an org that never set one; always one of allowed_years.
+  // The client shows this value instead of any hard-coded period.
+  int32 retention_years = 11;
+  // The periods an admin may choose, ascending: 3, 5, 7, 10 (years). Never below 3.
+  // Render these as the choices; do not hard-code them.
+  repeated int32 allowed_years = 12;
+  // True only when the CALLER is an Enterprise org admin, so SetEvidenceRetention
+  // would be accepted now. Server-computed from role and plan entitlement; false
+  // for members, support-access staff and non-Enterprise orgs. The client shows
+  // the change control only when true and never decides this itself.
+  bool can_change = 13;
+  // Whether the server deletes evidence automatically when the period ends. FALSE
+  // today (that job is not built); clients show the note "Evidence is kept at least
+  // this long; automatic deletion at the end of the period is not yet enforced".
+  // Turns true only when a purge that keeps the hash chain verifiable ships.
+  bool purge_enforced = 14;
+}
+
+message SetEvidenceRetentionRequest {
+  string org_id = 1;
+  // The new period in years; must be one of allowed_years (3, 5, 7 or 10).
+  int32 retention_years = 2;
+}
+
+message SetEvidenceRetentionResponse {
+  // The policy as GetEvidenceRetention reads it after the change.
+  GetEvidenceRetentionResponse retention = 1;
+}
+
+// ── Change evidence report (v1: code evidence) ──
+
+enum ChangeEvidenceReportStatus {
+  CHANGE_EVIDENCE_REPORT_STATUS_UNSPECIFIED = 0;
+  CHANGE_EVIDENCE_REPORT_STATUS_PENDING = 1;
+  CHANGE_EVIDENCE_REPORT_STATUS_RUNNING = 2;
+  CHANGE_EVIDENCE_REPORT_STATUS_COMPLETED = 3;
+  CHANGE_EVIDENCE_REPORT_STATUS_FAILED = 4;
+}
+
+enum ChangeEvidenceArtifactKind {
+  CHANGE_EVIDENCE_ARTIFACT_KIND_UNSPECIFIED = 0;
+  CHANGE_EVIDENCE_ARTIFACT_KIND_PDF = 1;
+  // One row per sealed code-verdict record in scope and period.
+  CHANGE_EVIDENCE_ARTIFACT_KIND_RECORDS_CSV = 2;
+  // The canonical manifest the PDF and the viewer both render. Its SHA-256 is the report's
+  // content digest printed on the cover.
+  CHANGE_EVIDENCE_ARTIFACT_KIND_MANIFEST = 3;
+  // One row per commit that reached a default branch in the period, with the sealed record it matched
+  // (or the reason it matched none). Its SHA-256 is bound into the manifest's content digest.
+  CHANGE_EVIDENCE_ARTIFACT_KIND_POPULATION_CSV = 4;
+  // The page document (schema 3): the sections and blocks the viewer and the PDF both draw. Built
+  // from the manifest's facts and stored beside it with its own SHA-256; never part of the content
+  // digest.
+  CHANGE_EVIDENCE_ARTIFACT_KIND_DOCUMENT = 5;
+}
+
+// Why a report is FAILED. A closed set so a client never shows a raw error.
+enum ChangeEvidenceFailureReason {
+  CHANGE_EVIDENCE_FAILURE_REASON_UNSPECIFIED = 0;
+  CHANGE_EVIDENCE_FAILURE_REASON_BUILD = 1;     // the manifest could not be built
+  CHANGE_EVIDENCE_FAILURE_REASON_RENDER = 2;    // the PDF or CSV could not be rendered
+  CHANGE_EVIDENCE_FAILURE_REASON_STORE = 3;     // the artifacts could not be stored
+  CHANGE_EVIDENCE_FAILURE_REASON_ABANDONED = 4; // the worker stopped and the row was never retried
+}
+
+message GenerateChangeEvidenceReportRequest {
+  string org_id = 1;
+  // The chosen repositories (1 to 50), all in org_id. Exactly one of repo_ids / project_id.
+  repeated string repo_ids = 2;
+  // A preset: every repository of this project in org_id.
+  string project_id = 3;
+  // The period, inclusive start and exclusive end, at most 12 months. Required.
+  google.protobuf.Timestamp period_from = 4;
+  google.protobuf.Timestamp period_to = 5;
+  // Free text printed on the cover ("Prepared for"), at most 200 characters. Optional.
+  string prepared_for = 6;
+  // The contact for questions is no longer typed per report: every report prints the org's VERIFIED audit
+  // contact (OrgService.SetOrgAuditContact), or states that none is set. A value an older client sends in
+  // field 7 is ignored.
+  reserved 7;
+  reserved "contact";
+}
+message GenerateChangeEvidenceReportResponse {
+  ChangeEvidenceReportRow report = 1;
+}
+
+message ListChangeEvidenceReportsRequest {
+  string org_id = 1;
+  int32 limit = 2;                       // default 50, max 200
+}
+message ListChangeEvidenceReportsResponse {
+  repeated ChangeEvidenceReportRow reports = 1;
+}
+
+message GetChangeEvidenceReportRequest {
+  string org_id = 1;
+  string report_id = 2;
+}
+message GetChangeEvidenceReportResponse {
+  ChangeEvidenceReportRow report = 1;
+  // The canonical manifest JSON of a COMPLETED report, byte for byte what was digested. Empty
+  // until completed. The client renders the viewer from it.
+  bytes manifest_json = 2;
+  // The page document JSON of a COMPLETED schema 3 report, byte for byte the stored document and
+  // checked against its recorded SHA-256. The client draws the viewer from it. Empty until
+  // completed, and for a report built before schema 3 (its manifest carries its own pages).
+  bytes document_json = 3;
+}
+
+message BackfillProcessEvidenceRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  // The period, inclusive start and exclusive end, at most 366 days, not in the future. Required.
+  google.protobuf.Timestamp period_from = 3;
+  google.protobuf.Timestamp period_to = 4;
+  // Empty starts; otherwise the next_cursor of the previous step.
+  string cursor = 5;
+  // How many changes (or commits) this step may take: default 10, at most 25.
+  int32 max_changes = 6;
+}
+message BackfillCounts {
+  // Records this step wrote.
+  int32 sealed = 1;
+  // Already had a record (live capture or an earlier backfill); left as it is.
+  int32 already_sealed = 2;
+  // GitHub did not give the item (deleted, or it changed under the read); nothing was sealed for it.
+  int32 unreadable = 3;
+}
+message BackfillProcessEvidenceResponse {
+  // The merged changes met in this step.
+  BackfillCounts changes = 1;
+  // The commits of the history walk met in this step (sealed: unreviewed changes written).
+  BackfillCounts history = 2;
+  // Commits of the walk that a merged pull request explains, so none was written for them.
+  int32 linked_commits = 3;
+  // Continue with this; empty when done.
+  string next_cursor = 4;
+  bool done = 5;
+  // Set when the step stopped to wait for GitHub: call again with next_cursor after this time. deferred_reason
+  // says why.
+  google.protobuf.Timestamp deferred_until = 6;
+  // The installation may not list what the step needed: a gap was sealed and the phase is over.
+  bool permission_missing = 7;
+  // GitHub requests this step made.
+  int32 github_requests = 8;
+  // Commits of the history walk that a sealed push record already lists: push capture sealed them, so the walk wrote
+  // nothing for them. (The walk also never enters the period in which push capture was live.)
+  int32 already_captured_commits = 9;
+  // Why deferred_until is set; UNSPECIFIED when it is not.
+  BackfillDeferReason deferred_reason = 10;
+}
+
+// Why a backfill step stopped to wait for GitHub.
+enum BackfillDeferReason {
+  BACKFILL_DEFER_REASON_UNSPECIFIED = 0;
+  // GitHub's rate limit: a 429, or a 403 whose Retry-After or x-ratelimit-remaining: 0 headers say so.
+  BACKFILL_DEFER_REASON_RATE_LIMITED = 1;
+  // A 403 that no documented header explains (no rate-limit header, no X-Accepted-GitHub-Permissions the
+  // installation lacks): GitHub's guidance is to wait at least a minute and back off exponentially. Repeated
+  // past the backfill's bound, the step is refused with ERR_EVIDENCE_BACKFILL_GITHUB_REFUSED instead.
+  BACKFILL_DEFER_REASON_GITHUB_FORBIDDEN = 2;
+}
+
+message DownloadChangeEvidenceReportRequest {
+  string org_id = 1;
+  string report_id = 2;
+  ChangeEvidenceArtifactKind kind = 3;
+}
+message DownloadChangeEvidenceReportResponse {
+  string download_url = 1;               // freshly presigned (60 minutes)
+  string filename = 2;
+  string sha256 = 3;                     // the file's SHA-256, "sha256:<hex>"
+  int64 size_bytes = 4;
+}
+
+message GetChangeEvidenceReportPdfRequest {
+  string org_id = 1;
+  string report_id = 2;
+}
+message GetChangeEvidenceReportPdfResponse {
+  // The PDF, byte for byte the stored file, already checked against sha256.
+  bytes pdf = 1;
+  // The PDF's SHA-256, "sha256:<hex>", the digest the report recorded for its PDF (the same as Download's sha256).
+  string sha256 = 2;
+}
+
+message ChangeEvidenceArtifact {
+  ChangeEvidenceArtifactKind kind = 1;
+  string filename = 2;
+  string sha256 = 3;                     // "sha256:<hex>"
+  int64 size_bytes = 4;
+}
+
+message ChangeEvidenceReportRow {
+  string id = 1;
+  ChangeEvidenceReportStatus status = 2;
+  ChangeEvidenceFailureReason failure_reason = 3;  // set only when FAILED
+  repeated string repo_ids = 4;
+  repeated string repo_names = 5;
+  google.protobuf.Timestamp period_from = 6;
+  google.protobuf.Timestamp period_to = 7;
+  string prepared_for = 8;
+  // Who generated the report: the user's full name as GitHub states it, or their GitHub login when GitHub states
+  // none (see generated_by_basis). Never an email address on a report made after generated_by_basis existed; a
+  // report made before it may hold the email the caller was signed in with.
+  string generated_by = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp completed_at = 11;
+  // The report id's content digest, "sha256:<hex>" of the canonical manifest. Empty until completed.
+  string manifest_digest = 12;
+  int32 record_count = 13;               // sealed code-verdict records in scope and period
+  string engine_version = 14;            // the generating server's engine commit
+  repeated ChangeEvidenceArtifact artifacts = 15;  // empty until completed
+  // Pages in the PDF; 0 until completed, and for reports made before the page map existed.
+  int32 pdf_page_count = 16;
+  // Where each section starts in the PDF, in print order. Empty until completed, and for older reports.
+  repeated ChangeEvidenceReportSection sections = 17;
+  // What generated_by is, so a viewer can say "no name is set on GitHub" instead of presenting a login as a name.
+  ChangeEvidenceGeneratedByBasis generated_by_basis = 18;
+  // Where the GitHub profile behind generated_by was read: at the request (GitHub was asked when the report was
+  // requested) or at the user's last sign-in (GitHub could not be asked then, so the stored profile is stated with the
+  // date it was read). Unspecified for a non-GitHub generator and for a report made before the source was recorded.
+  ChangeEvidenceGeneratedBySource generated_by_source = 19;
+  // When that profile was read, on Toevan's clock (unset when generated_by_source is unspecified).
+  google.protobuf.Timestamp generated_by_read_at = 20;
+  // The page each anchored block of the report starts on (a page reference such as "process.pushes" or
+  // "howto.route2" names one), from the same layout as sections. A reference resolves through sections (its key is a
+  // section key: that section's first page) or through anchors (its key is an anchor key: that block's page). Empty
+  // until completed, and for reports made before anchors were recorded: a reference to an anchor then has no known page.
+  repeated ChangeEvidenceReportAnchor anchors = 21;
+}
+
+// Where the GitHub profile a report names its generator from was read.
+enum ChangeEvidenceGeneratedBySource {
+  CHANGE_EVIDENCE_GENERATED_BY_SOURCE_UNSPECIFIED = 0;
+  // GitHub was asked with the user's own token when the report was requested.
+  CHANGE_EVIDENCE_GENERATED_BY_SOURCE_GITHUB_AT_REQUEST = 1;
+  // GitHub could not be asked at the request; the profile Toevan read at the user's last GitHub sign-in is stated, with
+  // the date it was read.
+  CHANGE_EVIDENCE_GENERATED_BY_SOURCE_GITHUB_AT_SIGN_IN = 2;
+}
+
+// What a report's generated_by names.
+enum ChangeEvidenceGeneratedByBasis {
+  // A report made before the basis was recorded: generated_by is whatever was snapshotted then (possibly an email, or
+  // empty).
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_UNSPECIFIED = 0;
+  // The full name GitHub states for the user.
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_GITHUB_NAME = 1;
+  // GitHub states no name for the user, so generated_by is their GitHub login.
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_GITHUB_LOGIN = 2;
+  // The user did not sign in with GitHub; generated_by is the name their sign-in provider states.
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_ACCOUNT_NAME = 3;
+  // Nothing is named: no name is held for the caller (for example an API key whose creator is gone) or their GitHub
+  // profile was never read. generated_by is EMPTY, never a placeholder; the viewer says "not stated".
+  CHANGE_EVIDENCE_GENERATED_BY_BASIS_NOT_STATED = 4;
+}
+
+// One section of the report and the pages it occupies in the PDF (the viewer's thumbnail rail and its
+// "page N" links read this).
+message ChangeEvidenceReportSection {
+  string key = 1;          // stable key: "cover", "summary", "scope", ...
+  string number = 2;       // "1", "2", ... ; empty for the cover and the appendix
+  string title = 3;
+  int32 first_page = 4;    // 1-based
+  int32 page_count = 5;
+}
+
+<<<<<<< ours
 
 // ── Production designation (H13) ──
 
@@ -1437,4 +2798,15 @@ message WithdrawProductionDesignationRequest {
 }
 message WithdrawProductionDesignationResponse {
   ProductionDesignation designation = 1;
+=======
+// One anchored block of the report and the page the PDF prints it on. The key is a dotted page-reference key
+// ("process.pushes"), never a section key (those are in ChangeEvidenceReportSection).
+message ChangeEvidenceReportAnchor {
+  string key = 1;
+  int32 page = 2;          // 1-based
+  // The key of the section the anchored block is in (the part of key before the dot). A viewer that has the section opens its sheet
+  // for a reference to the anchor; it never parses the key.
+  string section = 3;
+}
+
 }
