@@ -822,4 +822,9 @@ message RepositoryOpenFinding {
   // The finding's display coordinate (the one the canvas draws it at); line 0 when it states none.
   string file_path = 5;
   int32 line = 6;
+  // The blueprint that produced the finding, exactly as the evidence record states it (its own
+  // blueprint_id and blueprint_name columns): never resolved from a catalogue, never inferred from the
+  // rule. blueprint_name is empty when the record states none; a reader then shows no blueprint name.
+  string blueprint_id = 7;
+  string blueprint_name = 8;
 }
