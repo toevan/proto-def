@@ -2636,7 +2636,7 @@ message AssistUpdate {
   // text_delta is an incremental chunk of the answer text; the client appends
   // deltas in arrival order to render the answer as it is generated. Empty on
   // the final frame (and on an action-only turn, which streams no text).
-  string text_delta = 1;
+  string text_delta = 1 [(toevan.v1.flagged_text) = true];
   // proposed_action, when set, is the action the assistant suggests — delivered
   // on the final frame only (tool calls are known only when generation
   // completes). Same semantics as AssistReply.proposed_action.
