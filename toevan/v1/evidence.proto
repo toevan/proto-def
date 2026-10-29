@@ -1348,4 +1348,7 @@ message ChangeEvidenceReportSection {
 message ChangeEvidenceReportAnchor {
   string key = 1;
   int32 page = 2;          // 1-based
+  // The key of the section the anchored block is in (the part of key before the dot). A viewer that has the section opens its sheet
+  // for a reference to the anchor; it never parses the key.
+  string section = 3;
 }
