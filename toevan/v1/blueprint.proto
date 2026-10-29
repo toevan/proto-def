@@ -38,7 +38,15 @@ service BlueprintService {
   rpc GetBlueprintVersionHistory(GetVersionHistoryRequest) returns (GetVersionHistoryResponse);
   rpc CompareBlueprintVersions(CompareBlueprintVersionsRequest) returns (CompareBlueprintVersionsResponse);
   rpc GetBlueprintImpactAnalysis(GetBlueprintImpactAnalysisRequest) returns (GetBlueprintImpactAnalysisResponse);
-  rpc DryRunBlueprintConstraints(DryRunBlueprintConstraintsRequest) returns (DryRunBlueprintConstraintsResponse);
+  // The preview of a blueprint (the dry run) runs where the repository's clone and the index live, in the
+  // index worker, on the commit the repository was last indexed at, with the engine an index run uses. It
+  // is asynchronous: StartBlueprintPreview queues it and answers a preview id; GetBlueprintPreview reads the
+  // status and, once it SUCCEEDED, the result. Nothing is written for the repositories (no violation,
+  // verdict or evidence); the result is kept for a short while for this read only. The synchronous
+  // DryRunBlueprintConstraints is gone: the API server holds no clone, so it could not check a rule that
+  // reads files and answered "0 findings" for a run that checked nothing.
+  rpc StartBlueprintPreview(StartBlueprintPreviewRequest) returns (StartBlueprintPreviewResponse);
+  rpc GetBlueprintPreview(GetBlueprintPreviewRequest) returns (GetBlueprintPreviewResponse);
   // AI explanation of one dry-run violation: why the engine flagged it and
   // whether the fix belongs in the code or in the blueprint (review-first flow).
   rpc ExplainDryRunViolation(ExplainDryRunViolationRequest) returns (ExplainDryRunViolationResponse);
@@ -988,12 +996,57 @@ message SetAdoptionStatusResponse {
 
 // ── Dry Run ──
 
-message DryRunBlueprintConstraintsRequest {
+// Starts a preview. Refusals (a gRPC error with an ERR_ code, nothing queued):
+// ERR_BLUEPRINT_PREVIEW_REPO_DISCONNECTED and ERR_BLUEPRINT_PREVIEW_REPO_NOT_INDEXED (a repo named in
+// repo_ids), ERR_BLUEPRINT_PREVIEW_NO_REPOSITORY (nothing in scope can be previewed),
+// ERR_BLUEPRINT_PREVIEW_UNAVAILABLE (no worker queue on this deployment).
+message StartBlueprintPreviewRequest {
   string blueprint_id = 1;              // target blueprint version to evaluate
   string org_id = 2;                    // org scope
-  repeated string repo_ids = 3;        // specific repos (empty = all adopting repos)
+  repeated string repo_ids = 3;         // specific repos (empty = all adopting repos, else every org repo)
 }
 
+message StartBlueprintPreviewResponse {
+  string preview_id = 1;
+  BlueprintPreviewStatus status = 2;     // QUEUED, or the status of the preview already running for the same request
+}
+
+// A preview of the caller's organization only: another organization's id answers
+// ERR_BLUEPRINT_PREVIEW_NOT_FOUND, like an id that expired or never existed.
+message GetBlueprintPreviewRequest {
+  string preview_id = 1;
+  string org_id = 2;
+}
+
+message GetBlueprintPreviewResponse {
+  string preview_id = 1;
+  BlueprintPreviewStatus status = 2;
+  // Set only when status is FAILED: why no result exists.
+  BlueprintPreviewFailure failure = 3;
+  // Set only when status is SUCCEEDED. Every rule that was not checked is listed in it with its closed reason.
+  DryRunBlueprintConstraintsResponse result = 4;
+  // When the worker finished (SUCCEEDED or FAILED); unset while QUEUED or RUNNING.
+  google.protobuf.Timestamp finished_at = 5;
+}
+
+enum BlueprintPreviewStatus {
+  BLUEPRINT_PREVIEW_STATUS_UNSPECIFIED = 0;
+  BLUEPRINT_PREVIEW_STATUS_QUEUED = 1;
+  BLUEPRINT_PREVIEW_STATUS_RUNNING = 2;
+  BLUEPRINT_PREVIEW_STATUS_SUCCEEDED = 3;
+  BLUEPRINT_PREVIEW_STATUS_FAILED = 4;
+}
+
+// Why a preview produced no result. UNSPECIFIED is never sent.
+enum BlueprintPreviewFailure {
+  BLUEPRINT_PREVIEW_FAILURE_UNSPECIFIED = 0;
+  // The worker ran the preview and it failed (for every repository, or before any ran).
+  BLUEPRINT_PREVIEW_FAILURE_EVALUATION_FAILED = 1;
+  // No worker finished it in time (the worker is down or backed up); run it again.
+  BLUEPRINT_PREVIEW_FAILURE_TIMED_OUT = 2;
+}
+
+// The result of a preview (carried by GetBlueprintPreviewResponse.result).
 message DryRunBlueprintConstraintsResponse {
   repeated RepoDryRunResult repo_results = 1;
   int32 total_violations = 2;
@@ -1034,6 +1087,11 @@ enum NotCheckableReason {
   // No language is recorded for the repo yet, so whether the blueprint covers it
   // is not known. Says nothing about the repo's index state.
   NOT_CHECKABLE_REASON_NO_LANGUAGES_DETECTED = 8;
+  // The repository is disconnected: Toevan no longer governs it, so a preview does not read it.
+  NOT_CHECKABLE_REASON_REPO_DISCONNECTED = 9;
+  // The repository has no indexed commit yet (it was never indexed, or its first index has not
+  // finished), so there is no commit to preview.
+  NOT_CHECKABLE_REASON_NO_INDEXED_COMMIT = 10;
 }
 
 // Why a rule that DID run may have judged less than the whole repo. Its findings
@@ -1123,6 +1181,8 @@ message RepoDryRunResult {
   int32 rules_ran = 10;                    // rules that executed (ran, possibly with 0 findings)
   repeated RuleNotChecked not_checked = 11; // rules that did not run: not "0 findings"
   repeated RuleIncomplete incomplete = 12;  // rules that ran with a partial answer
+  // The commit the repository was last indexed at: the commit the preview judged. Empty when skipped.
+  string indexed_commit = 13;
 }
 
 message DryRunViolation {
