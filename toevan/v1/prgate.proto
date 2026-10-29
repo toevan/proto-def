@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 import "toevan/v1/types.proto";
 import "toevan/v1/repo.proto"; // DeepCheckRequest (per-PR deep-check summary)
 import "toevan/v1/dashboard.proto"; // FileClass (PrFileClassChange)
+import "toevan/v1/secret_options.proto";
 import "toevan/v1/build.proto"; // VulnFixTarget (the upgrade decision on the list)
 
 // ============================================
@@ -289,9 +290,9 @@ message EnrichedViolation {
   string cite = 13;                      // regulatory reference (e.g., "GDPR Art.32")
 
   // Code diff
-  string current_code = 14;             // the violating code ("del" line)
-  string suggested_fix = 15;            // the fixed code ("add" line)
-  string expanded_fix = 16;             // AI-enhanced fix with more context
+  string current_code = 14 [(toevan.v1.flagged_text) = true];             // the violating code ("del" line)
+  string suggested_fix = 15 [(toevan.v1.flagged_text) = true];            // the fixed code ("add" line)
+  string expanded_fix = 16 [(toevan.v1.flagged_text) = true];             // AI-enhanced fix with more context
 
   // Metadata
   int32 estimated_fix_minutes = 17;
@@ -334,6 +335,12 @@ message EnrichedViolation {
   // until the first dispatch resolved a PR. Drives the
   // "View PR" affordance in the detail sheet.
   string auto_fix_pr_url = 28;
+
+  // secret_masked is true when the finding's file holds a detected secret and the text fields of this finding
+  // (suggested_fix, current_code, expanded_fix) were sent with it masked (owner decision 62). can_reveal_secret
+  // is whether RevealFindingSecret would be allowed for the caller (advisory); the card draws Reveal only then.
+  bool secret_masked = 32;
+  bool can_reveal_secret = 33;
 
   // The owning rule's GENERIC explanation (the blueprint rule's
   // description, e.g. "Enforces that UI layers depend only on

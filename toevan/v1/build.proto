@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 import "toevan/v1/types.proto";
 import "toevan/v1/agent.proto";
 import "toevan/v1/dashboard.proto";
+import "toevan/v1/secret_options.proto";
 
 // ============================================
 // BuildService — Code Generation, Build Orchestration, Previews
@@ -885,7 +886,7 @@ message GetFileContentRequest {
 }
 
 message GetFileContentReply {
-  string content = 1;
+  string content = 1 [(toevan.v1.flagged_text) = true];
   string language = 2;         // detected language for syntax highlighting
   repeated int32 violation_lines = 3;
   // secret_masked is true when the file holds a detected secret and `content` was sent with it masked (owner
@@ -973,7 +974,7 @@ message GetViolationDetailReply {
   // Capped at a reasonable line count; truncated snippets append "…".
   // Empty when file_path resolves to no file (structural violations
   // without a localized snippet).
-  string current_code = 11;
+  string current_code = 11 [(toevan.v1.flagged_text) = true];
 
   // violation_reason is the per-instance "why this specific code is
   // violating this rule" message from the constraint runner — e.g.
@@ -1126,7 +1127,7 @@ message GetViolationDetailReply {
   // produce a plan (rule not addressable, plan-pass error, gaps
   // unresolvable). Canvas client renders the no-preview UI in that
   // case.
-  ChangeSet change_set = 26;
+  ChangeSet change_set = 26 [(toevan.v1.flagged_text) = true];
 
   // symbol_id is the deterministic indexer-emitted SymbolID
   // (`<filePath>:<kind>:<qualifier>`, e.g.
@@ -1387,9 +1388,12 @@ message RevealFindingSecretRequest {
 message RevealFindingSecretReply {
   string violation_id = 1;
   // current_code is the finding's snippet, unmasked.
-  string current_code = 2;
+  string current_code = 2 [(toevan.v1.flagged_text) = true];
   // file_diffs are the fix preview's per-file hunks, unmasked.
-  repeated FileDiff file_diffs = 3;
+  repeated FileDiff file_diffs = 3 [(toevan.v1.flagged_text) = true];
+  // suggested_fix is the fix the PR Gate stored for the finding, unmasked (empty for a finding the gate stored
+  // none for). The PR Gate card's Reveal shows it.
+  string suggested_fix = 4 [(toevan.v1.flagged_text) = true];
 }
 
 // ViolationDetailUpdate is one message on the
@@ -1440,7 +1444,7 @@ message ViolationDetailUpdate {
     ViolationDetailProgress progress = 6;
     // change_set is the typed Fix ChangeSet from Stage 3. Newer
     // clients render this via ChangeSetView (PR 10b).
-    ChangeSet change_set = 7;
+    ChangeSet change_set = 7 [(toevan.v1.flagged_text) = true];
     // preview is a NON-TERMINAL early frame: the fix-shape classifier's
     // manual-refactor guidance, emitted BEFORE Stage 3 runs so the client
     // shows actionable guidance instantly while the LLM attempts a real fix.
@@ -1720,7 +1724,7 @@ message ViolationDetailHeader {
   int32 end_line = 8;
   string docs_url = 9;
   string label = 10;
-  string current_code = 11;
+  string current_code = 11 [(toevan.v1.flagged_text) = true];
   // violation_reason mirrors [GetViolationDetailReply.violation_reason]
   // — the per-instance "why this code violates this rule" message
   // from the constraint runner. Streamed in the HEADER so the client
@@ -2514,7 +2518,7 @@ message AnswerListItem { repeated AnswerBlock blocks = 1; }
 // ([A-Za-z0-9_+#.-], at most 32 characters) or empty.
 message AnswerCodeBlock {
   string language = 1;
-  string text = 2;
+  string text = 2 [(toevan.v1.flagged_text) = true];
 }
 
 message AnswerQuote { repeated AnswerBlock blocks = 1; }
@@ -2531,10 +2535,10 @@ message AnswerInline {
   }
 }
 
-message AnswerText { string text = 1; }
+message AnswerText { string text = 1 [(toevan.v1.flagged_text) = true]; }
 
 // Inline code, verbatim.
-message AnswerCode { string text = 1; }
+message AnswerCode { string text = 1 [(toevan.v1.flagged_text) = true]; }
 
 message AnswerEmphasis { repeated AnswerInline inlines = 1; }
 
@@ -2555,7 +2559,7 @@ message CanvasChatMessage {
   string user_id = 3;
   string node_id = 4;                             // optional: which node was selected
   string role = 5;                                 // "user" or "assistant"
-  string content = 6;
+  string content = 6 [(toevan.v1.flagged_text) = true];
   google.protobuf.Timestamp created_at = 7;
   // ERR_ASK_* reason code when this assistant message is a refusal (content then
   // holds the English fallback); empty otherwise.
@@ -2587,7 +2591,7 @@ message ClearCanvasChatHistoryReply {
 // the model has continuity. role is "user" or "assistant".
 message AssistTurn {
   string role = 1;
-  string content = 2;
+  string content = 2 [(toevan.v1.flagged_text) = true];
 }
 
 message AssistRequest {
@@ -2604,7 +2608,7 @@ message AssistRequest {
 message AssistReply {
   // text is the assistant's answer as flattened plain text, kept for older clients.
   // It is never Markdown to render. Clients that know answer render that instead.
-  string text = 1;
+  string text = 1 [(toevan.v1.flagged_text) = true];
   // proposed_action, when set, is an action the assistant suggests taking (e.g.
   // navigate to a page). The client renders a confirmation card and executes it
   // through the existing authorized flows only after the user confirms; the
@@ -2765,8 +2769,8 @@ message FileDiff {
 message DiffHunk {
   int32 start_line = 1;
   int32 end_line = 2;
-  string old_content = 3;
-  string new_content = 4;
+  string old_content = 3 [(toevan.v1.flagged_text) = true];
+  string new_content = 4 [(toevan.v1.flagged_text) = true];
 }
 
 // RefactorOp is the typed sum-type for v1's closed Operations
@@ -2807,8 +2811,8 @@ message ReplaceLiteralOp {
   string id = 1;
   string file_path = 2;
   Range range = 3;
-  string old_literal = 4;
-  string new_literal = 5;
+  string old_literal = 4 [(toevan.v1.flagged_text) = true];
+  string new_literal = 5 [(toevan.v1.flagged_text) = true];
   string justification = 6;
 }
 
@@ -2947,8 +2951,8 @@ message ReplaceLinesOp {
   // refuses to apply if not (drift guard). Empty original means
   // the planner didn't capture pre-state; applier proceeds without
   // the verification.
-  string original = 5;
-  string replacement = 6;
+  string original = 5 [(toevan.v1.flagged_text) = true];
+  string replacement = 6 [(toevan.v1.flagged_text) = true];
   // rationale is the operator-facing prose for the PR description /
   // canvas detail panel. Required for the per-file PRIMARY edit;
   // optional for consumer edits (the rationale on the primary op
@@ -2968,7 +2972,7 @@ message ReplaceLinesOp {
 message CreateFileOp {
   string id = 1;
   string file_path = 2;
-  string content = 3;
+  string content = 3 [(toevan.v1.flagged_text) = true];
   string rationale = 4;
 }
 
@@ -3042,8 +3046,8 @@ message AddInterfaceImplementationEdit {
   // original is optional context the applier verifies before
   // writing (drift guard). Empty original means the strategy
   // didn't capture pre-state.
-  string original = 3;
-  string replacement = 4;
+  string original = 3 [(toevan.v1.flagged_text) = true];
+  string replacement = 4 [(toevan.v1.flagged_text) = true];
   // rationale is the per-edit operator prose. Optional — the
   // parent op's rationale is the primary narrative.
   string rationale = 5;
