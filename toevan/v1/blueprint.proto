@@ -1012,6 +1012,10 @@ message StartBlueprintPreviewRequest {
 message StartBlueprintPreviewResponse {
   string preview_id = 1;
   BlueprintPreviewStatus status = 2;     // QUEUED, or the status of the preview already running for the same request
+  // The longest the server lets this preview take, from the request: a preview unfinished past it
+  // reads as FAILED with TIMED_OUT. It is the ONE timeout: a client that waits for the result waits
+  // at most this long and states it, and never invents a limit of its own.
+  int32 timeout_seconds = 3;
 }
 
 // A preview of the caller's organization only: another organization's id answers
@@ -1030,6 +1034,12 @@ message GetBlueprintPreviewResponse {
   DryRunBlueprintConstraintsResponse result = 4;
   // When the worker finished (SUCCEEDED or FAILED); unset while QUEUED or RUNNING.
   google.protobuf.Timestamp finished_at = 5;
+  // Set only when status is FAILED: the ERR_ code of the failure reason (ERR_BLUEPRINT_PREVIEW_EVALUATION_FAILED,
+  // ERR_BLUEPRINT_PREVIEW_TIMED_OUT), the one a client localizes with. The server states it; a client never
+  // derives it from the enum.
+  string failure_code = 6;
+  // The ONE timeout of the preview, as in StartBlueprintPreviewResponse.
+  int32 timeout_seconds = 7;
 }
 
 enum BlueprintPreviewStatus {
@@ -1095,10 +1105,15 @@ enum NotCheckableReason {
   // The repository has no indexed commit yet (it was never indexed, or its first index has not
   // finished), so there is no commit to preview.
   NOT_CHECKABLE_REASON_NO_INDEXED_COMMIT = 10;
-  // The repository's copy on the index worker is not at the indexed commit (an index run moved it, or
-  // it could not be read), so the preview, which judges exactly the indexed commit, did not read it.
-  // The next index run brings the copy and the indexed commit together; run the preview again then.
-  NOT_CHECKABLE_REASON_CLONE_NOT_AT_INDEXED_COMMIT = 11;
+  // 11 was CLONE_NOT_AT_INDEXED_COMMIT in an earlier revision of this change (never released): the
+  // preview no longer reads the worker's shared clone, so the state it named cannot occur. The
+  // number and the name are reserved and never reused.
+  reserved 11;
+  reserved "NOT_CHECKABLE_REASON_CLONE_NOT_AT_INDEXED_COMMIT";
+  // The commit the repository was last indexed at could not be checked out for the preview (GitHub
+  // no longer serves it after a force push, or could not be reached), so the repository was not
+  // read. Run the preview again after the next index.
+  NOT_CHECKABLE_REASON_COMMIT_UNAVAILABLE = 12;
 }
 
 // Why a rule that DID run may have judged less than the whole repo. Its findings
