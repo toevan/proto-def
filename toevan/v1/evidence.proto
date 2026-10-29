@@ -158,6 +158,26 @@ service EvidenceService {
   // GitHub kept answering a 403 that no documented header explains past the backfill's retry bound; call again with
   // the same cursor once the cause is fixed, for example an organisation IP allow list that does not admit the App).
   rpc BackfillProcessEvidence(BackfillProcessEvidenceRequest) returns (BackfillProcessEvidenceResponse);
+
+  // PRODUCTION DESIGNATION (hold H13, owner decision 58). The environments Toevan has seen in the org's sealed deployment records,
+  // the org's designations of them as production (active and withdrawn, the history), and what GitHub's own record said of each
+  // environment. Org ADMIN of org_id (RequireOrgAdmin; a read-scope support grant is refused like every admin read). org_id scopes
+  // every row: another org's environments and designations are never read.
+  rpc ListProductionEnvironments(ListProductionEnvironmentsRequest) returns (ListProductionEnvironmentsResponse);
+  // An org admin designates an environment as production by its EXACT name, compared without regard to case (no pattern, no
+  // wildcard). The name must be one Toevan has seen in the org's sealed deployment records (in the named repository, when
+  // repo_ids names any). Org-wide when repo_ids is empty; otherwise one designation per listed repository. The designation is
+  // sealed as a control_change (control type production_designation) in the chain of every repository it concerns, with the actor
+  // as the identity rules state it, and audited. It applies from its own time forward: it never reclassifies a deployment that
+  // happened before it, and the change evidence report says so. Designating what is already designated seals nothing new.
+  // Org admin only: a support grant and an API key are refused. Errors: PERMISSION_DENIED, INVALID_ARGUMENT (the name is empty or
+  // not seen; a repository is not the org's), UNAVAILABLE (evidence capture is not running here: nothing could be sealed).
+  rpc DesignateProductionEnvironment(DesignateProductionEnvironmentRequest) returns (DesignateProductionEnvironmentResponse);
+  // An org admin withdraws a designation. The withdrawal is sealed as a control_change too, and audited; the designation stays in
+  // the history. Deployments that happened while the designation stood stay production in the report. Same authorization as
+  // DesignateProductionEnvironment. Errors: PERMISSION_DENIED, NOT_FOUND (no such designation in the org), FAILED_PRECONDITION
+  // (already withdrawn).
+  rpc WithdrawProductionDesignation(WithdrawProductionDesignationRequest) returns (WithdrawProductionDesignationResponse);
 }
 
 // ── Transparency log setting ──
@@ -629,7 +649,7 @@ message VerdictAttestation {
   string key_id = 7;            // SPKI fingerprint of the signing key
   int64  rekor_log_index = 8;   // transparency-log inclusion; 0 = not logged yet
   string rekor_log_url = 9;     // WHICH log holds the proof; "" = not logged yet
-  string twin_commit_sha = 10;  // evidence-branch commit carrying the file; "" = not mirrored yet
+  string twin_commit_sha = 10;  // commit of the evidence branch (the response names it) carrying the file; "" = not mirrored yet
   // Display name of the blueprint at read time (joined, not stored in the
   // immutable record). Empty when the blueprint row is gone; the id above
   // remains the stable key. Clients render THIS, never the UUID.
@@ -641,6 +661,10 @@ message ListVerdictAttestationsResponse {
   // The verdicts at this commit that the Coverage Gate left unsigned, so a
   // client can tell "not signed: coverage" from "not signed yet". In chain order.
   repeated UnsignedVerdict unsigned = 2;
+  // The evidence branch this deployment writes (see GetEvidenceRetentionResponse.evidence_branch):
+  // twin_commit_sha of an attestation is a commit of THIS branch. Empty when this deployment
+  // writes no evidence branch (its git twin exporter is not built).
+  string evidence_branch = 3;
 }
 
 // ── Core Types ──
@@ -1063,7 +1087,7 @@ message GetEvidenceRetentionResponse {
   // The org already has entries in a transparency log (published earlier, whatever the
   // log setting is now).
   bool log_entries_published = 7;
-  // The git twin (toevan/evidence) is exported to the customer's repository. Toevan only
+  // The git twin (the evidence branch, named in evidence_branch) is exported to the customer's repository. Toevan only
   // appends to it and never deletes or rewrites it.
   bool git_twin_enabled = 8;
   // Audit logs older than this many days are deleted by the optional sweep; 0 = no sweep
@@ -1091,6 +1115,11 @@ message GetEvidenceRetentionResponse {
   // this long; automatic deletion at the end of the period is not yet enforced".
   // Turns true only when a purge that keeps the hash chain verifiable ships.
   bool purge_enforced = 14;
+  // The name of the evidence branch THIS deployment writes into a customer's repository
+  // (owner decision 64): production's is the stable name, every other environment's carries
+  // its environment. Set only while git_twin_enabled; empty otherwise. A client names the
+  // branch with this value and never with a name of its own.
+  string evidence_branch = 15;
 }
 
 message SetEvidenceRetentionRequest {
@@ -1300,6 +1329,11 @@ message ChangeEvidenceReportRow {
   ChangeEvidenceGeneratedBySource generated_by_source = 19;
   // When that profile was read, on Toevan's clock (unset when generated_by_source is unspecified).
   google.protobuf.Timestamp generated_by_read_at = 20;
+  // The page each anchored block of the report starts on (a page reference such as "process.pushes" or
+  // "howto.route2" names one), from the same layout as sections. A reference resolves through sections (its key is a
+  // section key: that section's first page) or through anchors (its key is an anchor key: that block's page). Empty
+  // until completed, and for reports made before anchors were recorded: a reference to an anchor then has no known page.
+  repeated ChangeEvidenceReportAnchor anchors = 21;
 }
 
 // Where the GitHub profile a report names its generator from was read.
@@ -1336,4 +1370,95 @@ message ChangeEvidenceReportSection {
   string title = 3;
   int32 first_page = 4;    // 1-based
   int32 page_count = 5;
+}
+
+// One anchored block of the report and the page the PDF prints it on. The key is a dotted page-reference key
+// ("process.pushes"), never a section key (those are in ChangeEvidenceReportSection).
+message ChangeEvidenceReportAnchor {
+  string key = 1;
+  int32 page = 2;          // 1-based
+  // The key of the section the anchored block is in (the part of key before the dot). A viewer that has the section opens its sheet
+  // for a reference to the anchor; it never parses the key.
+  string section = 3;
+}
+
+
+// ── Production designation (H13) ──
+
+// One environment name as Toevan has seen it in the org's sealed deployment records (the environment a deployment status names, else
+// the deployment's own). Names that differ only in case are ONE environment here; the spellings are listed.
+message SeenEnvironment {
+  // The spelling seen most recently.
+  string name = 1;
+  // Every spelling seen, including name.
+  repeated string spellings = 2;
+  // Deployment statuses that name the environment, in all repositories.
+  int64 statuses = 3;
+  google.protobuf.Timestamp first_seen_at = 4;
+  google.protobuf.Timestamp last_seen_at = 5;
+  // What GitHub's own deployment record said, per status: production_environment true, false, or not given.
+  int64 github_flag_production = 6;
+  int64 github_flag_not_production = 7;
+  int64 github_flag_not_given = 8;
+  // The repositories the environment was seen in.
+  repeated SeenEnvironmentRepository repositories = 9;
+}
+
+message SeenEnvironmentRepository {
+  string repo_id = 1;
+  string repo_name = 2;
+  int64 statuses = 3;
+}
+
+// One designation, active or withdrawn.
+message ProductionDesignation {
+  string id = 1;
+  // The environment as it was picked (its spelling); compared without regard to case.
+  string environment = 2;
+  // Empty: the whole org. Otherwise the one repository the designation is limited to.
+  string repo_id = 3;
+  string repo_name = 4;
+  string designated_by_user_id = 5;
+  // The name Toevan holds for the user (the same name the change evidence report prints), empty when not held.
+  string designated_by = 6;
+  google.protobuf.Timestamp designated_at = 7;
+  // Set when withdrawn.
+  string withdrawn_by_user_id = 8;
+  string withdrawn_by = 9;
+  google.protobuf.Timestamp withdrawn_at = 10;
+  // Whether the designation, and its withdrawal, are sealed in the evidence chain. A designation that is not sealed yet is not
+  // applied by the report; designating again seals it.
+  bool sealed = 11;
+  bool withdrawal_sealed = 12;
+}
+
+message ListProductionEnvironmentsRequest {
+  string org_id = 1;
+}
+message ListProductionEnvironmentsResponse {
+  repeated SeenEnvironment environments = 1;
+  // Every designation of the org, active ones first, then the withdrawn, newest first.
+  repeated ProductionDesignation designations = 2;
+  // False when the org's deployment records could not all be read now; the list is then what was read.
+  bool environments_complete = 3;
+}
+
+message DesignateProductionEnvironmentRequest {
+  string org_id = 1;
+  // The exact name of an environment Toevan has seen.
+  string environment = 2;
+  // Empty: org-wide. Otherwise the repositories (of org_id) the designation is limited to.
+  repeated string repo_ids = 3;
+}
+message DesignateProductionEnvironmentResponse {
+  // The designations now standing for the request (one org-wide, or one per repository), including ones that already stood.
+  repeated ProductionDesignation designations = 1;
+}
+
+message WithdrawProductionDesignationRequest {
+  string org_id = 1;
+  string designation_id = 2;
+}
+message WithdrawProductionDesignationResponse {
+  ProductionDesignation designation = 1;
 }
