@@ -649,7 +649,7 @@ message VerdictAttestation {
   string key_id = 7;            // SPKI fingerprint of the signing key
   int64  rekor_log_index = 8;   // transparency-log inclusion; 0 = not logged yet
   string rekor_log_url = 9;     // WHICH log holds the proof; "" = not logged yet
-  string twin_commit_sha = 10;  // evidence-branch commit carrying the file; "" = not mirrored yet
+  string twin_commit_sha = 10;  // commit of the evidence branch (the response names it) carrying the file; "" = not mirrored yet
   // Display name of the blueprint at read time (joined, not stored in the
   // immutable record). Empty when the blueprint row is gone; the id above
   // remains the stable key. Clients render THIS, never the UUID.
@@ -661,6 +661,10 @@ message ListVerdictAttestationsResponse {
   // The verdicts at this commit that the Coverage Gate left unsigned, so a
   // client can tell "not signed: coverage" from "not signed yet". In chain order.
   repeated UnsignedVerdict unsigned = 2;
+  // The evidence branch this deployment writes (see GetEvidenceRetentionResponse.evidence_branch):
+  // twin_commit_sha of an attestation is a commit of THIS branch. Empty when this deployment
+  // writes no evidence branch (its git twin exporter is not built).
+  string evidence_branch = 3;
 }
 
 // ── Core Types ──
@@ -1083,7 +1087,7 @@ message GetEvidenceRetentionResponse {
   // The org already has entries in a transparency log (published earlier, whatever the
   // log setting is now).
   bool log_entries_published = 7;
-  // The git twin (toevan/evidence) is exported to the customer's repository. Toevan only
+  // The git twin (the evidence branch, named in evidence_branch) is exported to the customer's repository. Toevan only
   // appends to it and never deletes or rewrites it.
   bool git_twin_enabled = 8;
   // Audit logs older than this many days are deleted by the optional sweep; 0 = no sweep
@@ -1111,6 +1115,11 @@ message GetEvidenceRetentionResponse {
   // this long; automatic deletion at the end of the period is not yet enforced".
   // Turns true only when a purge that keeps the hash chain verifiable ships.
   bool purge_enforced = 14;
+  // The name of the evidence branch THIS deployment writes into a customer's repository
+  // (owner decision 64): production's is the stable name, every other environment's carries
+  // its environment. Set only while git_twin_enabled; empty otherwise. A client names the
+  // branch with this value and never with a name of its own.
+  string evidence_branch = 15;
 }
 
 message SetEvidenceRetentionRequest {
