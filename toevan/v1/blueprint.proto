@@ -1095,6 +1095,10 @@ enum NotCheckableReason {
   // The repository has no indexed commit yet (it was never indexed, or its first index has not
   // finished), so there is no commit to preview.
   NOT_CHECKABLE_REASON_NO_INDEXED_COMMIT = 10;
+  // The repository's copy on the index worker is not at the indexed commit (an index run moved it, or
+  // it could not be read), so the preview, which judges exactly the indexed commit, did not read it.
+  // The next index run brings the copy and the indexed commit together; run the preview again then.
+  NOT_CHECKABLE_REASON_CLONE_NOT_AT_INDEXED_COMMIT = 11;
 }
 
 // Why a rule that DID run may have judged less than the whole repo. Its findings
