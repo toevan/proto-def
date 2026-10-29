@@ -1050,7 +1050,7 @@ message GetViolationDetailReply {
   // Empty when no validation ran (no fix generated, file fetch
   // failed). Lets the client render an honest "what we checked"
   // explainer instead of leaving users to interpret a status map.
-  string validation_context = 20;
+  string validation_context = 20 [(toevan.v1.flagged_text) = true];
 
   // resolves_names is the human-readable rule-name lookup keyed by
   // the same violation_ids in `resolves`. Always includes the
@@ -1234,7 +1234,7 @@ message GetViolationDetailReply {
   // vocabulary of decline-codes for Stage 3's LLM fast-path):
   // manual_refactor_reason carries free-form prose composed by the
   // deterministic structural planner per violation.
-  string manual_refactor_reason = 30;
+  string manual_refactor_reason = 30 [(toevan.v1.flagged_text) = true];
 
   // manual_refactor_guidance is the STRUCTURED form of
   // manual_refactor_reason: the discrete facts the fix-shape classifier
@@ -1243,7 +1243,7 @@ message GetViolationDetailReply {
   // structured card instead of one prose blob. Present whenever
   // manual_refactor_reason is non-empty; clients SHOULD prefer it and
   // fall back to the prose string. See [ManualRefactorGuidance].
-  ManualRefactorGuidance manual_refactor_guidance = 34;
+  ManualRefactorGuidance manual_refactor_guidance = 34 [(toevan.v1.flagged_text) = true];
 
   // constraint_definition_json is the blueprint rule that flagged this
   // violation, so the client can show the EXACT constraint/rule from the
@@ -1464,9 +1464,9 @@ message ViolationDetailUpdate {
 // "generating a fix…" affordance until the FOOTER arrives.
 message ViolationDetailPreview {
   // manual_refactor_reason mirrors [ViolationDetailFooter.manual_refactor_reason].
-  string manual_refactor_reason = 1;
+  string manual_refactor_reason = 1 [(toevan.v1.flagged_text) = true];
   // manual_refactor_guidance mirrors [ViolationDetailFooter.manual_refactor_guidance].
-  ManualRefactorGuidance manual_refactor_guidance = 2;
+  ManualRefactorGuidance manual_refactor_guidance = 2 [(toevan.v1.flagged_text) = true];
 }
 
 // ViolationDetailProgress carries one observable from the
@@ -1815,7 +1815,7 @@ message ViolationDetailFooter {
   // checked vs skipped. Streamed in the FOOTER (after all per-rule
   // VALIDATION entries) so the client renders the badges first then
   // the contextual explainer.
-  string validation_context = 6;
+  string validation_context = 6 [(toevan.v1.flagged_text) = true];
   // resolves_names mirrors [GetViolationDetailReply.resolves_names]
   // — human-readable rule names keyed by violation_id. Streamed in
   // the FOOTER alongside `resolves` so the client renders the
@@ -1854,12 +1854,12 @@ message ViolationDetailFooter {
   // as part of Stage 3 (same timing slot as change_set_decline_reason).
   // When non-empty AND ChangeSet is unset, clients suppress the Apply
   // Fix CTA — there's nothing to apply.
-  string manual_refactor_reason = 11;
+  string manual_refactor_reason = 11 [(toevan.v1.flagged_text) = true];
 
   // manual_refactor_guidance mirrors
   // [GetViolationDetailReply.manual_refactor_guidance] — the structured
   // form, streamed in the FOOTER alongside manual_refactor_reason.
-  ManualRefactorGuidance manual_refactor_guidance = 12;
+  ManualRefactorGuidance manual_refactor_guidance = 12 [(toevan.v1.flagged_text) = true];
 
   // constraint_definition_json mirrors
   // [GetViolationDetailReply.constraint_definition_json].
