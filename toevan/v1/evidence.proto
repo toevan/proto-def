@@ -1300,6 +1300,11 @@ message ChangeEvidenceReportRow {
   ChangeEvidenceGeneratedBySource generated_by_source = 19;
   // When that profile was read, on Toevan's clock (unset when generated_by_source is unspecified).
   google.protobuf.Timestamp generated_by_read_at = 20;
+  // The page each anchored block of the report starts on (a page reference such as "process.pushes" or
+  // "howto.route2" names one), from the same layout as sections. A reference resolves through sections (its key is a
+  // section key: that section's first page) or through anchors (its key is an anchor key: that block's page). Empty
+  // until completed, and for reports made before anchors were recorded: a reference to an anchor then has no known page.
+  repeated ChangeEvidenceReportAnchor anchors = 21;
 }
 
 // Where the GitHub profile a report names its generator from was read.
@@ -1336,4 +1341,11 @@ message ChangeEvidenceReportSection {
   string title = 3;
   int32 first_page = 4;    // 1-based
   int32 page_count = 5;
+}
+
+// One anchored block of the report and the page the PDF prints it on. The key is a dotted page-reference key
+// ("process.pushes"), never a section key (those are in ChangeEvidenceReportSection).
+message ChangeEvidenceReportAnchor {
+  string key = 1;
+  int32 page = 2;          // 1-based
 }
