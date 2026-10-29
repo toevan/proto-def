@@ -99,6 +99,18 @@ service BuildService {
   // backend, so behavior is identical apart from the wire shape.
   rpc StreamViolationDetail(StreamViolationDetailRequest) returns (stream ViolationDetailUpdate);
 
+  // RevealFindingSecret returns the UNMASKED code of a secret_detection finding's detail: the current_code
+  // snippet and the file diffs, exactly as GetViolationDetail would send them without the mask. Every other RPC
+  // sends a detected secret masked (the first and last few characters, the rest hidden; owner decision 62), so
+  // this is the only way a secret leaves the server for a client.
+  //
+  // Authorization: the caller must hold a governance role in the finding's organization (admin, compliance or
+  // CISO) through REAL membership (a support grant never reveals), and read access to the repository. Every
+  // reveal writes an audit row (finding.secret_revealed, never the value) BEFORE the value is returned; a
+  // failed audit write refuses the reveal. Rate limited per user. ERR_SECRET_REVEAL_FORBIDDEN,
+  // ERR_SECRET_REVEAL_AUDIT_FAILED, ERR_RATE_LIMITED are the typed refusals.
+  rpc RevealFindingSecret(RevealFindingSecretRequest) returns (RevealFindingSecretReply);
+
   // WarmViolationDetail is a fire-and-forget pre-compute trigger.
   // Returns immediately after either confirming the result is
   // already in Redis (cache_hit=true) OR launching a background
@@ -1264,6 +1276,18 @@ message GetViolationDetailReply {
   // decline text on vuln_fix_target.error_code.
   VulnFixTarget vuln_fix_target = 39;
 
+  // secret_masked is true when this file holds a detected secret and the code fields of this reply (current_code,
+  // change_set, explanation, ...) were sent with it masked. The client then shows the mask and, when
+  // can_reveal_secret, a Reveal control. (additive, owner decision 62)
+  bool secret_masked = 40;
+  // secret_span_recorded is false when the flagged line is masked WHOLE because the span of the secret was not
+  // recorded for this finding (a row written before the span was); the client says so beside the line. The next
+  // scan records it. Meaningful only when secret_masked.
+  bool secret_span_recorded = 41;
+  // can_reveal_secret is whether RevealFindingSecret would be allowed for the caller (the role check alone, no
+  // side effect). The client shows the Reveal control only when true. Advisory: the RPC checks again.
+  bool can_reveal_secret = 42;
+
   // display_line_note is optional human-readable precision context
   // for the (file_path, line) display coordinate above. Hydrated
   // from the primary EvidenceLocation's Note field. Phase 1b's
@@ -1337,6 +1361,22 @@ message StreamViolationDetailRequest {
   // a stuck client looping on regenerate can't outrun the AI cost
   // ceiling.
   bool force_regenerate = 2;
+}
+
+// RevealFindingSecretRequest asks for the unmasked code of one finding's detail.
+message RevealFindingSecretRequest {
+  // violation_id is the finding (evidence row) the detail belongs to.
+  string violation_id = 1;
+}
+
+// RevealFindingSecretReply carries the UNMASKED fields, nothing else: the client replaces its masked copies with
+// them for as long as the panel is open and never stores them. The reply is not cached and not logged.
+message RevealFindingSecretReply {
+  string violation_id = 1;
+  // current_code is the finding's snippet, unmasked.
+  string current_code = 2;
+  // file_diffs are the fix preview's per-file hunks, unmasked.
+  repeated FileDiff file_diffs = 3;
 }
 
 // ViolationDetailUpdate is one message on the
@@ -1722,6 +1762,12 @@ message ViolationDetailHeader {
   // render the list of jump-to-line links from the first frame.
   // PR C — surfaces the existing column through gRPC.
   repeated EvidenceLocation evidence_sites = 20;
+
+  // secret_masked / secret_span_recorded / can_reveal_secret: the same three facts as on GetViolationDetailReply
+  // (fields 40 to 42), sent in the HEADER so the first frame already shows the mask. (additive, decision 62)
+  bool secret_masked = 21;
+  bool secret_span_recorded = 22;
+  bool can_reveal_secret = 23;
 }
 
 // ValidationStatusEntry pairs one violation_id with its
