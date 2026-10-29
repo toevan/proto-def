@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package toevan.v1;
 
+import "toevan/v1/secret_options.proto";
+
 option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 // ============================================
@@ -114,9 +116,9 @@ message Violation {
   string cite = 12;                      // regulatory citation: "GDPR Art.32", "PCI DSS Req 3.5.1"
 
   // Code diff
-  string current_code = 13;             // the violating code line (UI "del" — shown in red)
+  string current_code = 13 [(toevan.v1.flagged_text) = true];             // the violating code line (UI "del" — shown in red)
   string replacement_code = 14;         // simple one-line replacement (UI "add" — shown in green)
-  string suggested_fix = 15;            // AI-enhanced multi-line fix with context
+  string suggested_fix = 15 [(toevan.v1.flagged_text) = true];            // AI-enhanced multi-line fix with context
 
   int32 estimated_fix_minutes = 16;
   string fix_pattern = 17;              // "pii-field-replacement", "tokenisation-wrap"
