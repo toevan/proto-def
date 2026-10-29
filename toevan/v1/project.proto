@@ -179,6 +179,9 @@ message ProjectMember {
   OrgRole org_role = 6;                            // organizational role: ADMIN, DEVELOPER, TEAM_LEAD, COMPLIANCE, CISO, VIEWER, PLATFORM
   ProjectPermission permission = 7;                // what they can do in THIS project
   google.protobuf.Timestamp created_at = 8;
+  // The name GitHub states for this person; empty when it states none (`name` falls back to
+  // the login): the name the person or GitHub stated; empty when none; never the login.
+  string stated_name = 9;
 }
 
 // ── Request/Response ──

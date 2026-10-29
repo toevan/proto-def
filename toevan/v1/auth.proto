@@ -162,6 +162,13 @@ message AuthUser {
   // account's choice on login and have it follow the user across devices. Always
   // set (defaults to SYSTEM); UNSPECIFIED never appears on the wire.
   ThemeMode theme_mode = 20;
+
+  // The name GitHub states for this person (users.github_name); empty when it states none.
+  // `name` is the DISPLAY name and falls back to the login, so it cannot say whether a name
+  // was stated; this field can. Letters of an avatar come from this field only, never from
+  // `name`, the login or the email: the name the person or GitHub stated; empty when none;
+  // never the login.
+  string stated_name = 21;
 }
 
 // One team-org membership, as seen from the platform-admin Users listing

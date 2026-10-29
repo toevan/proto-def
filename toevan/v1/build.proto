@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 import "toevan/v1/types.proto";
 import "toevan/v1/agent.proto";
 import "toevan/v1/dashboard.proto";
+import "toevan/v1/secret_options.proto";
 
 // ============================================
 // BuildService — Code Generation, Build Orchestration, Previews
@@ -98,6 +99,25 @@ service BuildService {
   // the same Service.GetDetail / Service.computeDetailFromRow
   // backend, so behavior is identical apart from the wire shape.
   rpc StreamViolationDetail(StreamViolationDetailRequest) returns (stream ViolationDetailUpdate);
+
+  // RevealFindingSecret returns the UNMASKED code of a secret_detection finding's detail: the current_code
+  // snippet and the file diffs, exactly as GetViolationDetail would send them without the mask. Every other RPC
+  // sends a detected secret masked (the first and last few characters, the rest hidden; owner decision 62), so
+  // this is the only way a secret leaves the server for a client.
+  //
+  // Authorization: the caller must hold a governance role in the finding's organization (admin, compliance or
+  // CISO) through REAL membership (a support grant never reveals), and read access to the repository. Every
+  // reveal writes an audit row (finding.secret_revealed, never the value) BEFORE the value is returned; a
+  // failed audit write refuses the reveal. Rate limited per user. ERR_SECRET_REVEAL_FORBIDDEN,
+  // ERR_SECRET_REVEAL_AUDIT_FAILED, ERR_RATE_LIMITED are the typed refusals.
+  rpc RevealFindingSecret(RevealFindingSecretRequest) returns (RevealFindingSecretReply);
+
+  // RevealFileContent is RevealFindingSecret for the canvas code viewer: GetFileContent sends a file's detected
+  // secrets masked (secret_masked on the reply), and this returns the same file UNMASKED (content, language,
+  // violation_lines). Same gates as RevealFindingSecret: a governance role through real membership and repository
+  // read access, a per-user rate limit, and an audit row (finding.secret_revealed, resource_type "file", never
+  // the value) written before the content is read. ERR_NO_SECRET_TO_REVEAL when the file holds none.
+  rpc RevealFileContent(GetFileContentRequest) returns (GetFileContentReply);
 
   // WarmViolationDetail is a fire-and-forget pre-compute trigger.
   // Returns immediately after either confirming the result is
@@ -866,9 +886,15 @@ message GetFileContentRequest {
 }
 
 message GetFileContentReply {
-  string content = 1;
+  string content = 1 [(toevan.v1.flagged_text) = true];
   string language = 2;         // detected language for syntax highlighting
   repeated int32 violation_lines = 3;
+  // secret_masked is true when the file holds a detected secret and `content` was sent with it masked (owner
+  // decision 62: the first and last few characters, the rest hidden; a finding whose span was not recorded is
+  // masked on its whole line). The line count never changes. (additive)
+  bool secret_masked = 4;
+  // can_reveal_secret is whether RevealFileContent would be allowed for the caller (the role check alone).
+  bool can_reveal_secret = 5;
 }
 
 // ── File Violations (hover popup) ──
@@ -948,7 +974,7 @@ message GetViolationDetailReply {
   // Capped at a reasonable line count; truncated snippets append "…".
   // Empty when file_path resolves to no file (structural violations
   // without a localized snippet).
-  string current_code = 11;
+  string current_code = 11 [(toevan.v1.flagged_text) = true];
 
   // violation_reason is the per-instance "why this specific code is
   // violating this rule" message from the constraint runner — e.g.
@@ -1024,7 +1050,7 @@ message GetViolationDetailReply {
   // Empty when no validation ran (no fix generated, file fetch
   // failed). Lets the client render an honest "what we checked"
   // explainer instead of leaving users to interpret a status map.
-  string validation_context = 20;
+  string validation_context = 20 [(toevan.v1.flagged_text) = true];
 
   // resolves_names is the human-readable rule-name lookup keyed by
   // the same violation_ids in `resolves`. Always includes the
@@ -1101,7 +1127,7 @@ message GetViolationDetailReply {
   // produce a plan (rule not addressable, plan-pass error, gaps
   // unresolvable). Canvas client renders the no-preview UI in that
   // case.
-  ChangeSet change_set = 26;
+  ChangeSet change_set = 26 [(toevan.v1.flagged_text) = true];
 
   // symbol_id is the deterministic indexer-emitted SymbolID
   // (`<filePath>:<kind>:<qualifier>`, e.g.
@@ -1208,7 +1234,7 @@ message GetViolationDetailReply {
   // vocabulary of decline-codes for Stage 3's LLM fast-path):
   // manual_refactor_reason carries free-form prose composed by the
   // deterministic structural planner per violation.
-  string manual_refactor_reason = 30;
+  string manual_refactor_reason = 30 [(toevan.v1.flagged_text) = true];
 
   // manual_refactor_guidance is the STRUCTURED form of
   // manual_refactor_reason: the discrete facts the fix-shape classifier
@@ -1217,7 +1243,7 @@ message GetViolationDetailReply {
   // structured card instead of one prose blob. Present whenever
   // manual_refactor_reason is non-empty; clients SHOULD prefer it and
   // fall back to the prose string. See [ManualRefactorGuidance].
-  ManualRefactorGuidance manual_refactor_guidance = 34;
+  ManualRefactorGuidance manual_refactor_guidance = 34 [(toevan.v1.flagged_text) = true];
 
   // constraint_definition_json is the blueprint rule that flagged this
   // violation, so the client can show the EXACT constraint/rule from the
@@ -1263,6 +1289,18 @@ message GetViolationDetailReply {
   // show the target and the skipped versions in the fix panel and key the
   // decline text on vuln_fix_target.error_code.
   VulnFixTarget vuln_fix_target = 39;
+
+  // secret_masked is true when this file holds a detected secret and the code fields of this reply (current_code,
+  // change_set, explanation, ...) were sent with it masked. The client then shows the mask and, when
+  // can_reveal_secret, a Reveal control. (additive, owner decision 62)
+  bool secret_masked = 40;
+  // secret_span_recorded is false when the flagged line is masked WHOLE because the span of the secret was not
+  // recorded for this finding (a row written before the span was); the client says so beside the line. The next
+  // scan records it. Meaningful only when secret_masked.
+  bool secret_span_recorded = 41;
+  // can_reveal_secret is whether RevealFindingSecret would be allowed for the caller (the role check alone, no
+  // side effect). The client shows the Reveal control only when true. Advisory: the RPC checks again.
+  bool can_reveal_secret = 42;
 
   // display_line_note is optional human-readable precision context
   // for the (file_path, line) display coordinate above. Hydrated
@@ -1339,6 +1377,25 @@ message StreamViolationDetailRequest {
   bool force_regenerate = 2;
 }
 
+// RevealFindingSecretRequest asks for the unmasked code of one finding's detail.
+message RevealFindingSecretRequest {
+  // violation_id is the finding (evidence row) the detail belongs to.
+  string violation_id = 1;
+}
+
+// RevealFindingSecretReply carries the UNMASKED fields, nothing else: the client replaces its masked copies with
+// them for as long as the panel is open and never stores them. The reply is not cached and not logged.
+message RevealFindingSecretReply {
+  string violation_id = 1;
+  // current_code is the finding's snippet, unmasked.
+  string current_code = 2 [(toevan.v1.flagged_text) = true];
+  // file_diffs are the fix preview's per-file hunks, unmasked.
+  repeated FileDiff file_diffs = 3 [(toevan.v1.flagged_text) = true];
+  // suggested_fix is the fix the PR Gate stored for the finding, unmasked (empty for a finding the gate stored
+  // none for). The PR Gate card's Reveal shows it.
+  string suggested_fix = 4 [(toevan.v1.flagged_text) = true];
+}
+
 // ViolationDetailUpdate is one message on the
 // [BuildService.StreamViolationDetail] stream. Exactly one oneof
 // payload is set per message. Clients MUST handle every payload
@@ -1387,7 +1444,7 @@ message ViolationDetailUpdate {
     ViolationDetailProgress progress = 6;
     // change_set is the typed Fix ChangeSet from Stage 3. Newer
     // clients render this via ChangeSetView (PR 10b).
-    ChangeSet change_set = 7;
+    ChangeSet change_set = 7 [(toevan.v1.flagged_text) = true];
     // preview is a NON-TERMINAL early frame: the fix-shape classifier's
     // manual-refactor guidance, emitted BEFORE Stage 3 runs so the client
     // shows actionable guidance instantly while the LLM attempts a real fix.
@@ -1407,9 +1464,9 @@ message ViolationDetailUpdate {
 // "generating a fix…" affordance until the FOOTER arrives.
 message ViolationDetailPreview {
   // manual_refactor_reason mirrors [ViolationDetailFooter.manual_refactor_reason].
-  string manual_refactor_reason = 1;
+  string manual_refactor_reason = 1 [(toevan.v1.flagged_text) = true];
   // manual_refactor_guidance mirrors [ViolationDetailFooter.manual_refactor_guidance].
-  ManualRefactorGuidance manual_refactor_guidance = 2;
+  ManualRefactorGuidance manual_refactor_guidance = 2 [(toevan.v1.flagged_text) = true];
 }
 
 // ViolationDetailProgress carries one observable from the
@@ -1667,7 +1724,7 @@ message ViolationDetailHeader {
   int32 end_line = 8;
   string docs_url = 9;
   string label = 10;
-  string current_code = 11;
+  string current_code = 11 [(toevan.v1.flagged_text) = true];
   // violation_reason mirrors [GetViolationDetailReply.violation_reason]
   // — the per-instance "why this code violates this rule" message
   // from the constraint runner. Streamed in the HEADER so the client
@@ -1722,6 +1779,12 @@ message ViolationDetailHeader {
   // render the list of jump-to-line links from the first frame.
   // PR C — surfaces the existing column through gRPC.
   repeated EvidenceLocation evidence_sites = 20;
+
+  // secret_masked / secret_span_recorded / can_reveal_secret: the same three facts as on GetViolationDetailReply
+  // (fields 40 to 42), sent in the HEADER so the first frame already shows the mask. (additive, decision 62)
+  bool secret_masked = 21;
+  bool secret_span_recorded = 22;
+  bool can_reveal_secret = 23;
 }
 
 // ValidationStatusEntry pairs one violation_id with its
@@ -1752,7 +1815,7 @@ message ViolationDetailFooter {
   // checked vs skipped. Streamed in the FOOTER (after all per-rule
   // VALIDATION entries) so the client renders the badges first then
   // the contextual explainer.
-  string validation_context = 6;
+  string validation_context = 6 [(toevan.v1.flagged_text) = true];
   // resolves_names mirrors [GetViolationDetailReply.resolves_names]
   // — human-readable rule names keyed by violation_id. Streamed in
   // the FOOTER alongside `resolves` so the client renders the
@@ -1791,12 +1854,12 @@ message ViolationDetailFooter {
   // as part of Stage 3 (same timing slot as change_set_decline_reason).
   // When non-empty AND ChangeSet is unset, clients suppress the Apply
   // Fix CTA — there's nothing to apply.
-  string manual_refactor_reason = 11;
+  string manual_refactor_reason = 11 [(toevan.v1.flagged_text) = true];
 
   // manual_refactor_guidance mirrors
   // [GetViolationDetailReply.manual_refactor_guidance] — the structured
   // form, streamed in the FOOTER alongside manual_refactor_reason.
-  ManualRefactorGuidance manual_refactor_guidance = 12;
+  ManualRefactorGuidance manual_refactor_guidance = 12 [(toevan.v1.flagged_text) = true];
 
   // constraint_definition_json mirrors
   // [GetViolationDetailReply.constraint_definition_json].
@@ -2455,7 +2518,7 @@ message AnswerListItem { repeated AnswerBlock blocks = 1; }
 // ([A-Za-z0-9_+#.-], at most 32 characters) or empty.
 message AnswerCodeBlock {
   string language = 1;
-  string text = 2;
+  string text = 2 [(toevan.v1.flagged_text) = true];
 }
 
 message AnswerQuote { repeated AnswerBlock blocks = 1; }
@@ -2472,10 +2535,10 @@ message AnswerInline {
   }
 }
 
-message AnswerText { string text = 1; }
+message AnswerText { string text = 1 [(toevan.v1.flagged_text) = true]; }
 
 // Inline code, verbatim.
-message AnswerCode { string text = 1; }
+message AnswerCode { string text = 1 [(toevan.v1.flagged_text) = true]; }
 
 message AnswerEmphasis { repeated AnswerInline inlines = 1; }
 
@@ -2496,7 +2559,7 @@ message CanvasChatMessage {
   string user_id = 3;
   string node_id = 4;                             // optional: which node was selected
   string role = 5;                                 // "user" or "assistant"
-  string content = 6;
+  string content = 6 [(toevan.v1.flagged_text) = true];
   google.protobuf.Timestamp created_at = 7;
   // ERR_ASK_* reason code when this assistant message is a refusal (content then
   // holds the English fallback); empty otherwise.
@@ -2528,7 +2591,7 @@ message ClearCanvasChatHistoryReply {
 // the model has continuity. role is "user" or "assistant".
 message AssistTurn {
   string role = 1;
-  string content = 2;
+  string content = 2 [(toevan.v1.flagged_text) = true];
 }
 
 message AssistRequest {
@@ -2545,7 +2608,7 @@ message AssistRequest {
 message AssistReply {
   // text is the assistant's answer as flattened plain text, kept for older clients.
   // It is never Markdown to render. Clients that know answer render that instead.
-  string text = 1;
+  string text = 1 [(toevan.v1.flagged_text) = true];
   // proposed_action, when set, is an action the assistant suggests taking (e.g.
   // navigate to a page). The client renders a confirmation card and executes it
   // through the existing authorized flows only after the user confirms; the
@@ -2573,7 +2636,7 @@ message AssistUpdate {
   // text_delta is an incremental chunk of the answer text; the client appends
   // deltas in arrival order to render the answer as it is generated. Empty on
   // the final frame (and on an action-only turn, which streams no text).
-  string text_delta = 1;
+  string text_delta = 1 [(toevan.v1.flagged_text) = true];
   // proposed_action, when set, is the action the assistant suggests — delivered
   // on the final frame only (tool calls are known only when generation
   // completes). Same semantics as AssistReply.proposed_action.
@@ -2706,8 +2769,8 @@ message FileDiff {
 message DiffHunk {
   int32 start_line = 1;
   int32 end_line = 2;
-  string old_content = 3;
-  string new_content = 4;
+  string old_content = 3 [(toevan.v1.flagged_text) = true];
+  string new_content = 4 [(toevan.v1.flagged_text) = true];
 }
 
 // RefactorOp is the typed sum-type for v1's closed Operations
@@ -2748,8 +2811,8 @@ message ReplaceLiteralOp {
   string id = 1;
   string file_path = 2;
   Range range = 3;
-  string old_literal = 4;
-  string new_literal = 5;
+  string old_literal = 4 [(toevan.v1.flagged_text) = true];
+  string new_literal = 5 [(toevan.v1.flagged_text) = true];
   string justification = 6;
 }
 
@@ -2888,8 +2951,8 @@ message ReplaceLinesOp {
   // refuses to apply if not (drift guard). Empty original means
   // the planner didn't capture pre-state; applier proceeds without
   // the verification.
-  string original = 5;
-  string replacement = 6;
+  string original = 5 [(toevan.v1.flagged_text) = true];
+  string replacement = 6 [(toevan.v1.flagged_text) = true];
   // rationale is the operator-facing prose for the PR description /
   // canvas detail panel. Required for the per-file PRIMARY edit;
   // optional for consumer edits (the rationale on the primary op
@@ -2909,7 +2972,7 @@ message ReplaceLinesOp {
 message CreateFileOp {
   string id = 1;
   string file_path = 2;
-  string content = 3;
+  string content = 3 [(toevan.v1.flagged_text) = true];
   string rationale = 4;
 }
 
@@ -2983,8 +3046,8 @@ message AddInterfaceImplementationEdit {
   // original is optional context the applier verifies before
   // writing (drift guard). Empty original means the strategy
   // didn't capture pre-state.
-  string original = 3;
-  string replacement = 4;
+  string original = 3 [(toevan.v1.flagged_text) = true];
+  string replacement = 4 [(toevan.v1.flagged_text) = true];
   // rationale is the per-edit operator prose. Optional — the
   // parent op's rationale is the primary narrative.
   string rationale = 5;

@@ -107,7 +107,7 @@ service BlueprintService {
   // Dismisses the repository's detected blueprint ("Suggested from your code" x): a persisted review
   // decision that never enforces and is not offered again by GetInferredBlueprint or
   // ListInferredBlueprints. Idempotent. Maintainer on the repository, like keep-as-draft. Refused with
-  // ERR_STRUCTURAL_BLUEPRINTS_DISABLED while the structural_blueprints flag is OFF.
+  // ERR_STRUCTURAL_BLUEPRINTS_DISABLED while the structural_constraints flag is OFF.
   rpc DismissInferredBlueprint(DismissInferredBlueprintRequest) returns (DismissInferredBlueprintResponse);
   // One row per repository (that the caller can access) with a detection no adoption governs.
   rpc ListInferredBlueprints(ListInferredBlueprintsRequest) returns (ListInferredBlueprintsResponse);
@@ -231,6 +231,9 @@ message BlueprintReview {
   google.protobuf.Timestamp created_at = 6;
   string user_name = 7;
   string user_avatar_url = 8;
+  // The name GitHub states for the reviewer; empty when it states none (`user_name` falls
+  // back to the login): the name the person or GitHub stated; empty when none; never the login.
+  string user_stated_name = 9;
 }
 
 message BlueprintAdoption {
@@ -368,7 +371,7 @@ message ListMarketplaceRequest {
   // = the project-scope catalog the onboarding wizard shows). Empty = no type
   // filter. When set, takes precedence over the single `type` field.
   repeated BlueprintType types = 12;
-  // The organization the caller is browsing for (optional). The structural_blueprints feature
+  // The organization the caller is browsing for (optional). The structural_constraints feature
   // flag is evaluated for it: OFF removes the structural (architecture) blueprints from the
   // listing. The caller must be a member of it. Empty = the global flag value.
   string org_id = 13;
