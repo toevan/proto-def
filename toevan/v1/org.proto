@@ -290,6 +290,12 @@ message Invitation {
   google.protobuf.Timestamp expires_at = 7;
   string invited_by_id = 8;
   string invited_by_name = 9;
+  // The earliest time the server accepts a resend of this invitation: sent_at
+  // plus the server's resend cooldown. Unset when the invitation cannot be
+  // resent (accepted, revoked or expired). The server enforces it (a resend
+  // before it fails with a retryable too-many-requests error); a client renders
+  // it, never its own constant.
+  google.protobuf.Timestamp resend_available_at = 10;
 }
 
 enum InvitationStatus {
@@ -696,6 +702,10 @@ message ResendInvitationRequest { string invitation_id = 1; }
 message ResendInvitationResponse {
   bool success = 1;
   string error = 2;
+  // The invitation as it stands after the resend: its new sent_at and
+  // resend_available_at, so the caller shows the sent state and the cooldown
+  // without another read.
+  Invitation invitation = 3;
 }
 
 // ---- Audit Logs ----
