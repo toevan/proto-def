@@ -1122,6 +1122,11 @@ enum NotCheckableReason {
   // installation's access token could not be obtained. The repository was not read. Reconnect or reinstall
   // the GitHub App for the repository, then run the preview again.
   NOT_CHECKABLE_REASON_REPO_ACCESS_UNAVAILABLE = 14;
+  // The repository's last index run did not finish (it failed or was reaped as stalled), so its graph may
+  // be half rewritten while its last indexed commit still names the previous run. Only a repository whose
+  // index completed (status indexed, at the start and at the end of the evaluation) is judged. The
+  // repository was not read. Run the preview again after the next index.
+  NOT_CHECKABLE_REASON_INDEX_NOT_COMPLETE = 15;
 }
 
 // Why a rule that DID run may have judged less than the whole repo. Its findings
