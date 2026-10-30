@@ -1110,10 +1110,18 @@ enum NotCheckableReason {
   // number and the name are reserved and never reused.
   reserved 11;
   reserved "NOT_CHECKABLE_REASON_CLONE_NOT_AT_INDEXED_COMMIT";
-  // The commit the repository was last indexed at could not be checked out for the preview (GitHub
-  // no longer serves it after a force push, or could not be reached), so the repository was not
-  // read. Run the preview again after the next index.
+  // The commit the repository was last indexed at could not be fetched for the preview (GitHub no
+  // longer serves it after a force push, or the fetch failed), so the repository was not read. Run
+  // the preview again after the next index.
   NOT_CHECKABLE_REASON_COMMIT_UNAVAILABLE = 12;
+  // An index run was rewriting the repository's graph (it was being indexed or enriched, or its index
+  // state moved while the preview ran), so the rules that read the graph would have judged a half-updated
+  // graph. The repository was not read. Run the preview again once the index run finishes.
+  NOT_CHECKABLE_REASON_INDEX_IN_PROGRESS = 13;
+  // The repository could not be reached through the GitHub App: no installation is recorded for it, or the
+  // installation's access token could not be obtained. The repository was not read. Reconnect or reinstall
+  // the GitHub App for the repository, then run the preview again.
+  NOT_CHECKABLE_REASON_REPO_ACCESS_UNAVAILABLE = 14;
 }
 
 // Why a rule that DID run may have judged less than the whole repo. Its findings
