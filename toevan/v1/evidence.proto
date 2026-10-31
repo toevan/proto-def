@@ -196,14 +196,16 @@ service EvidenceService {
   // adds nothing returns the designations that cover it and writes nothing. Org admin only: a support grant and an API key are
   // refused. Errors: PERMISSION_DENIED, INVALID_ARGUMENT (not a branch name; the scope is unspecified; a chosen scope names no
   // repository, or a repository that is not the org's or does not have the branch), FAILED_PRECONDITION (a repository's branches could
-  // not be read now), ABORTED/conflict (the designations changed while the request was checked: repeat it), UNAVAILABLE (evidence
+  // not be read now; an every-repository designation of an organization with more than 1000 connected repositories, which one act
+  // cannot seal in: designate for chosen repositories), ABORTED/conflict (the designations changed while the request was checked: repeat it), UNAVAILABLE (evidence
   // capture is not running here, or the act could not be sealed: nothing was recorded).
   rpc DesignateProductionBranch(DesignateProductionBranchRequest) returns (DesignateProductionBranchResponse);
   // An org admin withdraws a designation of a production branch, as a whole. The withdrawal is recorded, audited and sealed like the
   // designation, in one transaction, and the designation stays in the history. Whatever landed on the branch while the designation
   // stood stays production in the report. Same authorization as DesignateProductionBranch. Errors: PERMISSION_DENIED, NOT_FOUND (no
-  // such designation in the org), FAILED_PRECONDITION (already withdrawn; or no connected repository is left for the withdrawal to be
-  // sealed in), UNAVAILABLE (nothing was recorded).
+  // such designation in the org), FAILED_PRECONDITION (already withdrawn; or the designation is held by no chain that exists any more). The
+  // withdrawal is recorded in the chains that hold the designation's own record, whether or not their repository is still connected;
+  // UNAVAILABLE (nothing was recorded).
   rpc WithdrawProductionBranch(WithdrawProductionBranchRequest) returns (WithdrawProductionBranchResponse);
   // Every designation of a production branch of the org, active first, then the withdrawn, newest first: who designated and
   // withdrew, when (Toevan's clock), the scope, and the repositories of a chosen scope. Org ADMIN of org_id.
