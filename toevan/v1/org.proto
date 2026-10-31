@@ -750,6 +750,9 @@ message AuditRef {
   // True when name is the name the thing has now, read when backfilled details were built, and not the name it had
   // when the action happened. Empty name with this set: the thing could not be named any more.
   bool name_is_today = 4;
+  // True when the server could not PROVE the name may be shown (the thing is not there, or is not related to the
+  // organisation of the entry): it is recorded by its id alone. Distinct from an entry that never had a name.
+  bool name_not_shown = 5;
 }
 
 // AuditValue is one recorded value, typed. An unset AuditValue is ABSENT: there was nothing before (a first set) or
