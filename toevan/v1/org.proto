@@ -736,6 +736,10 @@ message AuditDetails {
   repeated AuditChange changes = 3;
   repeated AuditFact facts = 4;
   string reason = 5;                  // what the person (or the system) gave as the reason; empty when none
+  // True when the details were filled in later from what the entry itself recorded (an entry written before details
+  // were kept). Every name in such details is the name the thing has TODAY (AuditRef.name_is_today); anything the
+  // entry did not record is absent, never inferred from other entries.
+  bool backfilled = 6;
 }
 
 // AuditRef names a thing: its kind, its id, and the name it had when the action happened.
@@ -743,6 +747,9 @@ message AuditRef {
   string kind = 1;                    // organization, project, repository, blueprint, member, ...
   string id = 2;
   string name = 3;
+  // True when name is the name the thing has now, read when backfilled details were built, and not the name it had
+  // when the action happened. Empty name with this set: the thing could not be named any more.
+  bool name_is_today = 4;
 }
 
 // AuditValue is one recorded value, typed. An unset AuditValue is ABSENT: there was nothing before (a first set) or
