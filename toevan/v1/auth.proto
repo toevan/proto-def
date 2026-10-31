@@ -48,6 +48,17 @@ service AuthService {
   // SetUserTheme records the user's explicit appearance-theme choice (system follows the
   // device; light/dark are overrides). Authenticated; scoped to the caller.
   rpc SetUserTheme(SetUserThemeRequest) returns (SetUserThemeResponse);
+
+  // Time zone
+  // ReportBrowserTimeZone tells the server the zone the caller's browser reports. It is sent at
+  // sign-in and when a session starts on a browser whose zone differs from the stored one. It is
+  // the AUTOMATIC source: it is applied unless the user pinned a zone of their own (source
+  // CHOSEN), except when replace_chosen is set (the user asked to follow their browser again).
+  // Authenticated; scoped to the caller.
+  rpc ReportBrowserTimeZone(ReportBrowserTimeZoneRequest) returns (ReportBrowserTimeZoneResponse);
+  // SetUserTimeZone records the zone the user chose in account settings. It pins the zone: a
+  // later browser report no longer changes it. Authenticated; scoped to the caller.
+  rpc SetUserTimeZone(SetUserTimeZoneRequest) returns (SetUserTimeZoneResponse);
 }
 
 // User appearance theme. SYSTEM follows the device colour scheme; LIGHT and DARK are
@@ -58,6 +69,16 @@ enum ThemeMode {
   THEME_MODE_SYSTEM = 1;
   THEME_MODE_LIGHT = 2;
   THEME_MODE_DARK = 3;
+}
+
+// Where a user's stored time zone came from. BROWSER: reported by the browser, replaced by the
+// next report that differs. CHOSEN: picked by the user in account settings, kept until they
+// change it or ask to follow their browser again. UNSPECIFIED is the wire default only: it is
+// what a user with no stored zone reads.
+enum TimeZoneSource {
+  TIME_ZONE_SOURCE_UNSPECIFIED = 0;
+  TIME_ZONE_SOURCE_BROWSER = 1;
+  TIME_ZONE_SOURCE_CHOSEN = 2;
 }
 
 // User-level plan — governs individual user access and personal feature limits.
@@ -169,6 +190,13 @@ message AuthUser {
   // `name`, the login or the email: the name the person or GitHub stated; empty when none;
   // never the login.
   string stated_name = 21;
+
+  // The user's stored IANA time zone (for example "Europe/Athens"); empty when none is stored
+  // yet. Emails to this user and the reports this user generates print their times in this
+  // zone, with the zone named. Always a name the tz database knows.
+  string time_zone = 22;
+  // Where time_zone came from; UNSPECIFIED exactly when time_zone is empty.
+  TimeZoneSource time_zone_source = 23;
 }
 
 // One team-org membership, as seen from the platform-admin Users listing
@@ -360,4 +388,23 @@ message SetUserThemeRequest {
 }
 message SetUserThemeResponse {
   ThemeMode theme_mode = 1;                         // the stored preference, echoed back
+}
+
+// ---- Time zone ----
+
+message ReportBrowserTimeZoneRequest {
+  string time_zone = 1;                             // the IANA name the browser reports, e.g. "Europe/Athens"
+  bool replace_chosen = 2;                          // true: the user asked to follow the browser again, so a CHOSEN zone is replaced
+}
+message ReportBrowserTimeZoneResponse {
+  string time_zone = 1;                             // the stored zone after the call (unchanged when a chosen zone was kept)
+  TimeZoneSource time_zone_source = 2;              // where the stored zone came from
+}
+
+message SetUserTimeZoneRequest {
+  string time_zone = 1;                             // an IANA name; a name the tz database does not know is rejected
+}
+message SetUserTimeZoneResponse {
+  string time_zone = 1;                             // the stored zone, echoed back
+  TimeZoneSource time_zone_source = 2;              // always CHOSEN
 }
