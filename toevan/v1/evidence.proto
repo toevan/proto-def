@@ -178,6 +178,33 @@ service EvidenceService {
   // DesignateProductionEnvironment. Errors: PERMISSION_DENIED, NOT_FOUND (no such designation in the org), FAILED_PRECONDITION
   // (already withdrawn).
   rpc WithdrawProductionDesignation(WithdrawProductionDesignationRequest) returns (WithdrawProductionDesignationResponse);
+
+  // PRODUCTION BRANCHES (v1.4.2, owner decisions 83 to 86). The branches of the org's connected repositories as GitHub lists them,
+  // aggregated by exact name, each name with the repositories that have it: what the picker offers (a branch is selected, never
+  // typed). Read with the org's installation token, bounded and paginated, cached with the organization in the key. The answer says
+  // when it is not the whole truth: repositories whose branches could not be read are listed with the reason, and complete is true only
+  // when every connected repository was read in full. Org ADMIN of org_id (RequireOrgAdmin); org_id scopes every row.
+  rpc ListOrganizationBranches(ListOrganizationBranchesRequest) returns (ListOrganizationBranchesResponse);
+  // An org admin designates a branch as production by its EXACT name (a git branch name, never a pattern), for every repository that
+  // has it (including ones that gain it later) or for chosen repositories. Each chosen repository is read at the time of the request
+  // and must have the branch (a repository GitHub cannot be read for is refused: fail closed). The designation is sealed as a record of
+  // its own kind (production_branch_designation) in the chain of every repository it concerns, dated by Toevan's clock at the action,
+  // naming the admin as the identity rules state it, and audited with the branch, the scope and the repositories before and after. It
+  // applies from its own time forward: it never reclassifies anything that happened before it. A chosen repository that a standing
+  // designation of the branch already covers adds nothing; a request that adds nothing returns the designation that covers it and
+  // seals nothing new. Org admin only: a support grant and an API key are refused. Errors: PERMISSION_DENIED, INVALID_ARGUMENT (not a
+  // branch name; the scope is unspecified; a chosen scope names no repository, or a repository that is not the org's or does not
+  // have the branch), FAILED_PRECONDITION (a chosen repository's branches could not be read now), UNAVAILABLE (evidence capture is
+  // not running here: nothing could be sealed).
+  rpc DesignateProductionBranch(DesignateProductionBranchRequest) returns (DesignateProductionBranchResponse);
+  // An org admin withdraws a designation of a production branch, as a whole. The withdrawal is sealed and audited like the designation
+  // and the designation stays in the history. Whatever landed on the branch while the designation stood stays production in the
+  // report. Same authorization as DesignateProductionBranch. Errors: PERMISSION_DENIED, NOT_FOUND (no such designation in the org),
+  // FAILED_PRECONDITION (already withdrawn), UNAVAILABLE.
+  rpc WithdrawProductionBranch(WithdrawProductionBranchRequest) returns (WithdrawProductionBranchResponse);
+  // Every designation of a production branch of the org, active first, then the withdrawn, newest first: who designated and
+  // withdrew, when (Toevan's clock), the scope, and the repositories of a chosen scope. Org ADMIN of org_id.
+  rpc ListProductionBranches(ListProductionBranchesRequest) returns (ListProductionBranchesResponse);
 }
 
 // ── Transparency log setting ──
@@ -1461,4 +1488,121 @@ message WithdrawProductionDesignationRequest {
 }
 message WithdrawProductionDesignationResponse {
   ProductionDesignation designation = 1;
+}
+
+// ── Production branches (v1.4.2, owner decisions 83 to 86) ──
+
+enum ProductionBranchScope {
+  PRODUCTION_BRANCH_SCOPE_UNSPECIFIED = 0;
+  // Every repository of the org that has the branch, including one that gains it later: from the moment it has it, never for
+  // anything that landed before.
+  PRODUCTION_BRANCH_SCOPE_EVERY_REPOSITORY = 1;
+  // Only the repositories the designation names.
+  PRODUCTION_BRANCH_SCOPE_CHOSEN_REPOSITORIES = 2;
+}
+
+// Why the branches of a repository are not (all) in a listing.
+enum BranchReadGap {
+  BRANCH_READ_GAP_UNSPECIFIED = 0;
+  // GitHub answered that it will not show the repository's branches to the installation (a permission, a removed repository).
+  BRANCH_READ_GAP_NOT_VISIBLE = 1;
+  // GitHub gave no answer, or one that says later (a rate limit, a timeout): reading again may pass.
+  BRANCH_READ_GAP_LATER = 2;
+  // The repository has more branches than one listing reads: the names listed are the first of them.
+  BRANCH_READ_GAP_TOO_MANY_BRANCHES = 3;
+  // The org has more connected repositories than one listing reads, and this one was not read.
+  BRANCH_READ_GAP_NOT_REACHED = 4;
+}
+
+message BranchRepository {
+  string repo_id = 1;
+  string repo_name = 2;
+}
+
+// A branch name and the repositories that have it.
+message OrganizationBranch {
+  string name = 1;
+  repeated BranchRepository repositories = 2;
+}
+
+// A repository whose branches are not (all) in the listing.
+message BranchReadGapRepository {
+  string repo_id = 1;
+  string repo_name = 2;
+  BranchReadGap gap = 3;
+}
+
+message ListOrganizationBranchesRequest {
+  string org_id = 1;
+  // Page size over the branch names (default 200, at most 500). The names are in order, so page_token is the last name of the page
+  // before, as the answer returned it.
+  int32 page_size = 2;
+  string page_token = 3;
+  // Only the names that contain this text, compared exactly (case-sensitive). Empty: every name.
+  string name_contains = 4;
+  // True reads GitHub again instead of the cached listing.
+  bool refresh = 5;
+}
+message ListOrganizationBranchesResponse {
+  repeated OrganizationBranch branches = 1;
+  string next_page_token = 2;
+  // True only when every connected repository was read in full. When false, repositories_not_read says which were not.
+  bool complete = 3;
+  repeated BranchReadGapRepository repositories_not_read = 4;
+  // How many connected repositories the listing covers (read or not).
+  int32 repositories_total = 5;
+  // When Toevan read GitHub for this listing (the cache holds it for a few minutes).
+  google.protobuf.Timestamp read_at = 6;
+}
+
+// One designation of a production branch: the act of designating, and the act of withdrawing it when there was one.
+message ProductionBranchDesignation {
+  string id = 1;
+  // The exact branch name.
+  string branch = 2;
+  ProductionBranchScope scope = 3;
+  // The repositories of a chosen scope (empty for every repository).
+  repeated BranchRepository repositories = 4;
+  string designated_by_user_id = 5;
+  // The name Toevan holds for the user (the same name the change evidence report prints), empty when not held.
+  string designated_by = 6;
+  // Toevan's clock at the action.
+  google.protobuf.Timestamp designated_at = 7;
+  // Whether the designation is sealed in the evidence chain. A designation that is not sealed yet is not applied; designating
+  // again seals it.
+  bool sealed = 8;
+  // Set when withdrawn.
+  string withdrawn_by_user_id = 9;
+  string withdrawn_by = 10;
+  google.protobuf.Timestamp withdrawn_at = 11;
+  bool withdrawal_sealed = 12;
+}
+
+message DesignateProductionBranchRequest {
+  string org_id = 1;
+  // The exact branch name (a git branch name, never a pattern).
+  string branch = 2;
+  ProductionBranchScope scope = 3;
+  // The repositories (of org_id) of a chosen scope; must be empty for every repository.
+  repeated string repo_ids = 4;
+}
+message DesignateProductionBranchResponse {
+  // The designations that now stand for the request: the one it made (if it added anything) and the ones that already covered part
+  // of it.
+  repeated ProductionBranchDesignation designations = 1;
+}
+
+message WithdrawProductionBranchRequest {
+  string org_id = 1;
+  string designation_id = 2;
+}
+message WithdrawProductionBranchResponse {
+  ProductionBranchDesignation designation = 1;
+}
+
+message ListProductionBranchesRequest {
+  string org_id = 1;
+}
+message ListProductionBranchesResponse {
+  repeated ProductionBranchDesignation designations = 1;
 }
