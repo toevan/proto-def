@@ -722,6 +722,67 @@ message AuditLogEntry {
   string ip_address = 9;
   string user_agent = 10;
   google.protobuf.Timestamp created_at = 11;
+  // The typed account of what the action did: what it was about (by name and id), where it applied, which fields
+  // changed with the value each had before and has now, other facts, and the reason. Unset on a record written before
+  // details were kept: the client says so and shows nothing invented.
+  AuditDetails details = 12;
+}
+
+// AuditDetails is the typed account of one audit record (see AuditLogEntry.details). Kinds and field names are the
+// server's vocabulary (the client labels each in every locale it ships); values are typed.
+message AuditDetails {
+  AuditRef subject = 1;               // unset when the action has no subject
+  repeated AuditRef scope = 2;        // where it applied, outermost first (project, then repository)
+  repeated AuditChange changes = 3;
+  repeated AuditFact facts = 4;
+  string reason = 5;                  // what the person (or the system) gave as the reason; empty when none
+  // True when the details were filled in later from what the entry itself recorded (an entry written before details
+  // were kept). Every name in such details is the name the thing has TODAY (AuditRef.name_is_today); anything the
+  // entry did not record is absent, never inferred from other entries.
+  bool backfilled = 6;
+}
+
+// AuditRef names a thing: its kind, its id, and the name it had when the action happened.
+message AuditRef {
+  string kind = 1;                    // organization, project, repository, blueprint, member, ...
+  string id = 2;
+  string name = 3;
+  // True when name is the name the thing has now, read when backfilled details were built, and not the name it had
+  // when the action happened. Empty name with this set: the thing could not be named any more.
+  bool name_is_today = 4;
+  // True when the server could not PROVE the name may be shown (the thing is not there, or is not related to the
+  // organisation of the entry): it is recorded by its id alone. Distinct from an entry that never had a name.
+  bool name_not_shown = 5;
+}
+
+// AuditValue is one recorded value, typed. An unset AuditValue is ABSENT: there was nothing before (a first set) or
+// there is nothing after (a clear), which is different from an empty text.
+message AuditValue {
+  oneof value {
+    string text = 1;                  // a name or a sentence
+    string enum_word = 2;             // one word of the server's vocabulary for the field (a mode, a role, a status)
+    bool flag = 3;
+    int64 count = 4;
+    AuditStringList list = 5;
+    google.protobuf.Timestamp time = 6;
+  }
+}
+
+message AuditStringList { repeated string items = 1; }
+
+// AuditChange is one field that changed. A secret field (an API key, a signing secret) is withheld: it says the field
+// changed and carries no value on either side.
+message AuditChange {
+  string field = 1;
+  AuditValue before = 2;
+  AuditValue after = 3;
+  bool withheld = 4;
+}
+
+// AuditFact is one fact about the action that is not a change.
+message AuditFact {
+  string field = 1;
+  AuditValue value = 2;
 }
 
 message ListAuditLogsRequest {
