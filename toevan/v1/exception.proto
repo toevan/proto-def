@@ -95,6 +95,26 @@ message ExceptionRequest {
   // identity, which stays covered when its line moves: the line is where it was flagged when it was requested. Additive.
   string finding_file = 29;
   int32 finding_line = 30;
+  // Why the request ended, when the SYSTEM ended it: the status says what it is now (a withdrawn request is REVOKED), this says it was
+  // never decided by a person. UNSPECIFIED for a request nobody ended by system (a person's decision states itself in the status and the
+  // approval chain). An unknown value says nothing. Additive.
+  ExceptionEndReason end_reason = 31;
+  // True when the system, not a person, ended the request (end_reason says why). A request that was never approved must not be shown as
+  // "revoked" (a person's act): the client shows it as withdrawn. Additive.
+  bool ended_by_system = 32;
+  // True when the blueprint the exception is on was REMOVED from where it applies (the repository, or its project): nothing governs the
+  // blueprint on the repository now and its adoption there is removed. An approved exception stays in force and covers its finding again
+  // if the blueprint is adopted again, so the client shows it as "Blueprint removed" rather than as covering something. False for a
+  // pause (a pause is not a removal), for a blueprint still governed by another adoption, and for a blueprint nobody ever adopted
+  // there. Decided by the server on every read. Additive.
+  bool blueprint_removed = 33;
+}
+
+// Why the system ended an exception request.
+enum ExceptionEndReason {
+  EXCEPTION_END_REASON_UNSPECIFIED = 0;
+  // The blueprint it is on was removed while the request was pending, so it was withdrawn: nobody decided it.
+  EXCEPTION_END_REASON_BLUEPRINT_REMOVED = 1;
 }
 
 // What an exception covers, by where it was requested from.
