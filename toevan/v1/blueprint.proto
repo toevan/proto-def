@@ -942,6 +942,7 @@ message OrgAdoptedBlueprint {
   int32 total_checks = 5;
   google.protobuf.Timestamp first_adopted_at = 6;
   google.protobuf.Timestamp last_adopted_at = 7;
+  bool any_active = 8;                      // at least one ACTIVE adoption stands at this scope: the card's switch (false: every adopter is paused)
 }
 
 message OrgAdoptedBlueprintStats {
