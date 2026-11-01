@@ -412,6 +412,12 @@ message DeepCheckRequest {
   // The run whose state `state` reports: the head's newest requested run. Set only while
   // deep_check.run_identity_enabled is on.
   string run_id = 15;
+  // The number of findings of a finished verdict (passed or blocked), the total the verdict stored; unset for
+  // every other state. PullRequest.deep_check_findings holds at most the stored cap of them.
+  optional int32 found_count = 16;
+  // How many times this run was interrupted by a worker restart and put back in the queue. 0 when never.
+  // `detail` names the reason of the latest one.
+  int32 requeue_count = 17;
 }
 
 enum DeepCheckState {

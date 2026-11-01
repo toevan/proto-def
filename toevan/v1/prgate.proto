@@ -244,6 +244,25 @@ message PullRequest {
   DeepCheckRequest deep_check = 29;
 }
 
+// One finding of a Deep Check verdict. `violation` is the card model the PR Gate's violation views already
+// draw (rule, blueprint, location, severity, description, the rule's explanation, the suggested fix,
+// gate_effect); its id is the stable violation identity the PR Gate uses for the same finding. is_new_in_pr
+// on it is true exactly when origin is INTRODUCED. The card has no detail, fix or exception routes: Deep
+// Check findings are read-only.
+message DeepCheckFinding {
+  EnrichedViolation violation = 1;
+  DeepCheckFindingOrigin origin = 2;
+}
+
+// Whether the pull request INTRODUCED a Deep Check finding, or it is already on the base branch. Typed, so
+// a client never infers it. UNKNOWN: the base branch's findings could not be read, so neither can be said.
+enum DeepCheckFindingOrigin {
+  DEEP_CHECK_FINDING_ORIGIN_UNSPECIFIED = 0;
+  DEEP_CHECK_FINDING_ORIGIN_INTRODUCED = 1;   // absent from the base branch's findings: this pull request's
+  DEEP_CHECK_FINDING_ORIGIN_ON_BASE = 2;      // already on the base branch
+  DEEP_CHECK_FINDING_ORIGIN_UNKNOWN = 3;      // the base branch's findings were unavailable
+}
+
 enum PRStatus {
   PR_STATUS_UNSPECIFIED = 0;
   PR_STATUS_PENDING = 1;                 // awaiting first evaluation (no verdict yet)
@@ -628,7 +647,13 @@ message ListPrHistoryResponse {
 }
 
 message GetPullRequestRequest { string pr_id = 1; }
-message GetPullRequestResponse { PullRequest pull_request = 1; }
+message GetPullRequestResponse {
+  PullRequest pull_request = 1;
+  // The merged-state findings of the head's finished Deep Check verdict (passed or blocked), as cards, most severe first, at
+  // most the stored cap; pull_request.deep_check.found_count is the total, so a list shorter than the count was cut. Only this
+  // RPC loads findings: the list RPCs carry none.
+  repeated DeepCheckFinding deep_check_findings = 2;
+}
 
 // PrCheckRun is ONE completed gate run — an entry in the append-only
 // pr_check_runs event log. The gate PR comment's "Run history" table is built
