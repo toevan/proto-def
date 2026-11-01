@@ -1254,9 +1254,10 @@ message RuleNotApplicable {
   string rule_type = 2;
   // The kinds the repository declared none of, that the rule reads.
   repeated ClassificationKind kinds = 3;
-  // The approval that put the `none` in force: the approver and the instant (PolicyApproval.created_at),
-  // as the policy approvals carry them. A client prints the instant in the viewer's zone.
-  PolicyApproval approval = 4;
+  // The approvals that put the `none` in force: the approver and the instant (PolicyApproval.created_at)
+  // of each slot the change filled, as the policy approvals carry them. A T2 or T3 none fills two slots.
+  // A client prints the instants in the viewer's zone.
+  repeated PolicyApproval approvals = 4;
   // The reason given in the declaration.
   string reason = 5;
 }

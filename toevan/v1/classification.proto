@@ -140,8 +140,10 @@ message ClassificationNone {
   int32 contradicting_suggestions = 6;
   // Declarations of this kind that exist (when above 0 the outcome is CONTRADICTS_DECLARATION).
   int32 contradicting_declarations = 7;
-  // The approval that put it in force (outcome IN_FORCE): who approved and when. Unset otherwise.
-  PolicyApproval approval = 8;
+  // The approvals that put it in force (outcome IN_FORCE): who approved and when, one per slot the
+  // change filled. A T2 or T3 none fills two slots (technical, then governance or org admin), so there
+  // are two. Empty otherwise.
+  repeated PolicyApproval approvals = 8;
 }
 
 // Where a classification change is in its life. One row per change, keyed by (repo, branch,
