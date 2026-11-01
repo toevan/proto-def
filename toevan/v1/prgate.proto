@@ -259,7 +259,7 @@ message DeepCheckFinding {
 enum DeepCheckFindingOrigin {
   DEEP_CHECK_FINDING_ORIGIN_UNSPECIFIED = 0;
   DEEP_CHECK_FINDING_ORIGIN_INTRODUCED = 1;   // absent from the base branch's findings: this pull request's
-  DEEP_CHECK_FINDING_ORIGIN_ON_BASE = 2;      // already on the base branch
+  DEEP_CHECK_FINDING_ORIGIN_ON_BASE = 2;      // already on the base branch (main): listed and tracked, never blocking
   DEEP_CHECK_FINDING_ORIGIN_UNKNOWN = 3;      // the base branch's findings were unavailable
 }
 
@@ -653,6 +653,16 @@ message GetPullRequestResponse {
   // most the stored cap; pull_request.deep_check.found_count is the total, so a list shorter than the count was cut. Only this
   // RPC loads findings: the list RPCs carry none.
   repeated DeepCheckFinding deep_check_findings = 2;
+  // Whether the findings could be read. UNAVAILABLE: the read or the masking of them failed; the call still succeeds
+  // with the pull request and its Deep Check state, and deep_check_findings is empty, which a client must not read as
+  // "no findings". AVAILABLE: deep_check_findings is what was stored (possibly empty). UNSPECIFIED: an older server.
+  DeepCheckFindingsState deep_check_findings_state = 3;
+}
+
+enum DeepCheckFindingsState {
+  DEEP_CHECK_FINDINGS_STATE_UNSPECIFIED = 0;
+  DEEP_CHECK_FINDINGS_STATE_AVAILABLE = 1;
+  DEEP_CHECK_FINDINGS_STATE_UNAVAILABLE = 2;
 }
 
 // PrCheckRun is ONE completed gate run — an entry in the append-only
