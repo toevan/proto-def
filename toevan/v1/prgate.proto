@@ -576,7 +576,9 @@ message PRGateConfig {
 
 message PRCheckSummary {
   string org_id = 1;
-  int32 prs_checked_today = 2;
+  // PRs checked in the LAST 24 HOURS, a rolling window ending at the request instant (owner decision 95, D4). The field number is that
+  // of prs_checked_today (a rename only).
+  int32 prs_checked_24h = 2;
   int32 prs_passed = 3;
   int32 prs_blocked = 4;
   int32 prs_warning = 5;
