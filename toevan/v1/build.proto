@@ -9,6 +9,7 @@ import "toevan/v1/types.proto";
 import "toevan/v1/agent.proto";
 import "toevan/v1/dashboard.proto";
 import "toevan/v1/secret_options.proto";
+import "toevan/v1/tagging.proto";
 
 // ============================================
 // BuildService — Code Generation, Build Orchestration, Previews
@@ -270,6 +271,33 @@ message CanvasNode {
   // FILE_CLASS_UNSPECIFIED (0) from a server that predates it, and for a boundary
   // node with no file, so an old payload shows every node as before.
   FileClass file_class = 12;
+  // The data classification of the node's symbol: its declared categories (fact) and its
+  // suggestions (review), each with the reference of the declaration that makes it a fact.
+  // Empty for a symbol that carries none, and from a server that predates it.
+  repeated CanvasClassification classifications = 13;
+}
+
+// One data category on a canvas node, with the state that decides how the client draws it:
+// a DECLARED or HELD category is drawn as fact, a SUGGESTED one outlined and labelled "suggested".
+message CanvasClassification {
+  // Exact catalog leaf id, e.g. "financial.cardholder.pan".
+  string category_id = 1;
+  ClassificationKind kind = 2;
+  CanvasClassificationState state = 3;
+  // Where the declaration is written, in words a client prints on hover: ".toevan/tags.yaml
+  // (entry card-pan)" or "internal/billing/card.go:14". Empty for a suggestion.
+  string declaration_ref = 4;
+  // The matchers that fired for a suggestion. Empty for a declaration.
+  repeated ClassificationMatcher matched_via = 5;
+}
+
+enum CanvasClassificationState {
+  CANVAS_CLASSIFICATION_STATE_UNSPECIFIED = 0;
+  CANVAS_CLASSIFICATION_STATE_DECLARED = 1;
+  CANVAS_CLASSIFICATION_STATE_SUGGESTED = 2;
+  // In force because an approved version has it, although the commit no longer declares it on a
+  // field that still exists (a removal awaiting approval). Drawn as fact, marked held.
+  CANVAS_CLASSIFICATION_STATE_HELD = 3;
 }
 
 // NodeMetrics carries structured detail data for the node info panel.

@@ -1,0 +1,489 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+import "google/protobuf/timestamp.proto";
+import "toevan/v1/policy.proto";
+import "toevan/v1/tagging.proto";
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+// ============================================
+// Classification: declared sensitive data, its suggestions and its approvals
+// ============================================
+//
+// A data classification that a rule reads is a DECLARATION: an in-code directive or an
+// entry of .toevan/tags.yaml (version 2) that names exact catalog category ids on an exact
+// field. The catalog matchers only write SUGGESTIONS, which no rule reads. A declaration
+// is added at once; removing one, or leaving one that matches no code, is held for approval
+// (the same engine, tiers and approver slots as .toevan.yaml, see policy.proto).
+//
+// ClassificationService serves the status of a repository's classification, its suggestions
+// (listed, confirmed in bulk through ONE pull request that edits .toevan/tags.yaml, dismissed
+// and restored), the removal of declarations, and the held changes with their approvals. Every
+// call carries org_id; a cross-org id answers NOT_FOUND.
+//
+// Every response is a code-free DTO: a message carries a file path, a symbol path and a
+// category id, never a snippet, a line's content or a fix. The handler tests that arrive with
+// the handlers pin the field set of every message that leaves the service.
+//
+// The approval types are the policy ones (PolicyTier, PolicyApprovalSlot, PolicyApprovalSource,
+// PolicyBlockedReason, PolicySodReason, PolicyAuthorsReason, PolicyApproval): one engine serves
+// both governed files, so a client shows one approval widget. A classification change maps onto
+// them as follows. PolicyTier T3 (technical, then org admin: the SE_ADMIN slot) when an adopted
+// Security Essentials rule reads a removed category; T2 (technical, then governance) when a
+// compliance-family rule reads it; T1 (technical) otherwise; NONE for a change that needs no
+// approval. A production branch floors it at T2. The meaning of a tier is the removal it guards,
+// not the policy exception it names there.
+
+service ClassificationService {
+  // The classification of one repository's default branch: what is in force, how many
+  // declarations are held, unmatched or invalid, and how many suggestions wait for review.
+  rpc GetClassificationStatus(GetClassificationStatusRequest) returns (GetClassificationStatusResponse);
+  // The declarations of the repository, in force or not, with their state.
+  rpc ListClassificationDeclarations(ListClassificationDeclarationsRequest) returns (ListClassificationDeclarationsResponse);
+  // Suggestions of the repository, filtered by kind, category or file.
+  rpc ListClassificationSuggestions(ListClassificationSuggestionsRequest) returns (ListClassificationSuggestionsResponse);
+  // Org admins. Opens ONE pull request that adds the confirmed suggestions to .toevan/tags.yaml,
+  // or adds a commit to the Toevan classification pull request that is already open.
+  rpc ConfirmClassificationSuggestions(ConfirmClassificationSuggestionsRequest) returns (ConfirmClassificationSuggestionsResponse);
+  // Dismissal is per repository, audited and reversible; it changes no finding, so it needs no approval.
+  rpc DismissClassificationSuggestions(DismissClassificationSuggestionsRequest) returns (DismissClassificationSuggestionsResponse);
+  rpc RestoreClassificationSuggestions(RestoreClassificationSuggestionsRequest) returns (RestoreClassificationSuggestionsResponse);
+  // Org admins. Opens (or extends) the pull request that removes declarations from .toevan/tags.yaml.
+  // The removal is held and goes through approval when it is merged.
+  rpc RemoveClassificationDeclarations(RemoveClassificationDeclarationsRequest) returns (RemoveClassificationDeclarationsResponse);
+
+  // Held changes. A member sees the repositories they may read; a governance-role member sees every
+  // repository of the org.
+  rpc ListClassificationChanges(ListClassificationChangesRequest) returns (ListClassificationChangesResponse);
+  rpc GetClassificationChange(GetClassificationChangeRequest) returns (GetClassificationChangeResponse);
+  // Fills one slot of a pending change. The digest echo binds the click to what was shown.
+  rpc ApproveClassificationChange(ApproveClassificationChangeRequest) returns (ApproveClassificationChangeResponse);
+  rpc RejectClassificationChange(RejectClassificationChangeRequest) returns (RejectClassificationChangeResponse);
+  // Withdraws an approval before the change takes effect: the approver or an org admin.
+  rpc RevokeClassificationApproval(RevokeClassificationApprovalRequest) returns (RevokeClassificationApprovalResponse);
+}
+
+// ── Enums ──
+
+// Where a declaration is written. One declaration can have both.
+enum DeclarationOrigin {
+  DECLARATION_ORIGIN_UNSPECIFIED = 0;
+  // An entry of the `declare` list of .toevan/tags.yaml version 2.
+  DECLARATION_ORIGIN_TAGS_FILE = 1;
+  // A `toevan:classify` comment directive or a Go `toevan` struct tag on the field.
+  DECLARATION_ORIGIN_CODE = 2;
+}
+
+// What a declaration is now, against the code at the commit the status describes.
+enum DeclarationState {
+  DECLARATION_STATE_UNSPECIFIED = 0;
+  // In force and the commit declares it on an existing field.
+  DECLARATION_STATE_DECLARED = 1;
+  // In force because an approved version has it, although the commit no longer declares it on
+  // a field that still exists. Removing it needs approval.
+  DECLARATION_STATE_HELD = 2;
+  // Its target matches no field at the commit (the code moved, was renamed or was deleted).
+  // Never dropped: listed until its retirement is approved.
+  DECLARATION_STATE_UNMATCHED = 3;
+}
+
+// Why a removal of a declaration is held.
+enum ClassificationRemovalCause {
+  CLASSIFICATION_REMOVAL_CAUSE_UNSPECIFIED = 0;
+  // The declaration was removed from code that still holds the field.
+  CLASSIFICATION_REMOVAL_CAUSE_DECLARATION_REMOVED = 1;
+  // The field it names no longer exists.
+  CLASSIFICATION_REMOVAL_CAUSE_CODE_NO_LONGER_EXISTS = 2;
+}
+
+// What the delta of a change does to one declaration.
+enum ClassificationDeltaKind {
+  CLASSIFICATION_DELTA_KIND_UNSPECIFIED = 0;
+  // Applied at once (a narrowing); listed so the record says so.
+  CLASSIFICATION_DELTA_KIND_ADDED = 1;
+  // Held: needs the tier's approvals.
+  CLASSIFICATION_DELTA_KIND_REMOVED = 2;
+  // The reason or ticket was rewritten; changes nothing a rule judges.
+  CLASSIFICATION_DELTA_KIND_REASON_REWRITTEN = 3;
+  // A `none` declaration ("this repository holds no <kind>") was added. Held for approval like a
+  // removal, because it takes the repository's rules of that kind out of "not checkable" and into
+  // "not applicable". ClassificationDeltaEntry.none_kind names the kind.
+  CLASSIFICATION_DELTA_KIND_NONE_DECLARED = 4;
+  // A `none` declaration was withdrawn. A narrowing: applied at once.
+  CLASSIFICATION_DELTA_KIND_NONE_WITHDRAWN = 5;
+}
+
+// What became of a `none` declaration (owner decision 104). The kind is a ClassificationKind: the
+// declaration says the repository holds no data of that kind.
+enum ClassificationNoneOutcome {
+  CLASSIFICATION_NONE_OUTCOME_UNSPECIFIED = 0;
+  // Declared in the file and awaiting approval: the rules of the kind stay not checkable.
+  CLASSIFICATION_NONE_OUTCOME_HELD = 1;
+  // Approved and in force: the rules of the kind read "not applicable: declared none, approved by X on
+  // <date>" (blueprint.proto RuleNotApplicable, which carries the approval).
+  CLASSIFICATION_NONE_OUTCOME_IN_FORCE = 2;
+  // Refused: a declaration of that kind exists in the repository, so it cannot hold none.
+  CLASSIFICATION_NONE_OUTCOME_CONTRADICTS_DECLARATION = 3;
+}
+
+// A `none` declaration of the tags file: the repository holds no data of this kind. It is shown
+// with a warning while suggestions of the kind contradict it.
+message ClassificationNone {
+  ClassificationKind kind = 1;
+  string reason = 2;
+  string ticket = 3;
+  repeated DeclarationRef refs = 4;
+  ClassificationNoneOutcome outcome = 5;
+  // Suggestions of this kind still on the list: the warning when above 0.
+  int32 contradicting_suggestions = 6;
+  // Declarations of this kind that exist (when above 0 the outcome is CONTRADICTS_DECLARATION).
+  int32 contradicting_declarations = 7;
+  // The approval that put it in force (outcome IN_FORCE): who approved and when. Unset otherwise.
+  PolicyApproval approval = 8;
+}
+
+// Where a classification change is in its life. One row per change, keyed by (repo, branch,
+// digest) where the digest is that of the change's HELD set (the declarations it asks to remove or
+// retire, and the `none` declarations it adds, which need approval too), NOT of the whole file and not
+// by base_version. An unrelated addition therefore never changes the digest and never voids the
+// approvals of a held change (plan 2.4). The states mirror PolicyChangeState.
+enum ClassificationChangeState {
+  CLASSIFICATION_CHANGE_STATE_UNSPECIFIED = 0;
+  // A file or directive that fails validation. It never applies; the last approved set stays in force.
+  CLASSIFICATION_CHANGE_STATE_INVALID_HELD = 1;
+  // Removals awaiting approvals.
+  CLASSIFICATION_CHANGE_STATE_PENDING = 2;
+  // Every required slot is filled for this digest.
+  CLASSIFICATION_CHANGE_STATE_APPROVED = 3;
+  // Appended as a classification version.
+  CLASSIFICATION_CHANGE_STATE_EFFECTIVE = 4;
+  CLASSIFICATION_CHANGE_STATE_SUPERSEDED = 5;
+  CLASSIFICATION_CHANGE_STATE_REJECTED = 6;
+  CLASSIFICATION_CHANGE_STATE_WITHDRAWN = 7;
+}
+
+// How a change reached the repository.
+enum ClassificationChangeOrigin {
+  CLASSIFICATION_CHANGE_ORIGIN_UNSPECIFIED = 0;
+  CLASSIFICATION_CHANGE_ORIGIN_PULL_REQUEST = 1;
+  CLASSIFICATION_CHANGE_ORIGIN_DIRECT_PUSH = 2;
+  // Merged before its approvals: held.
+  CLASSIFICATION_CHANGE_ORIGIN_UNAPPROVED_MERGE = 3;
+  // Additions only, applied at once and recorded.
+  CLASSIFICATION_CHANGE_ORIGIN_NARROWING = 4;
+  // A change seen on the branch whose attribution is not known yet.
+  CLASSIFICATION_CHANGE_ORIGIN_BRANCH_UNATTRIBUTED = 5;
+}
+
+// ── Core types ──
+
+// A field a declaration or a suggestion names: an exact repository-relative file and the symbol
+// path (Type.member, nested types as Outer.Inner.member). Never a symbol id.
+message ClassificationTarget {
+  string file_path = 1;
+  string symbol_path = 2;
+  // Exact catalog leaf id, e.g. "pii.contact.email". Never a prefix or a glob.
+  string category_id = 3;
+}
+
+// Where one declaration is written.
+message DeclarationRef {
+  DeclarationOrigin origin = 1;
+  // The optional handle of a tags.yaml entry (its `id`), printed as the evidence name.
+  string handle = 2;
+  // File and line of an in-code directive; the file of a tags.yaml entry is the tags file itself.
+  string file_path = 3;
+  int32 line = 4;
+}
+
+message ClassificationDeclaration {
+  ClassificationTarget target = 1;
+  ClassificationKind kind = 2;
+  repeated DeclarationRef refs = 3;
+  DeclarationState state = 4;
+  string reason = 5;
+  string ticket = 6;
+  // Set while the state is HELD or UNMATCHED and a removal is pending: why it is held.
+  ClassificationRemovalCause removal_cause = 7;
+  // Line of the field at the commit (0 when unmatched).
+  int32 line = 8;
+}
+
+// A declaration that failed validation. Reported, never dropped.
+message InvalidClassificationDeclaration {
+  DeclarationOrigin origin = 1;
+  string file_path = 2;
+  int32 line = 3;
+  // ERR_CLASSIFICATION_* code, e.g. ERR_CLASSIFICATION_UNKNOWN_CATEGORY.
+  string err_code = 4;
+  // The category id or target the code is about, when it names one.
+  string subject = 5;
+}
+
+message ClassificationSuggestion {
+  ClassificationTarget target = 1;
+  ClassificationKind kind = 2;
+  int32 line = 3;
+  string language = 4;
+  // The matchers that fired. The client says "matched by name", "by type" or "by annotation"; it is
+  // never a judgement.
+  repeated ClassificationMatcher matched_via = 5;
+  // Ranks suggestions in a list; never shown as a judgement.
+  ClassificationConfidence confidence = 6;
+  string catalog_version = 7;
+  // The number of the open Toevan classification pull request that already confirms it (0: none).
+  int32 pending_pr_number = 8;
+  // True when the suggestion is dismissed (only listed when the request asks for them).
+  bool dismissed = 9;
+}
+
+// The status of a repository's classification on its default branch.
+message ClassificationStatus {
+  string repo_id = 1;
+  string repo_name = 2;
+  string branch = 3;
+  // The in-force classification version (0: the branch has none).
+  int32 version = 4;
+  // The digest of the in-force version (its canonical document), not of a change.
+  string digest = 5;
+  // False when the graph Toevan reads has not had this version applied yet.
+  bool applied = 6;
+  int32 declared_count = 7;
+  int32 held_count = 8;
+  int32 unmatched_count = 9;
+  int32 invalid_count = 10;
+  // Suggestions to review, less the dismissed ones and the fields of test files.
+  int32 suggestion_count = 11;
+  int32 pending_change_count = 12;
+  google.protobuf.Timestamp applied_at = 13;
+  // `none` declarations in the file, held or in force.
+  int32 none_count = 14;
+}
+
+message ClassificationDeltaEntry {
+  ClassificationDeltaKind kind = 1;
+  ClassificationTarget target = 2;
+  ClassificationRemovalCause removal_cause = 3;
+  string reason = 4;
+  // True when a Security Essentials rule reads the category.
+  bool touches_security_essentials = 5;
+  // The kind of a NONE_DECLARED or NONE_WITHDRAWN entry (target is unset for those).
+  ClassificationKind none_kind = 6;
+}
+
+// A held change of a repository's classification: its removals, with the approvals they need. Mirrors PolicyChange.
+message ClassificationChange {
+  string id = 1;
+  string org_id = 2;
+  string repo_id = 3;
+  string repo_name = 4;
+  string branch = 5;
+  ClassificationChangeOrigin origin = 6;
+  ClassificationChangeState state = 7;
+  PolicyTier tier = 8;
+  int32 pr_number = 9;
+  string commit_sha = 10;
+  // The digest of this change's HELD set (removals, retirements and added nones). It keys the row and binds an approval: an addition
+  // elsewhere in the file does not change it. Approving echoes it (ApproveClassificationChangeRequest.digest).
+  string digest = 11;
+  // ERR_CLASSIFICATION_* code when the state is INVALID_HELD.
+  string err_code = 12;
+  repeated ClassificationDeltaEntry delta = 13;
+  repeated PolicyApproval approvals = 14;
+  repeated PolicyApprovalSlot required_slots = 15;
+  // The slots the caller may fill now, and why not when empty.
+  repeated PolicyApprovalSlot my_eligible_slots = 16;
+  PolicyBlockedReason blocked_reason_code = 17;
+  string blocked_reason = 18;
+  repeated string author_logins = 19;
+  google.protobuf.Timestamp created_at = 20;
+  google.protobuf.Timestamp updated_at = 21;
+  // The effective version this change was measured against (0: the branch had none). Informational:
+  // it does not key the change and does not void its approvals.
+  int32 base_version = 22;
+  // True while the people who wrote the change could not all be listed.
+  bool authors_incomplete = 23;
+  PolicyAuthorsReason authors_incomplete_reason = 24;
+  bool can_acknowledge_incomplete_authors = 25;
+}
+
+// The pull request that confirms or removes declarations.
+message ClassificationPullRequest {
+  int32 number = 1;
+  string url = 2;
+  string branch = 3;
+  // False when the declarations were added to the open Toevan classification pull request
+  // instead of opening a second one.
+  bool opened = 4;
+}
+
+// One suggestion an admin confirms, with an optional reason of its own that replaces the category's.
+message ClassificationConfirmTarget {
+  ClassificationTarget target = 1;
+  string reason = 2;
+}
+
+// The reason an admin gives for every suggestion of one category in a confirmation.
+message ClassificationCategoryReason {
+  string category_id = 1;
+  string reason = 2;
+}
+
+// ── Requests and responses ──
+
+message GetClassificationStatusRequest {
+  string org_id = 1;
+  string repo_id = 2;
+}
+
+message GetClassificationStatusResponse {
+  ClassificationStatus status = 1;
+  // The invalid declarations of the commit, so none is dropped silently.
+  repeated InvalidClassificationDeclaration invalid = 2;
+  // The `none` declarations of the file, held or in force.
+  repeated ClassificationNone nones = 3;
+}
+
+message ListClassificationDeclarationsRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  repeated DeclarationState states = 3;
+  repeated ClassificationKind kinds = 4;
+  repeated string category_ids = 5;
+  string file_path = 6;
+  int32 page_size = 7;
+  string page_token = 8;
+}
+
+message ListClassificationDeclarationsResponse {
+  repeated ClassificationDeclaration declarations = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message ListClassificationSuggestionsRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  repeated ClassificationKind kinds = 3;
+  repeated string category_ids = 4;
+  // Exact file, or a directory prefix ending in "/".
+  string file_path = 5;
+  bool include_dismissed = 6;
+  int32 page_size = 7;
+  string page_token = 8;
+}
+
+message ListClassificationSuggestionsResponse {
+  repeated ClassificationSuggestion suggestions = 1;
+  string next_page_token = 2;
+  // The true count under the filter, over every page.
+  int32 total_count = 3;
+}
+
+message ConfirmClassificationSuggestionsRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  repeated ClassificationConfirmTarget targets = 3;
+  // One required reason per category, applied to each new entry of the category.
+  repeated ClassificationCategoryReason category_reasons = 4;
+}
+
+message ConfirmClassificationSuggestionsResponse {
+  ClassificationPullRequest pull_request = 1;
+  int32 confirmed_count = 2;
+}
+
+message DismissClassificationSuggestionsRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  repeated ClassificationTarget targets = 3;
+  string reason = 4;
+}
+
+message DismissClassificationSuggestionsResponse {
+  int32 dismissed_count = 1;
+}
+
+message RestoreClassificationSuggestionsRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  repeated ClassificationTarget targets = 3;
+}
+
+message RestoreClassificationSuggestionsResponse {
+  int32 restored_count = 1;
+}
+
+message RemoveClassificationDeclarationsRequest {
+  string org_id = 1;
+  string repo_id = 2;
+  repeated ClassificationTarget targets = 3;
+  string reason = 4;
+}
+
+message RemoveClassificationDeclarationsResponse {
+  ClassificationPullRequest pull_request = 1;
+  int32 removed_count = 2;
+}
+
+message ListClassificationChangesRequest {
+  string org_id = 1;
+  string repo_id = 2;   // optional
+  string branch = 3;    // optional
+  repeated ClassificationChangeState states = 4;
+  int32 page_size = 5;
+  string page_token = 6;
+}
+
+message ListClassificationChangesResponse {
+  repeated ClassificationChange changes = 1;
+  string next_page_token = 2;
+}
+
+message GetClassificationChangeRequest {
+  string org_id = 1;
+  string change_id = 2;
+}
+
+message GetClassificationChangeResponse {
+  ClassificationChange change = 1;
+}
+
+message ApproveClassificationChangeRequest {
+  string org_id = 1;
+  string change_id = 2;
+  // The held-set digest the caller was shown (ClassificationChange.digest): a click is bound to
+  // what was displayed.
+  string digest = 3;
+  PolicyApprovalSlot slot = 4;
+  string reason = 5;
+  // As ApprovePolicyChangeRequest.acknowledge_incomplete_authors.
+  bool acknowledge_incomplete_authors = 6;
+}
+
+message ApproveClassificationChangeResponse {
+  ClassificationChange change = 1;
+}
+
+message RejectClassificationChangeRequest {
+  string org_id = 1;
+  string change_id = 2;
+  string digest = 3;
+  string reason = 4;
+}
+
+message RejectClassificationChangeResponse {
+  ClassificationChange change = 1;
+}
+
+message RevokeClassificationApprovalRequest {
+  string org_id = 1;
+  string approval_id = 2;
+  string reason = 3;
+}
+
+message RevokeClassificationApprovalResponse {
+  ClassificationChange change = 1;
+}

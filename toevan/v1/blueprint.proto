@@ -5,6 +5,8 @@ package toevan.v1;
 option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 import "google/protobuf/timestamp.proto";
+import "toevan/v1/policy.proto";
+import "toevan/v1/tagging.proto";
 
 // ============================================
 // BlueprintService — CRUD, Marketplace, Reviews, Purchases
@@ -1084,7 +1086,10 @@ message DryRunBlueprintConstraintsResponse {
 // Why a rule of a dry run could not be checked. UNSPECIFIED is never sent.
 enum NotCheckableReason {
   NOT_CHECKABLE_REASON_UNSPECIFIED = 0;
-  // A data_tag_* rule whose required tag categories have no tagged symbol in the repo.
+  // A data_tag_* rule whose required tag categories have no tagged symbol in the repo. Once the
+  // data classification is declared (see classification.proto) this means "no DECLARED data": the
+  // repository declares no field of the rule's categories, and RuleNotChecked carries the number
+  // of suggestions to review.
   NOT_CHECKABLE_REASON_NO_DATA_TAGS_IN_SCOPE = 1;
   // The repo has no indexed symbols in the graph.
   NOT_CHECKABLE_REASON_REPO_NOT_INDEXED = 2;
@@ -1128,6 +1133,14 @@ enum NotCheckableReason {
   // index completed (status indexed, at the start and at the end of the evaluation) is judged. The
   // repository was not read. Run the preview again after the next index.
   NOT_CHECKABLE_REASON_INDEX_NOT_COMPLETE = 15;
+  // The data classification of the commit was not applied to the graph the rule read: the
+  // classification digest the evaluation expected differs from the one the evaluated scope
+  // carries. Every rule that reads declared data is not checkable until the next index applies it.
+  NOT_CHECKABLE_REASON_CLASSIFICATION_NOT_APPLIED = 16;
+  // The rule's family no longer judges anything: it inferred sensitive data from directory
+  // names, and Toevan no longer infers classification. Kept for custom blueprints; a shipped
+  // rule of the family is removed.
+  NOT_CHECKABLE_REASON_RULE_RETIRED = 17;
 }
 
 // Why a rule that DID run may have judged less than the whole repo. Its findings
@@ -1169,6 +1182,14 @@ message RuleNotChecked {
   // indexes with, the pinned one).
   string catalog_version = 6;
   bool catalog_is_indexed_version = 7;
+  // NO_DATA_TAGS_IN_SCOPE only (the meaning is "no declared data"): how many fields of the repo
+  // match one of the rule's categories as a SUGGESTION to review, less the dismissed ones and the
+  // fields of test files. 0 when none, and then no field looks like it. A suggestion is never
+  // read by a rule.
+  int32 suggestion_count = 8;
+  // NO_DATA_TAGS_IN_SCOPE only: the kinds of data the rule's categories hold, for the wording
+  // "no declared personal data". Several kinds are joined by the client.
+  repeated ClassificationKind required_kinds = 9;
 }
 
 message ExplainDryRunViolationRequest {
@@ -1219,6 +1240,25 @@ message RepoDryRunResult {
   repeated RuleIncomplete incomplete = 12;  // rules that ran with a partial answer
   // The commit the repository was last indexed at: the commit the preview judged. Empty when skipped.
   string indexed_commit = 13;
+  // Rules that did not apply because a `none` declaration of their kind is in force: not "0 findings"
+  // and not "not checkable" (owner decision 104).
+  repeated RuleNotApplicable not_applicable = 14;
+}
+
+// One rule that does not apply to a repo because the repo declared that it holds no data of the
+// rule's kind, and the declaration was approved. It reads "not applicable: declared none, approved by
+// X on <date>". It is a different answer from RuleNotChecked: the rule has nothing to judge by a
+// decision, not for lack of one.
+message RuleNotApplicable {
+  string rule_id = 1;
+  string rule_type = 2;
+  // The kinds the repository declared none of, that the rule reads.
+  repeated ClassificationKind kinds = 3;
+  // The approval that put the `none` in force: the approver and the instant (PolicyApproval.created_at),
+  // as the policy approvals carry them. A client prints the instant in the viewer's zone.
+  PolicyApproval approval = 4;
+  // The reason given in the declaration.
+  string reason = 5;
 }
 
 message DryRunViolation {
