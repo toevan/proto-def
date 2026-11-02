@@ -38,8 +38,15 @@ service EnterpriseLeadsService {
   // request: a lead has no account, so there is no self-service path. The
   // deletion is recorded in the platform audit log with the lead id and the
   // acting staff member, never the lead's name, email, company or message.
-  // A missing id is ERR_NOT_FOUND, not a silent success.
+  // A missing id is ERR_ENTERPRISE_LEAD_NOT_FOUND, not a silent success.
   rpc DeleteEnterpriseLead(DeleteEnterpriseLeadRequest) returns (DeleteEnterpriseLeadResponse);
+  // Permanently delete EVERY lead of one work email address (a person who asks
+  // for their contact-form data to be deleted asks for all of it, not one
+  // row). The address is compared trimmed and case-folded. All rows are
+  // deleted in one transaction with one platform audit record per row (the
+  // lead id and the acting staff member, never the address or any other
+  // field). An address with no lead is ERR_ENTERPRISE_LEAD_NOT_FOUND.
+  rpc DeleteEnterpriseLeadsByEmail(DeleteEnterpriseLeadsByEmailRequest) returns (DeleteEnterpriseLeadsByEmailResponse);
 }
 
 // EnterpriseLead is one captured lead. There is deliberately NO submitter IP /
@@ -93,3 +100,10 @@ message DeleteEnterpriseLeadRequest {
 // DeleteEnterpriseLeadResponse is empty on purpose: it carries nothing about the
 // deleted lead, and success means the row is gone.
 message DeleteEnterpriseLeadResponse {}
+
+message DeleteEnterpriseLeadsByEmailRequest {
+  string work_email = 1;                     // the address whose leads are deleted
+}
+message DeleteEnterpriseLeadsByEmailResponse {
+  int32 deleted = 1;                         // how many leads were deleted (at least 1)
+}
