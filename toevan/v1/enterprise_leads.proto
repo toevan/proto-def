@@ -33,6 +33,13 @@ service EnterpriseLeadsService {
   rpc UpdateEnterpriseLeadStatus(UpdateEnterpriseLeadStatusRequest) returns (UpdateEnterpriseLeadStatusResponse);
   // Set (or clear) a lead's internal CRM-lite notes.
   rpc UpdateEnterpriseLeadNotes(UpdateEnterpriseLeadNotesRequest) returns (UpdateEnterpriseLeadNotesResponse);
+  // Permanently delete one lead (hard delete, cannot be undone). This is the
+  // product-backed route for a person's "delete my contact-form data"
+  // request: a lead has no account, so there is no self-service path. The
+  // deletion is recorded in the platform audit log with the lead id and the
+  // acting staff member, never the lead's name, email, company or message.
+  // A missing id is ERR_NOT_FOUND, not a silent success.
+  rpc DeleteEnterpriseLead(DeleteEnterpriseLeadRequest) returns (DeleteEnterpriseLeadResponse);
 }
 
 // EnterpriseLead is one captured lead. There is deliberately NO submitter IP /
@@ -79,3 +86,10 @@ message UpdateEnterpriseLeadNotesRequest {
 message UpdateEnterpriseLeadNotesResponse {
   EnterpriseLead lead = 1;
 }
+
+message DeleteEnterpriseLeadRequest {
+  string id = 1;                             // the lead to delete
+}
+// DeleteEnterpriseLeadResponse is empty on purpose: it carries nothing about the
+// deleted lead, and success means the row is gone.
+message DeleteEnterpriseLeadResponse {}
