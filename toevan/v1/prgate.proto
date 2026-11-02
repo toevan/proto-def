@@ -254,13 +254,13 @@ message DeepCheckFinding {
   DeepCheckFindingOrigin origin = 2;
 }
 
-// Whether the pull request INTRODUCED a Deep Check finding, or it is already on the base branch. Typed, so
-// a client never infers it. UNKNOWN: the base branch's findings could not be read, so neither can be said.
+// Whether the pull request INTRODUCED a Deep Check finding, or it is already on the base branch it targets. Typed, so
+// a client never infers it. A Deep Check that cannot prove its baseline judges nothing and posts no verdict (see
+// DEEP_CHECK_STATE_BASELINE_NOT_READY), so every finding of a verdict has one of the two.
 enum DeepCheckFindingOrigin {
   DEEP_CHECK_FINDING_ORIGIN_UNSPECIFIED = 0;
   DEEP_CHECK_FINDING_ORIGIN_INTRODUCED = 1;   // absent from the base branch's findings: this pull request's
-  DEEP_CHECK_FINDING_ORIGIN_ON_BASE = 2;      // already on the base branch (main): listed and tracked, never blocking
-  DEEP_CHECK_FINDING_ORIGIN_UNKNOWN = 3;      // the base branch's findings were unavailable
+  DEEP_CHECK_FINDING_ORIGIN_ON_BASE = 2;      // already on the base branch the pull request targets: listed and tracked, never blocking
 }
 
 enum PRStatus {

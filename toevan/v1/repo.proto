@@ -439,6 +439,11 @@ enum DeepCheckState {
   // GitHub never confirmed the requested head in time; nothing posted, except that with
   // per-run check-runs a run that had posted its own concludes it cancelled.
   DEEP_CHECK_STATE_HEAD_UNRESOLVED = 15;
+  // The base branch's index of the commit the pull request's test merge was built on was not ready within the
+  // baseline wait, so no finding could be told from the ones already on the base branch: NOT JUDGED, not a failure and
+  // not a verdict. Its check-run concluded action_required, which never satisfies a required check. `detail` names the
+  // commit awaited.
+  DEEP_CHECK_STATE_BASELINE_NOT_READY = 16;
 }
 
 // RepoActivity represents a single event in a repository's timeline.
