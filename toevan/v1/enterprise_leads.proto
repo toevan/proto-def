@@ -47,6 +47,10 @@ service EnterpriseLeadsService {
   // lead id and the acting staff member, never the address or any other
   // field). An address with no lead is ERR_ENTERPRISE_LEAD_NOT_FOUND.
   rpc DeleteEnterpriseLeadsByEmail(DeleteEnterpriseLeadsByEmailRequest) returns (DeleteEnterpriseLeadsByEmailResponse);
+  // How many leads one work email address has (compared exactly as
+  // DeleteEnterpriseLeadsByEmail compares it), so the confirmation of a
+  // deletion by address can state the server's count. 0 is a valid answer.
+  rpc CountEnterpriseLeadsByEmail(CountEnterpriseLeadsByEmailRequest) returns (CountEnterpriseLeadsByEmailResponse);
 }
 
 // EnterpriseLead is one captured lead. There is deliberately NO submitter IP /
@@ -106,4 +110,11 @@ message DeleteEnterpriseLeadsByEmailRequest {
 }
 message DeleteEnterpriseLeadsByEmailResponse {
   int32 deleted = 1;                         // how many leads were deleted (at least 1)
+}
+
+message CountEnterpriseLeadsByEmailRequest {
+  string work_email = 1;                     // the address whose leads are counted
+}
+message CountEnterpriseLeadsByEmailResponse {
+  int32 count = 1;                           // how many leads the address has (0 or more)
 }
