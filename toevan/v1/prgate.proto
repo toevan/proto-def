@@ -783,6 +783,11 @@ message DeepCheckProgressEvent {
   // The run this event belongs to. Set only while deep_check.run_identity_enabled is on, or when
   // the request named a run.
   string run_id = 15;
+  // Why a FAILED frame failed, when the cause is one a person can act on, as a code and the moment it names (GitHub's rate limit
+  // and when it resets). `message` never carries an error's text: the error is a diagnostic (the server's log and the run's
+  // operator outcome row), and the client words this code in the viewer's language and zone. Unset for a frame that is not a failure
+  // and for a failure with no stated cause, which a client words generically.
+  TypedFailure typed_failure = 16;
 }
 
 message StreamDeepCheckProgressRequest {
