@@ -123,7 +123,7 @@ message TestWebhookResponse {
   // True when the endpoint answered 2xx.
   bool success = 1;
   // HTTP status the endpoint returned; 0 when the request never completed
-  // (network error / timeout) — see failure_code.
+  // (network error / timeout), see failure_code.
   int32 status_code = 2;
   int32 response_ms = 3;
   // Never populated (see WebhookDeliveryInfo.error): failure_code says what failed.

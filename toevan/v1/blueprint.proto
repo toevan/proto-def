@@ -301,7 +301,13 @@ message BlueprintAnalytics {
 
 message ValidationIssue {
   string severity = 1;               // "error" (blocking) or "warning" (advisory)
+  // The issue's sentence in English: the fallback for an issue with no code. It is written by the engine from the issue's kind and
+  // facts, never from an error's text.
   string message = 2;
+  // A typed code (ERR_BLUEPRINT_*) the client words in the viewer's language, with the facts the words name in args (for example the
+  // index of the rule, the field). Empty for an issue the engine states only as a message (an older issue, or one not coded yet).
+  string code = 3;
+  map<string, string> args = 4;
 }
 
 // ── CRUD Request/Response ──
