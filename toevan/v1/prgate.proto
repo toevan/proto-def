@@ -398,6 +398,11 @@ enum GateEffect {
   GATE_EFFECT_UNSPECIFIED = 0;  // not evaluated in a gate context / legacy row
   GATE_EFFECT_BLOCK = 1;        // fails the gate: net-new AND block-eligible
   GATE_EFFECT_ADVISORY = 2;     // surfaced but does not block the merge
+  // The finding is of a rule that reads the whole repository (an overlay or graph family) and the pull request is into a branch
+  // other than the default branch: the persisted index is the default branch's, not this base's, so the gate has NO introduced or
+  // pre-existing answer for it (is_new_in_pr says nothing). It never blocks here; Deep Check, which indexes the base commit's own
+  // tree, judges it. The card says "not judged against this base" and draws no new/pre-existing badge.
+  GATE_EFFECT_NOT_JUDGED_AGAINST_BASE = 3;
 }
 
 // AutoFixLifecycleState mirrors

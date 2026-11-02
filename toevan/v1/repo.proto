@@ -444,6 +444,11 @@ enum DeepCheckState {
   // not a verdict. Its check-run concluded action_required, which never satisfies a required check. `detail` names the
   // commit awaited.
   DEEP_CHECK_STATE_BASELINE_NOT_READY = 16;
+  // The pull request is into a branch other than the default branch, so its baseline is the base commit's own tree, and the time
+  // the job had left could not cover indexing that tree (the merged state's index took most of it): NOT JUDGED, not a failure and
+  // not a verdict, for a reason of its own (a larger job budget or a smaller repository, never a push). Its check-run concluded
+  // action_required, which never satisfies a required check.
+  DEEP_CHECK_STATE_BASE_TREE_OUT_OF_TIME = 17;
 }
 
 // RepoActivity represents a single event in a repository's timeline.
