@@ -336,4 +336,8 @@ message GetDeveloperDashboardResponse {
   repeated DeveloperViolationRow open_violations = 6; // latest failing check per PR
   repeated DeveloperWeek weekly = 7;                  // 8 rolling 7-day buckets ending now, oldest first, dense (zero buckets present)
   repeated DeveloperRuleHit top_rules = 8;            // most-hit rules, 30d
+  // The instant the server read the data: the end of the last rolling window of every weekly series in this response. A client
+  // anchors the series on it, never on its own clock (a device clock days off must not move a window). Unset from a server that
+  // predates it: the client then places a series by its own week starts.
+  google.protobuf.Timestamp as_of = 9;
 }
