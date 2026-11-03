@@ -212,9 +212,8 @@ message Org {
   // open-ended suspension, or when moderation_status isn't populated.
   google.protobuf.Timestamp moderation_suspended_until = 20;
 
-  // Whether the GitHub organization this account is bound to has been PROVED (accounts.github_binding_proved_at). Served by GetOrg,
-  // CreateOrg and the org list (ListMyOrgs); UNSPECIFIED where an RPC does not populate it (an older server, the platform-staff
-  // listings). A client reads AWAITING_OWNER_PROOF as "Toevan does not act on the GitHub organization until a GitHub owner of it
+  // Whether the GitHub organization this account is bound to has been PROVED (accounts.github_binding_proved_at). Served wherever the
+  // server returns an Org (GetOrg, CreateOrg, ListMyOrgs and the staff listings); UNSPECIFIED only from a server that predates it. A client reads AWAITING_OWNER_PROOF as "Toevan does not act on the GitHub organization until a GitHub owner of it
   // opens this organization once" and PROVED as "resumed"; it never infers either from github_org or github_installation_id.
   GitHubBindingState github_binding_state = 22;
 
