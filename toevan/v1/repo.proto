@@ -412,6 +412,12 @@ message DeepCheckRequest {
   // The run whose state `state` reports: the head's newest requested run. Set only while
   // deep_check.run_identity_enabled is on.
   string run_id = 15;
+  // The number of findings of a finished verdict (passed or blocked), the total the verdict stored; unset for
+  // every other state. PullRequest.deep_check_findings holds at most the stored cap of them.
+  optional int32 found_count = 16;
+  // How many times this run was interrupted by a worker restart and put back in the queue. 0 when never.
+  // `detail` names the reason of the latest one.
+  int32 requeue_count = 17;
 }
 
 enum DeepCheckState {
@@ -433,6 +439,16 @@ enum DeepCheckState {
   // GitHub never confirmed the requested head in time; nothing posted, except that with
   // per-run check-runs a run that had posted its own concludes it cancelled.
   DEEP_CHECK_STATE_HEAD_UNRESOLVED = 15;
+  // The base branch's index of the commit the pull request's test merge was built on was not ready within the
+  // baseline wait, so no finding could be told from the ones already on the base branch: NOT JUDGED, not a failure and
+  // not a verdict. Its check-run concluded action_required, which never satisfies a required check. `detail` names the
+  // commit awaited.
+  DEEP_CHECK_STATE_BASELINE_NOT_READY = 16;
+  // The pull request is into a branch other than the default branch, so its baseline is the base commit's own tree, and the time
+  // the job had left could not cover indexing that tree (the merged state's index took most of it): NOT JUDGED, not a failure and
+  // not a verdict, for a reason of its own (a larger job budget or a smaller repository, never a push). Its check-run concluded
+  // action_required, which never satisfies a required check.
+  DEEP_CHECK_STATE_BASE_TREE_OUT_OF_TIME = 17;
 }
 
 // RepoActivity represents a single event in a repository's timeline.
