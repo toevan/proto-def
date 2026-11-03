@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package toevan.v1;
 
+import "google/protobuf/timestamp.proto";
 import "toevan/v1/secret_options.proto";
 
 option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
@@ -135,4 +136,23 @@ enum ViolationSeverity {
   VIOLATION_SEVERITY_WARNING = 2;
   VIOLATION_SEVERITY_ERROR = 3;
   VIOLATION_SEVERITY_CRITICAL = 4;
+}
+
+// ── Typed failure ──
+
+// TypedFailure is why a piece of work did not finish, as a code and the moment the code names, so a client words it in the
+// viewer's language and shows the moment in the viewer's own time zone (owner decision 95). A server never writes an error's text,
+// or a formatted time, into a sentence a person reads: the stored diagnostic string stays a diagnostic, and this is what a
+// client words from. A client that does not know a code reads it as UNSPECIFIED and falls back to the sentence it already had.
+message TypedFailure {
+  TypedFailureCode code = 1;
+  // The moment the code names, when it names one: for GITHUB_RATE_LIMITED, when GitHub restores the quota (the earliest a retry
+  // can succeed). Unset when the code names none.
+  google.protobuf.Timestamp retry_at = 2;
+}
+
+enum TypedFailureCode {
+  TYPED_FAILURE_CODE_UNSPECIFIED = 0;
+  // GitHub's API quota was used up. retry_at is when GitHub restores it.
+  TYPED_FAILURE_CODE_GITHUB_RATE_LIMITED = 1;
 }

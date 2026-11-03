@@ -663,6 +663,10 @@ message PrCheckRun {
   // Empty on runs recorded before this field and on runs that changed no such file.
   repeated PrFileClassChange becomes_generated_after_merge = 18;
   int32 becomes_generated_total = 19;
+  // How many runs of the SAME head commit are older than this one, counted over the pull request's whole run log, not the page:
+  // 0 is the first run of the commit, more than 0 is a re-run. Stated per run so a capped page can mark its oldest visible run of a
+  // commit truthfully. 0 from a server that predates it (a client then marks only from the page it holds).
+  int32 earlier_runs_of_commit = 20;
 }
 
 // PrFileClassChange is a changed file of a pull request that is in a set-aside class at the head and had none at the

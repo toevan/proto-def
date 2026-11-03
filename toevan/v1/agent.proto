@@ -6,6 +6,7 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
+import "toevan/v1/types.proto";
 
 // ============================================
 // Agent Orchestration Service
@@ -129,6 +130,10 @@ message AgentRun {
   google.protobuf.Timestamp completed_at = 11;
   int32 duration_ms = 12;
   google.protobuf.Timestamp created_at = 13;
+  // Why a FAILED run failed, when the failure has a typed cause (a GitHub rate limit, with the moment it lifts). A client words
+  // the failure from it, in the viewer's language and time zone, and never shows `error_message` for it: that string is the
+  // run's diagnostic. Unset on a run that did not fail, on a failure with no typed cause, and on a run recorded before this field.
+  TypedFailure typed_failure = 14;
 }
 
 message AgentStep {
@@ -330,6 +335,11 @@ message AgentProgressUpdate {
   // decline_code ERR_VULN_FIX_NEEDS_MANUAL_EDIT so the client can say WHICH upgrade to apply.
   // A typed field, never read from `message`. Empty when the run stated none.
   string decline_target = 15;
+
+  // Why the run failed, when the failure has a typed cause (see AgentRun.typed_failure): the same value the run carries, set on
+  // the terminal failure frame. A client words it itself, in the viewer's language and time zone, and shows it instead of
+  // `message`. Unset on every other frame.
+  TypedFailure typed_failure = 16;
 }
 
 // ApplyFixViolationOutcome reports whether one violation in an Apply Fix

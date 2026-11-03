@@ -113,6 +113,10 @@ message GetBlueprintInsightsResponse {
   // The derived rows (a client reads these, not blueprints/rules, for compliance).
   repeated BlueprintCompliance blueprint_compliance = 9;
   repeated RuleCompliance rule_compliance = 10;
+  // The instant the server read the data: the end of the last rolling window of every weekly series in this response. A client
+  // anchors the series on it, never on its own clock (a device clock days off must not move a window). Unset from a server that
+  // predates it: the client then places a series by its own week starts.
+  google.protobuf.Timestamp as_of = 11;
 }
 
 message GetRiskDashboardRequest { string org_id = 1; }
@@ -234,4 +238,8 @@ message GetRiskDashboardResponse {
   // evaluated yet. coverage keeps its legacy row set (blueprints with findings or
   // passed rows).
   repeated BlueprintCompliance blueprint_compliance = 13;
+  // The instant the server read the data: the end of the last rolling window of every weekly series in this response. A client
+  // anchors the series on it, never on its own clock (a device clock days off must not move a window). Unset from a server that
+  // predates it: the client then places a series by its own week starts.
+  google.protobuf.Timestamp as_of = 14;
 }

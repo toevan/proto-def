@@ -935,6 +935,8 @@ message EvidenceExportJob {
   string filename = 5;
   string download_url = 6;
   int32 record_count = 7;
+  // Never populated: a failed export's error is a diagnostic (a store's or the object store's words), kept for the operator. The status
+  // says it failed.
   string error_message = 8;
   google.protobuf.Timestamp created_at = 9;
   google.protobuf.Timestamp updated_at = 10;

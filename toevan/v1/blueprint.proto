@@ -301,7 +301,16 @@ message BlueprintAnalytics {
 
 message ValidationIssue {
   string severity = 1;               // "error" (blocking) or "warning" (advisory)
+  // The issue's sentence in English, for the operator's log and for a client old enough not to know the code. It is written by the
+  // engine from the issue's kind and facts, never from an error's text, and the client never shows it to a person.
   string message = 2;
+  // The kind of the issue: a typed code (ERR_BLUEPRINT_*), one per kind of problem the engine can state. The client words it in the viewer's
+  // language from the code and the facts in args, so two problems of one blueprint read as two different lines. A code this client does
+  // not know shows a generic line that names the code, never the message.
+  string code = 3;
+  // The facts the words of the code name (a layer, a pattern, the position of a rule). Positions are 0-based, as in the JSON path they
+  // name; the client counts from 1. The same facts, whatever the language.
+  map<string, string> args = 4;
 }
 
 // ── CRUD Request/Response ──
