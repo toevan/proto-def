@@ -117,6 +117,50 @@ enum TagSource {
   TAG_SOURCE_TYPE_PROPAGATION = 2;
   // Force-added by .toevan/tags.yaml.
   TAG_SOURCE_OVERRIDE_ADD = 3;
+  // A declaration written in the code (a `toevan:classify` comment directive or a Go `toevan`
+  // struct tag) on the field. The only kinds of source a data rule reads are the declared ones.
+  TAG_SOURCE_DECLARED_ANNOTATION = 4;
+  // A declaration of the `declare` list of .toevan/tags.yaml version 2.
+  TAG_SOURCE_DECLARED_FILE = 5;
+  // A catalog match shown to a person to review. Never read by a rule, never a finding.
+  TAG_SOURCE_SUGGESTED = 6;
+}
+
+// The matcher that made a suggestion, in the order a client ranks them for a person: it says
+// "matched by name", "by type" or "by annotation", never a judgement. Mirrors the catalog's matcher
+// kinds of a data category.
+enum ClassificationMatcher {
+  CLASSIFICATION_MATCHER_UNSPECIFIED = 0;
+  CLASSIFICATION_MATCHER_FIELD_NAME = 1;
+  CLASSIFICATION_MATCHER_FIELD_TYPE = 2;
+  CLASSIFICATION_MATCHER_ANNOTATION = 3;
+  CLASSIFICATION_MATCHER_ENCLOSING_CLASS_NAME = 4;
+  CLASSIFICATION_MATCHER_VALUE_FORMAT = 5;
+}
+
+// How strongly the catalog's matchers agreed on a suggestion. It only RANKS suggestions in a list;
+// it is never shown as a judgement and no rule reads it.
+enum ClassificationConfidence {
+  CLASSIFICATION_CONFIDENCE_UNSPECIFIED = 0;
+  CLASSIFICATION_CONFIDENCE_LOW = 1;
+  CLASSIFICATION_CONFIDENCE_MEDIUM = 2;
+  CLASSIFICATION_CONFIDENCE_HIGH = 3;
+  CLASSIFICATION_CONFIDENCE_DEFINITE = 4;
+}
+
+// The kind of data a set of catalog categories holds, in the words a person reads ("no declared
+// personal data"). Derived from the leaf ids of the running catalog: pii.* is PII, phi.* is
+// PHI, financial.cardholder.* is CARD, financial.account.* is BANK_ACCOUNT, credentials.* is
+// CREDENTIALS, federal.* is FEDERAL, business_confidential.* is BUSINESS_CONFIDENTIAL.
+enum ClassificationKind {
+  CLASSIFICATION_KIND_UNSPECIFIED = 0;
+  CLASSIFICATION_KIND_PII = 1;
+  CLASSIFICATION_KIND_PHI = 2;
+  CLASSIFICATION_KIND_CARD = 3;
+  CLASSIFICATION_KIND_BANK_ACCOUNT = 4;
+  CLASSIFICATION_KIND_CREDENTIALS = 5;
+  CLASSIFICATION_KIND_FEDERAL = 6;
+  CLASSIFICATION_KIND_BUSINESS_CONFIDENTIAL = 7;
 }
 
 // ── OverrideEntry ──
