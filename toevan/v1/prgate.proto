@@ -244,6 +244,25 @@ message PullRequest {
   DeepCheckRequest deep_check = 29;
 }
 
+// One finding of a Deep Check verdict. `violation` is the card model the PR Gate's violation views already
+// draw (rule, blueprint, location, severity, description, the rule's explanation, the suggested fix,
+// gate_effect); its id is the stable violation identity the PR Gate uses for the same finding. is_new_in_pr
+// on it is true exactly when origin is INTRODUCED. The card has no detail, fix or exception routes: Deep
+// Check findings are read-only.
+message DeepCheckFinding {
+  EnrichedViolation violation = 1;
+  DeepCheckFindingOrigin origin = 2;
+}
+
+// Whether the pull request INTRODUCED a Deep Check finding, or it is already on the base branch it targets. Typed, so
+// a client never infers it. A Deep Check that cannot prove its baseline judges nothing and posts no verdict (see
+// DEEP_CHECK_STATE_BASELINE_NOT_READY), so every finding of a verdict has one of the two.
+enum DeepCheckFindingOrigin {
+  DEEP_CHECK_FINDING_ORIGIN_UNSPECIFIED = 0;
+  DEEP_CHECK_FINDING_ORIGIN_INTRODUCED = 1;   // absent from the base branch's findings: this pull request's
+  DEEP_CHECK_FINDING_ORIGIN_ON_BASE = 2;      // already on the base branch the pull request targets: listed and tracked, never blocking
+}
+
 enum PRStatus {
   PR_STATUS_UNSPECIFIED = 0;
   PR_STATUS_PENDING = 1;                 // awaiting first evaluation (no verdict yet)
@@ -379,6 +398,11 @@ enum GateEffect {
   GATE_EFFECT_UNSPECIFIED = 0;  // not evaluated in a gate context / legacy row
   GATE_EFFECT_BLOCK = 1;        // fails the gate: net-new AND block-eligible
   GATE_EFFECT_ADVISORY = 2;     // surfaced but does not block the merge
+  // The finding is of a rule that reads the whole repository (an overlay or graph family) and the pull request is into a branch
+  // other than the default branch: the persisted index is the default branch's, not this base's, so the gate has NO introduced or
+  // pre-existing answer for it (is_new_in_pr says nothing). It never blocks here; Deep Check, which indexes the base commit's own
+  // tree, judges it. The card says "not judged against this base" and draws no new/pre-existing badge.
+  GATE_EFFECT_NOT_JUDGED_AGAINST_BASE = 3;
 }
 
 // AutoFixLifecycleState mirrors
@@ -576,7 +600,9 @@ message PRGateConfig {
 
 message PRCheckSummary {
   string org_id = 1;
-  int32 prs_checked_today = 2;
+  // PRs checked in the LAST 24 HOURS, a rolling window ending at the request instant (owner decision 95, D4). The field number is that
+  // of prs_checked_today (a rename only).
+  int32 prs_checked_24h = 2;
   int32 prs_passed = 3;
   int32 prs_blocked = 4;
   int32 prs_warning = 5;
@@ -626,7 +652,23 @@ message ListPrHistoryResponse {
 }
 
 message GetPullRequestRequest { string pr_id = 1; }
-message GetPullRequestResponse { PullRequest pull_request = 1; }
+message GetPullRequestResponse {
+  PullRequest pull_request = 1;
+  // The merged-state findings of the head's finished Deep Check verdict (passed or blocked), as cards, most severe first, at
+  // most the stored cap; pull_request.deep_check.found_count is the total, so a list shorter than the count was cut. Only this
+  // RPC loads findings: the list RPCs carry none.
+  repeated DeepCheckFinding deep_check_findings = 2;
+  // Whether the findings could be read. UNAVAILABLE: the read or the masking of them failed; the call still succeeds
+  // with the pull request and its Deep Check state, and deep_check_findings is empty, which a client must not read as
+  // "no findings". AVAILABLE: deep_check_findings is what was stored (possibly empty). UNSPECIFIED: an older server.
+  DeepCheckFindingsState deep_check_findings_state = 3;
+}
+
+enum DeepCheckFindingsState {
+  DEEP_CHECK_FINDINGS_STATE_UNSPECIFIED = 0;
+  DEEP_CHECK_FINDINGS_STATE_AVAILABLE = 1;
+  DEEP_CHECK_FINDINGS_STATE_UNAVAILABLE = 2;
+}
 
 // PrCheckRun is ONE completed gate run — an entry in the append-only
 // pr_check_runs event log. The gate PR comment's "Run history" table is built
@@ -661,6 +703,10 @@ message PrCheckRun {
   // Empty on runs recorded before this field and on runs that changed no such file.
   repeated PrFileClassChange becomes_generated_after_merge = 18;
   int32 becomes_generated_total = 19;
+  // How many runs of the SAME head commit are older than this one, counted over the pull request's whole run log, not the page:
+  // 0 is the first run of the commit, more than 0 is a re-run. Stated per run so a capped page can mark its oldest visible run of a
+  // commit truthfully. 0 from a server that predates it (a client then marks only from the page it holds).
+  int32 earlier_runs_of_commit = 20;
 }
 
 // PrFileClassChange is a changed file of a pull request that is in a set-aside class at the head and had none at the
@@ -746,6 +792,11 @@ message DeepCheckProgressEvent {
   // The run this event belongs to. Set only while deep_check.run_identity_enabled is on, or when
   // the request named a run.
   string run_id = 15;
+  // Why a FAILED frame failed, when the cause is one a person can act on, as a code and the moment it names (GitHub's rate limit
+  // and when it resets). `message` never carries an error's text: the error is a diagnostic (the server's log and the run's
+  // operator outcome row), and the client words this code in the viewer's language and zone. Unset for a frame that is not a failure
+  // and for a failure with no stated cause, which a client words generically.
+  TypedFailure typed_failure = 16;
 }
 
 message StreamDeepCheckProgressRequest {

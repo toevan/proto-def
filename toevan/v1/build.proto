@@ -2427,6 +2427,10 @@ message DispatchApplyFixResponse {
   // The upgrade a declined fix asks the user to apply by hand; see
   // [AgentProgressUpdate.decline_target].
   string decline_target = 10;
+  // The typed cause of a terminal FAILED run (a GitHub rate limit and the moment it lifts), the same value the stream and the
+  // seed carry on [AgentProgressUpdate.typed_failure]. A client words it itself, in the viewer's language and time zone, and
+  // shows it instead of `message`. Unset on success, when not completed, from an older server, and for a failure with none.
+  TypedFailure typed_failure = 11;
 }
 
 // ── What-If Simulation ──

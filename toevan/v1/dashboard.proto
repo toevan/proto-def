@@ -42,9 +42,12 @@ message GetDashboardResponse {
 
   // Metric cards
   int32 repos_governed = 2;
-  int32 prs_checked_today = 3;
-  int32 prs_passed_today = 4;
-  int32 prs_blocked_today = 5;
+  // PR Gate runs in the LAST 24 HOURS, a rolling window ending at the request instant (owner decision 95, D4): no calendar-day
+  // boundary, so no zone and no midnight. The field numbers are those of prs_checked_today, prs_passed_today and
+  // prs_blocked_today (a rename only: an older client reads the same numbers under its old names and still labels them "today").
+  int32 prs_checked_24h = 3;
+  int32 prs_passed_24h = 4;
+  int32 prs_blocked_24h = 5;
   float compliance_rate = 6;             // 0.0–1.0
   // DEPRECATED — always 0. Was "change vs last week", computed from a 7-day
   // evidence window whose denominator counted gap rows and whose previous
@@ -289,6 +292,9 @@ message GetDeveloperDashboardRequest {
   string org_id = 1;
 }
 
+// One 7-day bucket of the developer's PR Gate activity. The buckets are ROLLING windows of 168 hours ending at the request instant
+// (owner decision 95, D4), oldest first: week_start is the instant the bucket opens, not a Monday. An older server sent Monday-anchored
+// UTC calendar weeks, sparse.
 message DeveloperWeek {
   google.protobuf.Timestamp week_start = 1;
   int32 checks = 2;
@@ -314,8 +320,10 @@ message GetDeveloperDashboardResponse {
   // recorded username — nothing can be attributed, clients render the
   // honest explanation instead of zeros.
   string attributed_login = 1;
-  int32 prs_this_week = 2;
-  int32 prs_prev_week = 3;          // real WoW baseline
+  // The caller's PRs checked in the last 7 days, and in the 7 days before those: two rolling windows of 168 hours ending at the request
+  // instant (owner decision 95, D4). The field numbers are those of prs_this_week and prs_prev_week (a rename only).
+  int32 prs_last_7_days = 2;
+  int32 prs_prev_7_days = 3;
   // Share of the caller's concluded GOVERNANCE outcomes (30d) that did not
   // block: (passed+warning)/(passed+warning+blocked). 'error' checks are
   // infrastructure failures and count nowhere. NEGATIVE when no concluded
@@ -326,6 +334,10 @@ message GetDeveloperDashboardResponse {
   // the capped list never disagree.
   int32 open_violation_total = 5;
   repeated DeveloperViolationRow open_violations = 6; // latest failing check per PR
-  repeated DeveloperWeek weekly = 7;                  // sparse; clients pad 8 slots
+  repeated DeveloperWeek weekly = 7;                  // 8 rolling 7-day buckets ending now, oldest first, dense (zero buckets present)
   repeated DeveloperRuleHit top_rules = 8;            // most-hit rules, 30d
+  // The instant the server read the data: the end of the last rolling window of every weekly series in this response. A client
+  // anchors the series on it, never on its own clock (a device clock days off must not move a window). Unset from a server that
+  // predates it: the client then places a series by its own week starts.
+  google.protobuf.Timestamp as_of = 9;
 }

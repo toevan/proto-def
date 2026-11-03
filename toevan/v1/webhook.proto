@@ -46,8 +46,15 @@ message WebhookDeliveryInfo {
   int32 response_ms = 5;
   int32 attempt = 6;
   google.protobuf.Timestamp delivered_at = 7;
+  // Never populated. The words of a failed delivery are a transport error's text (a URL, a resolver, a dial), which is for the
+  // operator and not for the person reading the list: failure_code says what failed.
   string error = 8;
   google.protobuf.Timestamp created_at = 9;
+  // Why the delivery failed, as an ERR_ code the client words: ERR_WEBHOOK_TIMEOUT, ERR_WEBHOOK_DNS, ERR_WEBHOOK_TLS,
+  // ERR_WEBHOOK_REFUSED, ERR_WEBHOOK_UNREACHABLE, ERR_WEBHOOK_HTTP_STATUS (the status is status_code), ERR_WEBHOOK_PAYLOAD_TOO_LARGE,
+  // ERR_WEBHOOK_REQUEST_FAILED. Empty for a delivery that succeeded, and for a failed delivery recorded before the code existed (the
+  // client words it from status_code, or as an unknown failure).
+  string failure_code = 10;
 }
 
 // ── Requests / Responses ──
@@ -116,8 +123,11 @@ message TestWebhookResponse {
   // True when the endpoint answered 2xx.
   bool success = 1;
   // HTTP status the endpoint returned; 0 when the request never completed
-  // (network error / timeout) — see error.
+  // (network error / timeout), see failure_code.
   int32 status_code = 2;
   int32 response_ms = 3;
+  // Never populated (see WebhookDeliveryInfo.error): failure_code says what failed.
   string error = 4;
+  // Why the test failed, an ERR_ code the client words (see WebhookDeliveryInfo.failure_code). Empty on success.
+  string failure_code = 5;
 }

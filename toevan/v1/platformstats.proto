@@ -115,10 +115,14 @@ message GetPlatformAnalyticsResponse {
   // warning, blocked) — mirrors DevWeekly's "concluded" convention.
   int32 prs_scanned_total = 1;
 
-  // Trailing 7 ISO calendar weeks of scan volume + average violations per
-  // scanned PR, oldest first. Powers the Weekly PR Volume chart AND both
-  // the "this week" and Avg-Violations trend deltas — same 7-week window,
-  // one query, so the chart and the stat cards can never drift apart.
+  // Seven rolling 7-day windows (168 hours each) ending at the request
+  // instant, oldest first, of scan volume + average violations per scanned
+  // PR (owner decision 95, D4: no calendar-week boundary; an older server
+  // sent Monday-anchored UTC ISO weeks). Powers the Weekly PR Volume chart
+  // AND both the "last 7 days" and Avg-Violations trend deltas, the same
+  // seven windows, one query, so the chart and the stat cards can never
+  // drift apart. The analytics are cached for a few minutes, so "ending at
+  // the request instant" is the instant of the cached read.
   repeated WeeklyPRStat weekly_pr_stats = 2;
 
   // Non-deleted blueprints with status=published.
@@ -138,15 +142,19 @@ message GetPlatformAnalyticsResponse {
   // apply, and org-level auto-fix — all three funnel into the same
   // agent_runs dispatch, see ClassifyBlueprintTier's sibling doc in
   // internal/platformanalytics) whose linked fix branch/PR ended up merged,
-  // for the current ISO week. Absent (not zero) when there were zero
+  // for the LAST 7 DAYS (a rolling window of 168 hours ending at the read,
+  // owner decision 118; an older server read the current ISO week). Absent (not zero) when there were zero
   // dispatches in the window — a metric with no denominator has no rate.
   optional double ai_fix_merge_rate = 7;
-  // Same metric, prior ISO week — powers the trend delta. Absent under the
+  // Same metric, the 7 days before those (the window before it, 168 hours),
+  // which powers the trend delta. Absent under the
   // same zero-denominator rule.
   optional double ai_fix_merge_rate_prev = 8;
 }
 
 message WeeklyPRStat {
+  // The instant the 7-day window opens (the window is 168 hours long and the
+  // last one ends at the read), not a Monday.
   google.protobuf.Timestamp week_start = 1;
   int32 scanned_count = 2;
   double avg_violations = 3;

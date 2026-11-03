@@ -34,8 +34,11 @@ message BlueprintInsightRow {
   // The passed rows of the default-branch evidence view for this blueprint
   // (resolution markers a re-evaluation writes), NOT a count of passing rules.
   int32 passed_now = 4;
-  // Twelve ISO weeks of violation evidence, oldest first (sparse, weeks
-  // with no rows are omitted; clients pad).
+  // Twelve ROLLING 7-day windows of 168 hours ending at the request instant,
+  // oldest first, dense (a quiet window is a point of zeros; owner decision
+  // 118). week_start is the instant a window opens. An older server sent
+  // Monday-anchored ISO weeks, sparse, which clients still place by their
+  // week_start.
   repeated WeeklyTrendPoint weekly = 5;
 }
 
@@ -110,6 +113,10 @@ message GetBlueprintInsightsResponse {
   // The derived rows (a client reads these, not blueprints/rules, for compliance).
   repeated BlueprintCompliance blueprint_compliance = 9;
   repeated RuleCompliance rule_compliance = 10;
+  // The instant the server read the data: the end of the last rolling window of every weekly series in this response. A client
+  // anchors the series on it, never on its own clock (a device clock days off must not move a window). Unset from a server that
+  // predates it: the client then places a series by its own week starts.
+  google.protobuf.Timestamp as_of = 11;
 }
 
 message GetRiskDashboardRequest { string org_id = 1; }
@@ -209,7 +216,8 @@ message RepoCompliance {
 message GetRiskDashboardResponse {
   RiskMetrics metrics = 1;
   repeated RiskMatrixCell matrix = 2;
-  // Oldest-first, 12 ISO weeks.
+  // Oldest-first, 12 rolling 7-day windows ending at the request instant,
+  // dense (see BlueprintInsightRow.weekly).
   repeated WeeklyTrendPoint weekly_trend = 3;
   repeated BlueprintCoverage coverage = 4;
   // Highest severity first, capped server-side.
@@ -219,8 +227,8 @@ message GetRiskDashboardResponse {
   // Meaningful only when org_evaluated is true.
   float org_compliance_rate = 8;
   repeated RepoCompliance repo_compliance = 9;
-  // True when this week's violation evidence rose >=25% (and >=5 rows)
-  // over last week.
+  // True when the last 7 days' violation evidence rose >=25% (and >=5 rows)
+  // over the 7 days before them (two rolling windows ending now).
   bool violation_spike = 10;
   float spike_delta_pct = 11;
   // False when no repo of the org has been evaluated yet: org_compliance_rate
@@ -230,4 +238,8 @@ message GetRiskDashboardResponse {
   // evaluated yet. coverage keeps its legacy row set (blueprints with findings or
   // passed rows).
   repeated BlueprintCompliance blueprint_compliance = 13;
+  // The instant the server read the data: the end of the last rolling window of every weekly series in this response. A client
+  // anchors the series on it, never on its own clock (a device clock days off must not move a window). Unset from a server that
+  // predates it: the client then places a series by its own week starts.
+  google.protobuf.Timestamp as_of = 14;
 }
