@@ -211,6 +211,33 @@ message Org {
   // Only ever set for a live, time-boxed suspension; unset for a ban, an
   // open-ended suspension, or when moderation_status isn't populated.
   google.protobuf.Timestamp moderation_suspended_until = 20;
+
+  // Whether the GitHub organization this account is bound to has been PROVED (accounts.github_binding_proved_at). Served by GetOrg,
+  // CreateOrg and the org list (ListMyOrgs); UNSPECIFIED where an RPC does not populate it (an older server, the platform-staff
+  // listings). A client reads AWAITING_OWNER_PROOF as "Toevan does not act on the GitHub organization until a GitHub owner of it
+  // opens this organization once" and PROVED as "resumed"; it never infers either from github_org or github_installation_id.
+  GitHubBindingState github_binding_state = 22;
+
+  // The typed ERR_ code of the last attempt of the CALLER (an admin) to prove an AWAITING_OWNER_PROOF binding that failed for a known
+  // reason, for example ERR_ORG_GITHUB_ADMIN_REQUIRED, ERR_ORG_GITHUB_SSO_REQUIRED,
+  // ERR_ORG_GITHUB_APP_MEMBERS_PERMISSION_MISSING, ERR_ORG_GITHUB_BINDING_CONFLICT. Populated by GetOrg only, for an admin, while
+  // github_binding_state is AWAITING_OWNER_PROOF; empty otherwise. It is a code, never a sentence: the client words it in the
+  // viewer's language, and an unknown code is worded as the generic prompt.
+  string github_binding_proof_failure = 23;
+}
+
+// The state of the proof that the GitHub organization an account is bound to is the one its GitHub owner means. Toevan acts on a
+// GitHub organization's installation (reads its repositories, comments on its pull requests, opens fixes) only when the binding is
+// PROVED.
+enum GitHubBindingState {
+  GITHUB_BINDING_STATE_UNSPECIFIED = 0;
+  // The account is bound to no GitHub organization or account: there is nothing to prove.
+  GITHUB_BINDING_STATE_NOT_APPLICABLE = 1;
+  // The binding was proved: at creation, by a GitHub owner's confirmation, or (a personal account) from its owner's own GitHub id.
+  GITHUB_BINDING_STATE_PROVED = 2;
+  // The account names a GitHub organization but no GitHub owner of it has confirmed it yet. Toevan does not act on that GitHub
+  // organization until one does, by opening this organization once as an admin. Nothing is lost.
+  GITHUB_BINDING_STATE_AWAITING_OWNER_PROOF = 3;
 }
 
 enum BillingStatus {
