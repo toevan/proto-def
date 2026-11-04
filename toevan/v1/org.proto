@@ -238,7 +238,7 @@ enum GitHubBindingState {
   GITHUB_BINDING_STATE_PROVED = 2;
   // The account names a GitHub organization that is not confirmed yet. Toevan does not act on it (no pull request checks, no indexing, no
   // fixes) until a person who is both an admin of this account and an owner of the GitHub organization opens the account in Toevan once. No
-  // data is deleted; what Toevan received meanwhile is kept, and checks and indexing are not replayed.
+  // data is deleted and the evidence deliveries Toevan receives meanwhile are kept; pull request checks and indexing are not replayed.
   GITHUB_BINDING_STATE_AWAITING_OWNER_PROOF = 3;
 }
 
