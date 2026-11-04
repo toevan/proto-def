@@ -1331,8 +1331,8 @@ message GetViolationDetailReply {
   bool can_reveal_secret = 42;
 
   // Who wrote the change set above (decision 145): the evaluator (a deterministic dependency bump, a pattern fix, the structural
-  // router) or a model (the Stage 3 plan pass, the batch fix). UNSPECIFIED is a server that does not send it, UNKNOWN a change set
-  // whose author is not recorded (an older cached plan). A client labels a MODEL change set that `validation_outcome` does not
+  // router) or a model (the plan pass, Stage 3, a streamed plan). UNSPECIFIED is a server that does not send it, UNKNOWN a change
+  // set whose author is not recorded (an older cached plan, or the batch fix writer). A client labels a MODEL change set that `validation_outcome` does not
   // show VALIDATED "AI-written, not verified", and an UNSPECIFIED or UNKNOWN one "origin not recorded"; it never shows either as
   // verified. Meaningless when change_set is unset.
   FixOrigin change_set_origin = 43;
