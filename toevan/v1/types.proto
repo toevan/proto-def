@@ -156,3 +156,14 @@ enum TypedFailureCode {
   // GitHub's API quota was used up. retry_at is when GitHub restores it.
   TYPED_FAILURE_CODE_GITHUB_RATE_LIMITED = 1;
 }
+
+// Who wrote a fix: a violation's suggested fix (EnrichedViolation.fix_origin) or the change set the fix generator shows
+// (GetViolationDetailReply.change_set_origin). Mirrors the server's fix origin (internal/constraint.FixOrigin): the evaluator's
+// own rule (a dependency bump, a forbidden file's removal) or a model, from a prompt that holds the repository's text. The
+// server denies by default: an origin nobody stamped is UNKNOWN, treated as a model's. Append new values; never rename.
+enum FixOrigin {
+  FIX_ORIGIN_UNSPECIFIED = 0;  // a server that does not send the field
+  FIX_ORIGIN_UNKNOWN = 1;      // the stored finding records no origin
+  FIX_ORIGIN_EVALUATOR = 2;    // the evaluation wrote the fix by a rule of its own
+  FIX_ORIGIN_MODEL = 3;        // a model wrote the fix
+}

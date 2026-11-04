@@ -387,6 +387,18 @@ message EnrichedViolation {
   // "Upgrade to X" (or the plain decline) without fetching the detail. Unset for
   // every other rule and for a finding recorded before decisions were stored.
   VulnFixTarget vuln_fix_target = 31;
+
+  // Who wrote `suggested_fix`, as the run stored it with the finding (pr_violations.fix_origin; Deep Check's
+  // pr_deep_check_findings.fix_origin). A client never infers it. UNSPECIFIED is a server that does not send it;
+  // UNKNOWN is a stored finding that records no origin (a row written before the column). Both read as "origin not
+  // recorded": the fix is shown with a neutral label, never as verified.
+  FixOrigin fix_origin = 34;
+
+  // Whether the gate PROVED `suggested_fix` by re-evaluation: applied in memory to the pull request's head, the rule's
+  // finding is gone and no rule reports a new one. Only a fix a model wrote needs a proof (FIX_ORIGIN_MODEL); it is
+  // false for an evaluator's fix (nothing to prove) and for every fix the gate did not try or could not prove. A client
+  // labels a model-written fix that is not proved "AI-written, not verified".
+  bool fix_proved = 35;
 }
 
 // GateEffect is the block-vs-advisory axis of a SURFACED violation's gate
