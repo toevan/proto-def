@@ -1330,6 +1330,13 @@ message GetViolationDetailReply {
   // side effect). The client shows the Reveal control only when true. Advisory: the RPC checks again.
   bool can_reveal_secret = 42;
 
+  // Who wrote the change set above (decision 145): the evaluator (a deterministic dependency bump, a pattern fix, the structural
+  // router) or a model (the plan pass, Stage 3, a streamed plan). UNSPECIFIED is a server that does not send it, UNKNOWN a change
+  // set whose author is not recorded (an older cached plan, or the batch fix writer). A client labels a MODEL change set that `validation_outcome` does not
+  // show VALIDATED "AI-written, not verified", and an UNSPECIFIED or UNKNOWN one "origin not recorded"; it never shows either as
+  // verified. Meaningless when change_set is unset.
+  FixOrigin change_set_origin = 43;
+
   // display_line_note is optional human-readable precision context
   // for the (file_path, line) display coordinate above. Hydrated
   // from the primary EvidenceLocation's Note field. Phase 1b's
@@ -1911,6 +1918,9 @@ message ViolationDetailFooter {
 
   // vuln_fix_target mirrors [GetViolationDetailReply.vuln_fix_target].
   VulnFixTarget vuln_fix_target = 17;
+
+  // change_set_origin mirrors [GetViolationDetailReply.change_set_origin].
+  FixOrigin change_set_origin = 18;
 }
 
 // ViolationDetailError is the stream-level failure shape. Emitted
