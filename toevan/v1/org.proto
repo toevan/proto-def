@@ -16,6 +16,15 @@ service OrgService {
   rpc GetOrg(GetOrgRequest) returns (GetOrgResponse);
   rpc UpdateOrg(UpdateOrgRequest) returns (UpdateOrgResponse);
 
+  // Asks Toevan to confirm, now, that the calling admin owns the GitHub organization this account is bound to. Admin of THIS organization only
+  // (a member who is not an admin is refused; a non-member is told they are not a member). It runs the same proof GetOrg runs for an admin
+  // (the caller's own GitHub token, one writer of the proof marker, never weaker than for GetOrg: a person who does not own the GitHub
+  // organization proves nothing), but it is the person's own act: it is not held back by the automatic attempt's 10-minute throttle. It has a
+  // limit of its own (a refusal is ERR_TOO_MANY_REQUESTS with the retry-after in the details). A proof that fails is NOT an RPC error: the
+  // response carries the typed reason, so the person gets an answer at once. After a proof the org caches are invalidated and the org
+  // channel (StreamRepoChanges, reason GITHUB_BINDING_CHANGED) tells the other members' clients to re-read.
+  rpc ConfirmGitHubBinding(ConfirmGitHubBindingRequest) returns (ConfirmGitHubBindingResponse);
+
   // Tier change for an organisation — the dedicated admin-only RPC that
   // CreateOrgRequest field 5's tombstone points at. Deliberately NOT part of
   // UpdateOrg: the tier is commercial state, gated on payment authorization and on
@@ -215,12 +224,12 @@ message Org {
   // Whether the GitHub organization this account is bound to has been PROVED (accounts.github_binding_proved_at). Served wherever the
   // server returns an Org (GetOrg, CreateOrg, ListMyOrgs and the staff listings); UNSPECIFIED only from a server that predates it. A client
   // reads AWAITING_OWNER_PROOF as "Toevan does not act on the GitHub organization until a person who is both an admin of this organization in
-  // Toevan and an owner of the GitHub organization opens it in Toevan once" and PROVED as "confirmed"; it never infers either from github_org
+  // Toevan and an owner of the GitHub organization confirms it" and PROVED as "confirmed"; it never infers either from github_org
   // or github_installation_id.
   GitHubBindingState github_binding_state = 22;
 
   // The typed ERR_ code of the last attempt of the CALLER (an admin) to prove an AWAITING_OWNER_PROOF binding that failed for a known
-  // reason, for example ERR_ORG_GITHUB_ADMIN_REQUIRED, ERR_ORG_GITHUB_SSO_REQUIRED,
+  // reason (every failure has one: the set is in ConfirmGitHubBindingResponse), for example ERR_ORG_GITHUB_ADMIN_REQUIRED, ERR_ORG_GITHUB_SSO_REQUIRED,
   // ERR_ORG_GITHUB_APP_MEMBERS_PERMISSION_MISSING, ERR_ORG_GITHUB_BINDING_CONFLICT. Populated by GetOrg only, for an admin, while
   // github_binding_state is AWAITING_OWNER_PROOF; empty otherwise. It is a code, never a sentence: the client words it in the
   // viewer's language, and an unknown code is worded as the generic prompt.
@@ -237,7 +246,7 @@ enum GitHubBindingState {
   // The binding was proved: at creation, by a GitHub owner's confirmation, or (a personal account) from its owner's own GitHub id.
   GITHUB_BINDING_STATE_PROVED = 2;
   // The account names a GitHub organization that is not confirmed yet. Toevan does not act on it (no pull request checks, no indexing, no
-  // fixes) until a person who is both an admin of this account and an owner of the GitHub organization opens the account in Toevan once. No
+  // fixes) until a person who is both an admin of this account and an owner of the GitHub organization confirms it (ConfirmGitHubBinding). No
   // data is deleted and the evidence deliveries Toevan receives meanwhile are kept; pull request checks and indexing are not replayed.
   GITHUB_BINDING_STATE_AWAITING_OWNER_PROOF = 3;
 }
@@ -383,6 +392,17 @@ message CreateOrgResponse { Org org = 1; }
 
 message GetOrgRequest { string org_id = 1; }
 message GetOrgResponse { Org org = 1; }
+
+message ConfirmGitHubBindingRequest { string org_id = 1; }
+message ConfirmGitHubBindingResponse {
+  // The binding's state after the attempt: PROVED when the attempt (or an earlier one, by this or another admin) proved it, NOT_APPLICABLE when
+  // the account is bound to no GitHub organization, AWAITING_OWNER_PROOF when it is still not proved.
+  GitHubBindingState github_binding_state = 1;
+  // The typed ERR_ code of why the attempt failed; empty only when the state is not AWAITING_OWNER_PROOF. Never empty while the binding is
+  // still awaiting proof after an attempt: a failed proof always states its reason. Same codes as Org.github_binding_proof_failure, plus
+  // ERR_ORG_GITHUB_REAUTH_REQUIRED, ERR_ORG_GITHUB_NOT_CONNECTED, ERR_ORG_GITHUB_PROOF_UNAVAILABLE and ERR_ORG_GITHUB_BINDING_LOGIN_INVALID.
+  string github_binding_proof_failure = 2;
+}
 
 message UpdateOrgRequest {
   string org_id = 1;
