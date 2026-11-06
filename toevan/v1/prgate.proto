@@ -242,6 +242,11 @@ message PullRequest {
   // blocking base-graph-only family applied. The client shows no badge then. Reuses the
   // repo.proto DeepCheckRequest shape so a PR's deep-check state has one representation.
   DeepCheckRequest deep_check = 29;
+
+  // How many findings of the latest check the gate did not judge because the baseline that decides them could not be read
+  // (their gate_effect is GATE_EFFECT_NOT_JUDGED_BASELINE_UNREAD). violation_count counts what the gate judged and found, so a
+  // pull request with a count of 0 and a count here was not judged: the list says so and does not say "0 violations".
+  int32 baseline_unread_count = 30;
 }
 
 // One finding of a Deep Check verdict. `violation` is the card model the PR Gate's violation views already
