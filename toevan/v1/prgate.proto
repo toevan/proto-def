@@ -242,6 +242,11 @@ message PullRequest {
   // blocking base-graph-only family applied. The client shows no badge then. Reuses the
   // repo.proto DeepCheckRequest shape so a PR's deep-check state has one representation.
   DeepCheckRequest deep_check = 29;
+
+  // How many findings of the latest check the gate did not judge because the baseline that decides them could not be read
+  // (their gate_effect is GATE_EFFECT_NOT_JUDGED_BASELINE_UNREAD). violation_count counts what the gate judged and found, so a
+  // pull request with a count of 0 and a count here was not judged: the list says so and does not say "0 violations".
+  int32 baseline_unread_count = 30;
 }
 
 // One finding of a Deep Check verdict. `violation` is the card model the PR Gate's violation views already
@@ -415,6 +420,12 @@ enum GateEffect {
   // pre-existing answer for it (is_new_in_pr says nothing). It never blocks here; Deep Check, which indexes the base commit's own
   // tree, judges it. The card says "not judged against this base" and draws no new/pre-existing badge.
   GATE_EFFECT_NOT_JUDGED_AGAINST_BASE = 3;
+  // The finding is of a rule whose family the repository's baseline decides (what main already held), and that baseline could not be
+  // read (the read failed, or the repository names no completion time of its last index). The gate has NO introduced or pre-existing
+  // answer for it (is_new_in_pr is false and says nothing). It never blocks; the run is neutral and says "not judged: the baseline
+  // could not be read". The card says so and draws no new/pre-existing badge. Not "not judged against this base": the base is not
+  // another branch here.
+  GATE_EFFECT_NOT_JUDGED_BASELINE_UNREAD = 4;
 }
 
 // AutoFixLifecycleState mirrors
