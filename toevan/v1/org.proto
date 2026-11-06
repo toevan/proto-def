@@ -400,7 +400,7 @@ message ConfirmGitHubBindingResponse {
   GitHubBindingState github_binding_state = 1;
   // The typed ERR_ code of why the attempt failed; empty only when the state is not AWAITING_OWNER_PROOF. Never empty while the binding is
   // still awaiting proof after an attempt: a failed proof always states its reason. Same codes as Org.github_binding_proof_failure, plus
-  // ERR_ORG_GITHUB_REAUTH_REQUIRED, ERR_ORG_GITHUB_NOT_CONNECTED, ERR_ORG_GITHUB_PROOF_UNAVAILABLE and ERR_ORG_GITHUB_BINDING_LOGIN_INVALID.
+  // ORG_GITHUB_REAUTH_REQUIRED, ORG_GITHUB_NOT_CONNECTED (spelled without the ERR_ prefix, as the server declares them), ERR_ORG_GITHUB_PROOF_UNAVAILABLE, ERR_ORG_GITHUB_BINDING_LOGIN_INVALID and ERR_ORG_GITHUB_INSTALLATION_MISMATCH.
   string github_binding_proof_failure = 2;
 }
 
