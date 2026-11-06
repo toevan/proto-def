@@ -313,6 +313,14 @@ message ValidationIssue {
   // The facts the words of the code name (a layer, a pattern, the position of a rule). Positions are 0-based, as in the JSON path they
   // name; the client counts from 1. The same facts, whatever the language.
   map<string, string> args = 4;
+  // Where the issue is: an RFC 6901 JSON pointer into the blueprint's full spec document (the JSON the editor shows), naming the value or
+  // the object the issue is about. The engine states it from the path it was walking when it found the issue, so an issue about the second
+  // layer named "core" points at the second layer, never at the first line that happens to hold the word. A key holding "/" or "~" is
+  // escaped as the RFC says ("~1" and "~0"). For an absent field the pointer names the object that should carry it. Empty means the issue is
+  // about the document as a whole (the text is not JSON, a server fault) or about a field of the document root that the document does not
+  // carry. An older server sends none. A client resolves the pointer against the exact text it shows, and when the text has changed since
+  // the verdict and the pointer no longer resolves, the issue has no place: it is never found by searching the text.
+  string json_pointer = 5;
 }
 
 // ── CRUD Request/Response ──
