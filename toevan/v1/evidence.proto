@@ -1368,6 +1368,11 @@ message ChangeEvidenceReportRow {
   // section key: that section's first page) or through anchors (its key is an anchor key: that block's page). Empty
   // until completed, and for reports made before anchors were recorded: a reference to an anchor then has no known page.
   repeated ChangeEvidenceReportAnchor anchors = 21;
+  // The IANA name of the zone the report was generated in ("Africa/Nairobi", or "UTC" for a person with no stored zone): the zone
+  // of the person who requested it, settled when the request was made and recorded in the sealed manifest (time_zone). Every
+  // text that words the report's period or a time of it (this row, the viewer's title) words it in this zone, never in the
+  // viewer's or the device's. Empty for a report made before the zone was recorded: its times read as the sealed report states them.
+  string time_zone = 22;
 }
 
 // Where the GitHub profile a report names its generator from was read.
