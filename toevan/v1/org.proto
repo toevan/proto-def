@@ -234,6 +234,13 @@ message Org {
   // github_binding_state is AWAITING_OWNER_PROOF; empty otherwise. It is a code, never a sentence: the client words it in the
   // viewer's language, and an unknown code is worded as the generic prompt.
   string github_binding_proof_failure = 23;
+
+  // What kind of action the failure in github_binding_proof_failure needs, so a client that does not know a newer code still words the right
+  // next step: "retry" (Toevan or GitHub could not check just now: try again), "reconnect" (the caller's GitHub connection must be
+  // renewed), "owner" (an owner of the GitHub organization who is an admin here must do it, or the caller must authorize something on
+  // GitHub), "support" (confirming again cannot fix it: Toevan support resolves it). Empty when github_binding_proof_failure is empty. Served
+  // with the code and to the same caller only. An unknown kind is worded neutrally.
+  string github_binding_proof_failure_kind = 24;
 }
 
 // The state of the proof that the GitHub organization an account is bound to is the one an owner of that GitHub organization means. Toevan acts on a
@@ -400,8 +407,11 @@ message ConfirmGitHubBindingResponse {
   GitHubBindingState github_binding_state = 1;
   // The typed ERR_ code of why the attempt failed; empty only when the state is not AWAITING_OWNER_PROOF. Never empty while the binding is
   // still awaiting proof after an attempt: a failed proof always states its reason. Same codes as Org.github_binding_proof_failure, plus
-  // ORG_GITHUB_REAUTH_REQUIRED, ORG_GITHUB_NOT_CONNECTED (spelled without the ERR_ prefix, as the server declares them), ERR_ORG_GITHUB_PROOF_UNAVAILABLE, ERR_ORG_GITHUB_BINDING_LOGIN_INVALID and ERR_ORG_GITHUB_INSTALLATION_MISMATCH.
+  // ORG_GITHUB_REAUTH_REQUIRED, ORG_GITHUB_NOT_CONNECTED (spelled without the ERR_ prefix, as the server declares them), ERR_ORG_GITHUB_PROOF_UNAVAILABLE, ERR_ORG_GITHUB_BINDING_LOGIN_INVALID and ERR_ORG_GITHUB_INSTALLATION_MISMATCH (the installation linked to the organization belongs to another GitHub account, or no longer exists). The set grows: a new typed reason carries its kind.
   string github_binding_proof_failure = 2;
+  // The kind of action the failure needs: "retry", "reconnect", "owner" or "support" (see Org.github_binding_proof_failure_kind). Empty when
+  // there is no failure.
+  string github_binding_proof_failure_kind = 3;
 }
 
 message UpdateOrgRequest {
