@@ -760,7 +760,12 @@ message ListPrCheckRunsResponse {
   int32 total = 2;                       // total entries for the PR (for paging)
 }
 
-message RecheckRequest { string pr_id = 1; }
+message RecheckRequest {
+  string pr_id = 1;
+  // Set only for a pull request the gate never recorded: pr_id is then its pending id, derived from repo_id and pr_number.
+  string repo_id = 2;
+  int32 pr_number = 3;
+}
 message RecheckResponse {
   bool accepted = 1;
   string error = 2;

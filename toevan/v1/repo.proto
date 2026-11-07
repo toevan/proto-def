@@ -779,6 +779,10 @@ enum RepoChangeReason {
   // The branch's effective policy moved, or a policy change was held or became invalid: the
   // repository page banner and every scope-derived count are stale.
   REPO_CHANGE_REASON_POLICY_CHANGED = 8;
+  // The proof state of the account's GitHub binding moved (an owner confirmed it): an org-wide frame with no repository (repo_id is the nil
+  // UUID). Every member's client re-reads the organization, so the paused banner clears without a reload. Clients that predate this value
+  // degrade to UNSPECIFIED and still re-read on any frame.
+  REPO_CHANGE_REASON_GITHUB_BINDING_CHANGED = 9;
 }
 
 message RepoChange {
