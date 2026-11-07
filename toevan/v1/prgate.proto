@@ -730,6 +730,12 @@ message PrCheckRun {
   // 0 is the first run of the commit, more than 0 is a re-run. Stated per run so a capped page can mark its oldest visible run of a
   // commit truthfully. 0 from a server that predates it (a client then marks only from the page it holds).
   int32 earlier_runs_of_commit = 20;
+  // How many findings THIS run did not judge because the baseline that decides them could not be read (their gate_effect is
+  // GATE_EFFECT_NOT_JUDGED_BASELINE_UNREAD): a fact of the run, written with its verdict and equal to the figure the run's
+  // check-run line states. violation_count counts only what the run judged and found, so a run with a count here was not fully
+  // judged: the run log says so and does not say "0 violations". 0 on runs recorded before this field, on a run that ended in
+  // error (it judged nothing), and from a server that predates it.
+  int32 baseline_unread_count = 21;
 }
 
 // PrFileClassChange is a changed file of a pull request that is in a set-aside class at the head and had none at the
