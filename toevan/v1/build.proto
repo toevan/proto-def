@@ -153,7 +153,8 @@ service BuildService {
   // `completed = true` along with `status = AGENT_RUN_STATUS_COMPLETED`
   // (success — PR URL and metadata available via [GetAgentRun] or
   // [ListAgentRuns]) or `status = AGENT_RUN_STATUS_FAILED` (failure
-  // — `message` carries the operator-visible reason).
+  // — `message` carries the operator-visible reason), or `status = AGENT_RUN_STATUS_PAUSED` (a hold: the organization's
+  // GitHub binding is not confirmed, so nothing ran and nothing failed).
   //
   // Idempotency: if the agent has already opened a PR for the
   // (violation_id, change_set signature) within the dedup window,
