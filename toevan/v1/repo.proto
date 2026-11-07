@@ -259,6 +259,10 @@ enum IndexPhase {
   INDEX_PHASE_SUPERSEDED = 13;
   // Terminal: the repository was disconnected while this run was in progress and the disconnect ended the run. Not a failure.
   INDEX_PHASE_DISCONNECTED = 14;
+  // Terminal: the organization's GitHub binding is not confirmed yet, so Toevan could not read the repository and the run was put on hold. Not a
+  // failure: the repository is given back the status it had when the run was requested ('pending' when it had none, 'indexed' when it has an
+  // indexed commit), and a new run is requested once the organization is confirmed.
+  INDEX_PHASE_PAUSED = 15;
 }
 
 message LanguageLspStatus {
