@@ -92,6 +92,11 @@ enum AgentRunStatus {
   AGENT_RUN_STATUS_COMPLETED = 3;
   AGENT_RUN_STATUS_FAILED = 4;
   AGENT_RUN_STATUS_CANCELLED = 5;
+  // The run reached a hold and did not fail: Toevan does not act on the repository's GitHub App installation for this organization (decision
+  // 106: the organization's binding is not confirmed, or the installation is another organization's, linked to no organization, or shared), so
+  // Toevan minted no installation token for it. Terminal like the others, and neither a failure nor a success: no failure code, no PR. The same
+  // request, made again once the hold is lifted, starts a new run. A client older than this value reads it as UNSPECIFIED, never as FAILED.
+  AGENT_RUN_STATUS_PAUSED = 6;
 }
 
 enum AgentScope {
