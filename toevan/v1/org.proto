@@ -88,6 +88,19 @@ service OrgService {
   // unconfigured.
   rpc SendOrgAuditContactVerification(SendOrgAuditContactVerificationRequest) returns (SendOrgAuditContactVerificationResponse);
 
+  // GetDataProcessingAgreement reads the DPA version open for acceptance (unset while none is) and the organization's
+  // acceptances. Governance roles (admin, compliance, CISO; owner decision 44); an admin-scope support grant may read.
+  rpc GetDataProcessingAgreement(GetDataProcessingAgreementRequest) returns (GetDataProcessingAgreementResponse);
+
+  // AcceptDataProcessingAgreement records that the organization accepts the offered version the caller was shown.
+  // Authority: real governing membership at commit; a support grant never adds it; an API key is refused.
+  // Idempotent: a repeat returns the first acceptance.
+  rpc AcceptDataProcessingAgreement(AcceptDataProcessingAgreementRequest) returns (AcceptDataProcessingAgreementResponse);
+
+  // GetDataProcessingAgreementDocument returns the PDF of a published version (any state), from the server's own
+  // copy. Any signed-in caller: the document is public.
+  rpc GetDataProcessingAgreementDocument(GetDataProcessingAgreementDocumentRequest) returns (GetDataProcessingAgreementDocumentResponse);
+
   // GetBillingOverview is what the billing page renders: the org's REAL plan, and
   // usage measured against what that plan advertises. Everything here is
   // usage-visibility, which every tier includes; cost/spend breakdowns are a
@@ -910,3 +923,38 @@ message ExportAuditLogsCsvResponse {
   // for the rest.
   bool truncated = 4;
 }
+
+// A published DPA version: its label and the SHA-256 (64 lowercase hex) of the PDF bytes the server holds.
+message DataProcessingAgreementVersion {
+  string version = 1;
+  string content_sha256 = 2;
+}
+
+message DataProcessingAgreementAcceptance {
+  DataProcessingAgreementVersion accepted = 1;
+  string accepted_by_name = 2;
+  google.protobuf.Timestamp accepted_at = 3;
+}
+
+message GetDataProcessingAgreementRequest { string org_id = 1; }
+
+message GetDataProcessingAgreementResponse {
+  // Unset: nothing is offered (the client draws nothing).
+  DataProcessingAgreementVersion offered = 1;
+  // Set: the organization accepted the offered version.
+  DataProcessingAgreementAcceptance offered_acceptance = 2;
+  // The most recent acceptance of any version.
+  DataProcessingAgreementAcceptance latest_acceptance = 3;
+}
+
+message AcceptDataProcessingAgreementRequest {
+  string org_id = 1;
+  string version = 2;
+  string content_sha256 = 3;
+}
+
+message AcceptDataProcessingAgreementResponse { DataProcessingAgreementAcceptance acceptance = 1; }
+
+message GetDataProcessingAgreementDocumentRequest { string version = 1; }
+
+message GetDataProcessingAgreementDocumentResponse { bytes pdf = 1; }
