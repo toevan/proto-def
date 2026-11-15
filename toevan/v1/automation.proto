@@ -175,6 +175,8 @@ enum ApprovalNotJudgedReason {
   APPROVAL_NOT_JUDGED_REASON_REGISTRY_UNAVAILABLE = 6;
   // The installation has not accepted the pull_request_review event.
   APPROVAL_NOT_JUDGED_REASON_REVIEWS_NOT_SUBSCRIBED = 7;
+  // The evaluator refused its inputs, for example an actor with no class; nothing is guessed.
+  APPROVAL_NOT_JUDGED_REASON_INPUTS_INVALID = 8;
 }
 
 message ApprovalScopeRef {
