@@ -1,0 +1,242 @@
+syntax = "proto3";
+
+package toevan.v1;
+
+option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// Automation-aware approval (L2, v1.4.3): the types the agent and owner registries, the designation of branches and
+// environments, and the approval result on pull request reads share.
+//
+// RULES. (1) Additive only. (2) NO PERSON IDENTIFIER: a User-type entry and every owner is an AutomationPersonRef, a digest
+// plus a state, never a login or a numeric GitHub id (owner decision 303, adversarial M7). The only login that crosses the wire
+// is a GitHub Bot-type entry's own [bot] login and id, and the input-only login of the two save requests in evidence.proto.
+// (3) UNSPECIFIED is refused on every enum a writer sends, never defaulted.
+// ============================================
+
+// Which registry a version belongs to.
+enum AutomationRegistryKind {
+  AUTOMATION_REGISTRY_KIND_UNSPECIFIED = 0;
+  // Entries: apps, bots and agents.
+  AUTOMATION_REGISTRY_KIND_AGENT = 1;
+  // Owners of entries.
+  AUTOMATION_REGISTRY_KIND_OWNER = 2;
+}
+
+// What an org declares an entry to be. A registry holds only non-person classes: "person" and "unknown" are never declared.
+// Compatibility with the account type (the same shapes as the actor class of a sealed reference):
+//   account type BOT  takes class APP or AGENT;
+//   account type USER takes class BOT or AGENT.
+// Any other pair is INVALID_ARGUMENT ERR_AUTOMATION_CLASS_TYPE_MISMATCH.
+enum AutomationClass {
+  AUTOMATION_CLASS_UNSPECIFIED = 0;
+  AUTOMATION_CLASS_APP = 1;
+  AUTOMATION_CLASS_AGENT = 2;
+  AUTOMATION_CLASS_BOT = 3;
+}
+
+// GitHub's account type the entry was resolved as when saved.
+enum AutomationAccountType {
+  AUTOMATION_ACCOUNT_TYPE_UNSPECIFIED = 0;
+  // GitHub Bot type: the login and id stay readable.
+  AUTOMATION_ACCOUNT_TYPE_BOT = 1;
+  // A service account or agent on a User account: held as a digest only (decision 303).
+  AUTOMATION_ACCOUNT_TYPE_USER = 2;
+}
+
+// The state of a held person digest. Derived at read time from the held-subject query, never stored: an erasure by any image
+// reaches it.
+enum AutomationPersonState {
+  AUTOMATION_PERSON_STATE_UNSPECIFIED = 0;
+  // The subject is held and the digest still resolves.
+  AUTOMATION_PERSON_STATE_HELD = 1;
+  // The subject was erased: the digest names nobody now.
+  AUTOMATION_PERSON_STATE_ERASED = 2;
+  // Declared, not yet resolved to a held subject (digest empty).
+  AUTOMATION_PERSON_STATE_PENDING = 3;
+}
+
+// The one way a person is named in this contract. NO login, NO numeric id, NO name.
+message AutomationPersonRef {
+  // The "hmac-sha256:<hex>" a subject holds; empty only when state is PENDING.
+  string digest = 1;
+  AutomationPersonState state = 2;
+}
+
+message AutomationEntry {
+  // Toevan's own id for the entry, stable across versions.
+  string entry_id = 1;
+  AutomationAccountType account_type = 2;
+  // As declared by the org; must fit account_type (see AutomationClass).
+  AutomationClass class = 3;
+  // account_type BOT only: the readable bot identity (login ends [bot], id above 0). Empty and 0 for a USER entry.
+  string bot_login = 4;
+  int64 bot_github_id = 5;
+  // account_type USER only: the person digest and state. Unset for a BOT entry.
+  AutomationPersonRef person = 6;
+  // The AutomationOwner that owns this entry; empty means no owner.
+  string owner_id = 7;
+  google.protobuf.Timestamp added_at = 8;
+  // The saving admin as a Toevan user id.
+  string added_by_user_id = 9;
+}
+
+message AutomationOwner {
+  string owner_id = 1;
+  // An owner is ALWAYS a person digest and a state.
+  AutomationPersonRef person = 2;
+  google.protobuf.Timestamp added_at = 3;
+  string added_by_user_id = 4;
+}
+
+// One append-only version of a registry.
+message AutomationRegistryVersion {
+  AutomationRegistryKind registry = 1;
+  // The highest is the current one; the first is 1.
+  int64 version = 2;
+  // "sha256:<hex>" over the SEALED bytes, so it recomputes after an erasure.
+  string sha256 = 3;
+  google.protobuf.Timestamp created_at = 4;
+  string created_by_user_id = 5;
+  bool sealed = 6;
+}
+
+// Toevan's own compiled, published list of known coding agents (GitHub Bot-type or app identities only).
+message ToevanKnownAgent {
+  string name = 1;
+  AutomationClass class = 2;
+  string bot_login = 3;
+  int64 bot_github_id = 4;
+}
+
+// ── Designation environment ──
+
+// REQUIRED on every new designation RPC and on every approval scope: UNSPECIFIED is refused, never defaulted.
+enum DesignationEnvironment {
+  DESIGNATION_ENVIRONMENT_UNSPECIFIED = 0;
+  DESIGNATION_ENVIRONMENT_PRODUCTION = 1;
+  DESIGNATION_ENVIRONMENT_STAGING = 2;
+}
+
+// ── The approval result of a pull request (decision 308) ──
+
+// What the check posted. In M2 it is only PENDING, NEUTRAL or NOT_JUDGED; the rest exist so M3 is not a contract change.
+enum ApprovalCheckConclusion {
+  // A server or run that predates it.
+  APPROVAL_CHECK_CONCLUSION_UNSPECIFIED = 0;
+  APPROVAL_CHECK_CONCLUSION_PENDING = 1;
+  APPROVAL_CHECK_CONCLUSION_NEUTRAL = 2;
+  APPROVAL_CHECK_CONCLUSION_NOT_JUDGED = 3;
+  APPROVAL_CHECK_CONCLUSION_SUCCESS = 4;
+  APPROVAL_CHECK_CONCLUSION_FAILURE = 5;
+}
+
+// A CLOSED set, one per evaluator verdict line. The evaluator (L2C-1) owns the final list; additions are additive.
+enum ApprovalReasonCode {
+  APPROVAL_REASON_CODE_UNSPECIFIED = 0;
+  // Independent approval by a person (decision 304).
+  APPROVAL_REASON_CODE_INDEPENDENT_HUMAN_APPROVAL = 1;
+  // Independent approval, but not by a person.
+  APPROVAL_REASON_CODE_INDEPENDENT_APPROVAL_ANY_CLASS = 2;
+  APPROVAL_REASON_CODE_NO_APPROVAL_ON_HEAD = 3;
+  APPROVAL_REASON_CODE_APPROVER_IS_OPENER = 4;
+  APPROVAL_REASON_CODE_APPROVER_IS_COMMIT_AUTHOR = 5;
+  APPROVAL_REASON_CODE_APPROVER_IS_COMMITTER_OR_COAUTHOR = 6;
+  // The initiator of an agent's work approving it.
+  APPROVAL_REASON_CODE_APPROVER_IS_INITIATOR = 7;
+  APPROVAL_REASON_CODE_ONLY_NON_PERSON_APPROVALS = 8;
+  APPROVAL_REASON_CODE_AUTOMATION_BOTH_SIDES = 9;
+  // An app, bot or agent with merge rights and no owner.
+  APPROVAL_REASON_CODE_AUTOMATION_NO_OWNER = 10;
+  APPROVAL_REASON_CODE_AUTO_MERGE_ON_HUMAN_TIER = 11;
+  APPROVAL_REASON_CODE_INITIATOR_NOT_CAPTURED = 12;
+  APPROVAL_REASON_CODE_EXEMPTION_APPLIED = 13;
+  // The owner left, the entry lost its owner, or the owner's name was erased.
+  APPROVAL_REASON_CODE_EXEMPTION_STOPPED = 14;
+  // The pull request's base is not a designated branch: nothing to judge.
+  APPROVAL_REASON_CODE_SCOPE_NOT_DESIGNATED = 15;
+}
+
+// Why the check could not compare (decision 308), stated in the check summary.
+enum ApprovalNotJudgedReason {
+  // Set only when the conclusion is not NOT_JUDGED.
+  APPROVAL_NOT_JUDGED_REASON_UNSPECIFIED = 0;
+  // More than 250 commits on the pull request.
+  APPROVAL_NOT_JUDGED_REASON_PAST_COMMIT_LIMIT = 1;
+  // An author GitHub did not link to an account.
+  APPROVAL_NOT_JUDGED_REASON_UNLINKED_AUTHOR = 2;
+  APPROVAL_NOT_JUDGED_REASON_COAUTHOR_WITHOUT_ID = 3;
+  // Toevan's own read failed past its in-progress window.
+  APPROVAL_NOT_JUDGED_REASON_READ_FAILED = 4;
+  // The changed-file list was cut at its bound.
+  APPROVAL_NOT_JUDGED_REASON_FILE_LIST_TRUNCATED = 5;
+  APPROVAL_NOT_JUDGED_REASON_REGISTRY_UNAVAILABLE = 6;
+  // The installation has not accepted the pull_request_review event.
+  APPROVAL_NOT_JUDGED_REASON_REVIEWS_NOT_SUBSCRIBED = 7;
+}
+
+message ApprovalScopeRef {
+  DesignationEnvironment environment = 1;
+  // The base branch, in clear.
+  string branch = 2;
+}
+
+// A record-only finding: a code only, never a person.
+message ApprovalFinding {
+  ApprovalReasonCode code = 1;
+}
+
+// One named check inside a scope.
+message ApprovalCheckItem {
+  // The closed value "Toevan approval": the GitHub check-run name.
+  string check_name = 1;
+  ApprovalCheckConclusion conclusion = 2;
+  // Closed codes, most important first, at most 10.
+  repeated ApprovalReasonCode reasons = 3;
+  // Set exactly when conclusion is NOT_JUDGED.
+  ApprovalNotJudgedReason not_judged_reason = 4;
+  // The exemption, when one applied or stopped.
+  string exemption_id = 5;
+  // The org's own text.
+  string exemption_reason = 6;
+  // The policy version in force.
+  string policy_version = 7;
+  // "sha256:<hex>".
+  string policy_sha256 = 8;
+  // The registry versions judged under.
+  int64 agent_registry_version = 9;
+  int64 owner_registry_version = 10;
+  repeated ApprovalFinding findings = 11;
+}
+
+// The approval result for ONE scope of ONE head.
+message ApprovalCheckResult {
+  ApprovalScopeRef scope = 1;
+  repeated ApprovalCheckItem checks = 2;
+  string head_commit = 3;
+  // Toevan's clock.
+  google.protobuf.Timestamp evaluated_at = 4;
+  // True only after the pull request merged and the result is sealed; otherwise a live evaluation.
+  bool sealed = 5;
+}
+
+// One row of the approval check's own append-only run log.
+message ApprovalCheckRun {
+  string id = 1;
+  ApprovalCheckResult result = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+// Availability of the approval result on a read (the DeepCheckFindingsState pattern).
+enum ApprovalResultState {
+  // An older server.
+  APPROVAL_RESULT_STATE_UNSPECIFIED = 0;
+  // approval_results is what was computed (empty: the base is no designated scope).
+  APPROVAL_RESULT_STATE_AVAILABLE = 1;
+  // The check is not running for this org or installation: NOT "nothing to approve".
+  APPROVAL_RESULT_STATE_NOT_ENABLED = 2;
+  // The read failed; the list is empty and a client must not read it as "approved".
+  APPROVAL_RESULT_STATE_UNAVAILABLE = 3;
+}
