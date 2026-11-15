@@ -199,18 +199,16 @@ message ApprovalCheckItem {
   repeated ApprovalReasonCode reasons = 3;
   // Set exactly when conclusion is NOT_JUDGED.
   ApprovalNotJudgedReason not_judged_reason = 4;
-  // The exemption, when one applied or stopped.
+  // The exemption, when one applied or stopped. Its reason text is not on the wire until P-M3 and counsel.
   string exemption_id = 5;
-  // The org's own text.
-  string exemption_reason = 6;
   // The policy version in force.
-  string policy_version = 7;
+  string policy_version = 6;
   // "sha256:<hex>".
-  string policy_sha256 = 8;
+  string policy_sha256 = 7;
   // The registry versions judged under.
-  int64 agent_registry_version = 9;
-  int64 owner_registry_version = 10;
-  repeated ApprovalFinding findings = 11;
+  int64 agent_registry_version = 8;
+  int64 owner_registry_version = 9;
+  repeated ApprovalFinding findings = 10;
 }
 
 // The approval result for ONE scope of ONE head.

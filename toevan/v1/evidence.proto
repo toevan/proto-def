@@ -1758,17 +1758,15 @@ message Designation {
   // BRANCH only.
   BranchDesignationScope scope = 6;
   repeated BranchRepository repositories = 7;
+  // The admin as a Toevan user id. No name rides along (decision 303): the client resolves a display name from the org member list.
   string designated_by_user_id = 8;
-  // The name Toevan holds for the user, empty when not held.
-  string designated_by = 9;
-  google.protobuf.Timestamp designated_at = 10;
-  string withdrawn_by_user_id = 11;
-  string withdrawn_by = 12;
-  google.protobuf.Timestamp withdrawn_at = 13;
-  bool sealed = 14;
-  bool withdrawal_sealed = 15;
+  google.protobuf.Timestamp designated_at = 9;
+  string withdrawn_by_user_id = 10;
+  google.protobuf.Timestamp withdrawn_at = 11;
+  bool sealed = 12;
+  bool withdrawal_sealed = 13;
   // Whether the branch_capture_started record of this act is sealed.
-  bool capture_start_sealed = 16;
+  bool capture_start_sealed = 14;
 }
 
 message DesignateBranchRequest {
@@ -1776,6 +1774,7 @@ message DesignateBranchRequest {
   // Required.
   DesignationEnvironment environment = 2;
   string branch = 3;
+  // Required: UNSPECIFIED is refused, never defaulted.
   BranchDesignationScope scope = 4;
   repeated string repo_ids = 5;
 }
