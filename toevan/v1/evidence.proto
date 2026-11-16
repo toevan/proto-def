@@ -215,7 +215,7 @@ service EvidenceService {
   // AUTOMATION REGISTRIES (L2, v1.4.3). The org's agent registry (apps, bots and agents) or owner registry, current version and the
   // version history (newest first, at most 50), plus Toevan's own compiled known-agent list with its version and sha256. A User-type
   // entry and every owner is a person digest and a state, NEVER a login or a numeric id (decision 303). `registry` is required
-  // (UNSPECIFIED is INVALID_ARGUMENT ERR_AUTOMATION_REGISTRY_KIND_REQUIRED). Org role admin, compliance or auditor of org_id; a support
+  // (UNSPECIFIED is INVALID_ARGUMENT ERR_AUTOMATION_REGISTRY_KIND_REQUIRED). A governance role (admin, compliance, CISO) or an auditor of org_id; a support
   // grant and an API key are refused. Another org's rows are never read.
   rpc ListAutomationRegistry(ListAutomationRegistryRequest) returns (ListAutomationRegistryResponse);
   // Adds or replaces one registry entry. Every write of a registry appends ONE new version, recorded, audited and sealed in one
@@ -242,7 +242,7 @@ service EvidenceService {
   // Withdraws any designation by id, a branch or an environment one. Same authorization as DesignateBranch.
   rpc WithdrawBranchDesignation(WithdrawBranchDesignationRequest) returns (WithdrawBranchDesignationResponse);
   // Every designation of the org, both target kinds, active first, then withdrawn, newest first. Production rows are read from the
-  // production tables. Org role admin, compliance or auditor of org_id; a support grant and an API key are refused.
+  // production tables. A governance role (admin, compliance, CISO) or an auditor of org_id; a support grant and an API key are refused.
   rpc ListBranchDesignations(ListBranchDesignationsRequest) returns (ListBranchDesignationsResponse);
   // Designates a GitHub Environment by its exact name. Same rules as DesignateBranch.
   rpc DesignateEnvironment(DesignateEnvironmentRequest) returns (DesignateEnvironmentResponse);
