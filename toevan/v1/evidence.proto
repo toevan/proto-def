@@ -6,6 +6,7 @@ option go_package = "github.com/toevan/api-server/gen/toevan/v1;toevanv1";
 
 import "google/protobuf/timestamp.proto";
 import "toevan/v1/policy.proto";
+import "toevan/v1/automation.proto";
 
 // ============================================
 // EvidenceService — Compliance Audit Trail
@@ -210,6 +211,41 @@ service EvidenceService {
   // Every designation of a production branch of the org, active first, then the withdrawn, newest first: who designated and
   // withdrew, when (Toevan's clock), the scope, and the repositories of a chosen scope. Org ADMIN of org_id.
   rpc ListProductionBranches(ListProductionBranchesRequest) returns (ListProductionBranchesResponse);
+
+  // AUTOMATION REGISTRIES (L2, v1.4.3). The org's agent registry (apps, bots and agents) or owner registry, current version and the
+  // version history (newest first, at most 50), plus Toevan's own compiled known-agent list with its version and sha256. A User-type
+  // entry and every owner is a person digest and a state, NEVER a login or a numeric id (decision 303). `registry` is required
+  // (UNSPECIFIED is INVALID_ARGUMENT ERR_AUTOMATION_REGISTRY_KIND_REQUIRED). A governance role (admin, compliance, CISO) or an auditor of org_id; a support
+  // grant and an API key are refused. Another org's rows are never read.
+  rpc ListAutomationRegistry(ListAutomationRegistryRequest) returns (ListAutomationRegistryResponse);
+  // Adds or replaces one registry entry. Every write of a registry appends ONE new version, recorded, audited and sealed in one
+  // transaction as the ledger kind automation_registry, or nothing happens. expected_version is the version the admin saw: a stale
+  // value is ABORTED and writes nothing. Account type BOT takes class APP or AGENT; account type USER takes class BOT or AGENT; any
+  // other pair is INVALID_ARGUMENT ERR_AUTOMATION_CLASS_TYPE_MISMATCH. With identity sealing off a USER entry is refused with
+  // FAILED_PRECONDITION ERR_IDENTITY_SEALING_OFF and nothing is stored (a person cannot be held as a digest then). Org admin only: a
+  // support grant and an API key are refused.
+  rpc SaveAutomationEntry(SaveAutomationEntryRequest) returns (SaveAutomationEntryResponse);
+  // Removes one entry as a new version. Same authorization and semantics as SaveAutomationEntry.
+  rpc RemoveAutomationEntry(RemoveAutomationEntryRequest) returns (RemoveAutomationEntryResponse);
+  // Adds or replaces one owner (a person) as a new version of the owner registry. With identity sealing off it is refused with
+  // FAILED_PRECONDITION ERR_IDENTITY_SEALING_OFF and nothing is stored. Same authorization as SaveAutomationEntry.
+  rpc SaveAutomationOwner(SaveAutomationOwnerRequest) returns (SaveAutomationOwnerResponse);
+  // Removes one owner as a new version; the entries that become ownerless are named. Same authorization as SaveAutomationEntry.
+  rpc RemoveAutomationOwner(RemoveAutomationOwnerRequest) returns (RemoveAutomationOwnerResponse);
+
+  // STAGING DESIGNATIONS (L2, v1.4.3). The production RPCs above stay production-only and unchanged. These take a REQUIRED
+  // environment (UNSPECIFIED is INVALID_ARGUMENT ERR_DESIGNATION_ENVIRONMENT_REQUIRED, never defaulted). In this release a write
+  // accepts STAGING only: PRODUCTION is INVALID_ARGUMENT ERR_DESIGNATION_USE_PRODUCTION_RPC, so production designations keep one
+  // writer. Recorded, audited and sealed in one transaction, dated by Toevan's clock, applying from their own time forward, like
+  // DesignateProductionBranch. Org admin only: a support grant and an API key are refused.
+  rpc DesignateBranch(DesignateBranchRequest) returns (DesignateBranchResponse);
+  // Withdraws any designation by id, a branch or an environment one. Same authorization as DesignateBranch.
+  rpc WithdrawBranchDesignation(WithdrawBranchDesignationRequest) returns (WithdrawBranchDesignationResponse);
+  // Every designation of the org, both target kinds, active first, then withdrawn, newest first. Production rows are read from the
+  // production tables. A governance role (admin, compliance, CISO) or an auditor of org_id; a support grant and an API key are refused.
+  rpc ListBranchDesignations(ListBranchDesignationsRequest) returns (ListBranchDesignationsResponse);
+  // Designates a GitHub Environment by its exact name. Same rules as DesignateBranch.
+  rpc DesignateEnvironment(DesignateEnvironmentRequest) returns (DesignateEnvironmentResponse);
 }
 
 // ── Transparency log setting ──
@@ -1617,4 +1653,159 @@ message ListProductionBranchesRequest {
 }
 message ListProductionBranchesResponse {
   repeated ProductionBranchDesignation designations = 1;
+}
+
+// ── Automation registries (L2, v1.4.3) ──
+
+message ListAutomationRegistryRequest {
+  string org_id = 1;
+  // Required.
+  AutomationRegistryKind registry = 2;
+}
+message ListAutomationRegistryResponse {
+  // Filled for the AGENT registry, empty for OWNER.
+  repeated AutomationEntry entries = 1;
+  // Filled for the OWNER registry, empty for AGENT.
+  repeated AutomationOwner owners = 2;
+  AutomationRegistryVersion current = 3;
+  repeated AutomationRegistryVersion versions = 4;
+  string toevan_list_version = 5;
+  string toevan_list_sha256 = 6;
+  repeated ToevanKnownAgent toevan_known_agents = 7;
+}
+
+message SaveAutomationEntryRequest {
+  string org_id = 1;
+  // The version the admin saw; 0 only for an org's first.
+  int64 expected_version = 2;
+  // Empty adds, otherwise replaces.
+  string entry_id = 3;
+  // Required, and must fit account_type: BOT takes APP or AGENT, USER takes BOT or AGENT.
+  AutomationClass class = 4;
+  // Required.
+  AutomationAccountType account_type = 5;
+  // account_type BOT only.
+  string bot_login = 6;
+  int64 bot_github_id = 7;
+  // account_type USER only. INPUT ONLY: resolved once through GitHub's public users read to an id and a type, made into a digest,
+  // and DISCARDED. Never echoed, audited, logged or sealed; it lives only in the subject store EraseDataSubject reaches.
+  string input_person_login = 8;
+  // The owner_id of an owner in the owner registry; empty means no owner.
+  string owner_id = 9;
+}
+message SaveAutomationEntryResponse {
+  AutomationEntry entry = 1;
+  AutomationRegistryVersion version = 2;
+}
+
+message RemoveAutomationEntryRequest {
+  string org_id = 1;
+  int64 expected_version = 2;
+  string entry_id = 3;
+}
+message RemoveAutomationEntryResponse {
+  AutomationRegistryVersion version = 1;
+}
+
+message SaveAutomationOwnerRequest {
+  string org_id = 1;
+  int64 expected_version = 2;
+  // Empty adds, otherwise replaces.
+  string owner_id = 3;
+  // INPUT ONLY, as on SaveAutomationEntryRequest.
+  string input_person_login = 4;
+}
+message SaveAutomationOwnerResponse {
+  AutomationOwner owner = 1;
+  AutomationRegistryVersion version = 2;
+}
+
+message RemoveAutomationOwnerRequest {
+  string org_id = 1;
+  int64 expected_version = 2;
+  string owner_id = 3;
+}
+message RemoveAutomationOwnerResponse {
+  AutomationRegistryVersion version = 1;
+  // The entries that have no owner now.
+  repeated string entries_now_ownerless = 2;
+}
+
+// ── Staging designations (L2, v1.4.3) ──
+
+enum DesignationTargetKind {
+  DESIGNATION_TARGET_KIND_UNSPECIFIED = 0;
+  DESIGNATION_TARGET_KIND_BRANCH = 1;
+  DESIGNATION_TARGET_KIND_ENVIRONMENT = 2;
+}
+
+// The scope of a branch designation (ProductionBranchScope names production, so a new enum keeps that name honest).
+enum BranchDesignationScope {
+  BRANCH_DESIGNATION_SCOPE_UNSPECIFIED = 0;
+  BRANCH_DESIGNATION_SCOPE_EVERY_REPOSITORY = 1;
+  BRANCH_DESIGNATION_SCOPE_CHOSEN_REPOSITORIES = 2;
+}
+
+// One designation act and its withdrawal when there was one.
+message Designation {
+  string id = 1;
+  DesignationEnvironment environment = 2;
+  DesignationTargetKind target_kind = 3;
+  // BRANCH: the exact branch name, in clear.
+  string branch = 4;
+  // ENVIRONMENT: the exact GitHub Environment name, as picked.
+  string github_environment = 5;
+  // BRANCH only.
+  BranchDesignationScope scope = 6;
+  repeated BranchRepository repositories = 7;
+  // The admin as a Toevan user id. No name rides along (decision 303): the client resolves a display name from the org member list.
+  string designated_by_user_id = 8;
+  google.protobuf.Timestamp designated_at = 9;
+  string withdrawn_by_user_id = 10;
+  google.protobuf.Timestamp withdrawn_at = 11;
+  bool sealed = 12;
+  bool withdrawal_sealed = 13;
+  // Whether the branch_capture_started record of this act is sealed.
+  bool capture_start_sealed = 14;
+}
+
+message DesignateBranchRequest {
+  string org_id = 1;
+  // Required.
+  DesignationEnvironment environment = 2;
+  string branch = 3;
+  // Required: UNSPECIFIED is refused, never defaulted.
+  BranchDesignationScope scope = 4;
+  repeated string repo_ids = 5;
+}
+message DesignateBranchResponse {
+  repeated Designation designations = 1;
+}
+
+message WithdrawBranchDesignationRequest {
+  string org_id = 1;
+  string designation_id = 2;
+}
+message WithdrawBranchDesignationResponse {
+  Designation designation = 1;
+}
+
+message ListBranchDesignationsRequest {
+  string org_id = 1;
+  // The one place UNSPECIFIED is read: it means every environment.
+  DesignationEnvironment environment = 2;
+}
+message ListBranchDesignationsResponse {
+  repeated Designation designations = 1;
+}
+
+message DesignateEnvironmentRequest {
+  string org_id = 1;
+  // Required.
+  DesignationEnvironment environment = 2;
+  string github_environment = 3;
+  repeated string repo_ids = 4;
+}
+message DesignateEnvironmentResponse {
+  repeated Designation designations = 1;
 }

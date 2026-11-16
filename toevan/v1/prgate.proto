@@ -9,6 +9,7 @@ import "toevan/v1/types.proto";
 import "toevan/v1/repo.proto"; // DeepCheckRequest (per-PR deep-check summary)
 import "toevan/v1/dashboard.proto"; // FileClass (PrFileClassChange)
 import "toevan/v1/secret_options.proto";
+import "toevan/v1/automation.proto"; // ApprovalCheckResult
 import "toevan/v1/build.proto"; // VulnFixTarget (the upgrade decision on the list)
 
 // ============================================
@@ -685,6 +686,10 @@ message GetPullRequestResponse {
   // with the pull request and its Deep Check state, and deep_check_findings is empty, which a client must not read as
   // "no findings". AVAILABLE: deep_check_findings is what was stored (possibly empty). UNSPECIFIED: an older server.
   DeepCheckFindingsState deep_check_findings_state = 3;
+  // The "Toevan approval" result per designated scope of the head (L2). Carries no person.
+  repeated ApprovalCheckResult approval_results = 4;
+  // Whether approval_results could be read; NOT_ENABLED and UNAVAILABLE are not "approved".
+  ApprovalResultState approval_state = 5;
 }
 
 enum DeepCheckFindingsState {
@@ -758,6 +763,10 @@ message ListPrCheckRunsRequest {
 message ListPrCheckRunsResponse {
   repeated PrCheckRun runs = 1;
   int32 total = 2;                       // total entries for the PR (for paging)
+  // The approval check's own run log, newest first (L2): a review changes the approval and not the gate, so these are not
+  // gate runs. Empty from a server that predates it.
+  repeated ApprovalCheckRun approval_runs = 3;
+  int32 approval_runs_total = 4;
 }
 
 message RecheckRequest {
