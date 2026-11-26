@@ -31,11 +31,19 @@ service WebhookService {
 message WebhookInfo {
   string id = 1;
   string org_id = 2;
+  // The same value as endpoint, kept for clients older than endpoint. It is never the stored address: a chat service
+  // (Slack, Discord, Teams) carries its secret in the path, and the query and the userinfo of an address can carry one too.
   string url = 3;
   repeated string events = 4;
   bool enabled = 5;
   string description = 6;
   google.protobuf.Timestamp created_at = 7;
+  // The address the webhook posts to as it is shown: the scheme and the host, with its port. Never the path, the query, the
+  // fragment or the userinfo. Empty when the stored address does not parse (endpoint_parts_hidden is then true).
+  string endpoint = 8;
+  // True when the stored address has a part endpoint does not show (a path beyond "/", a query, a fragment or userinfo): the
+  // client says the path is hidden. The address itself is write only (CreateWebhookRequest.url) and no response carries it.
+  bool endpoint_parts_hidden = 9;
 }
 
 message WebhookDeliveryInfo {
@@ -61,6 +69,7 @@ message WebhookDeliveryInfo {
 
 message CreateWebhookRequest {
   string org_id = 1;
+  // Write only: stored for the delivery and never echoed. Every response names the webhook by WebhookInfo.endpoint.
   string url = 2;
   repeated string events = 3;
   string description = 4;
