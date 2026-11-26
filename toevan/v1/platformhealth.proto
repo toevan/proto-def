@@ -39,7 +39,7 @@ message GetSystemHealthRequest {
 }
 
 // ServiceKind enumerates every infra dependency and process this platform
-// monitors. The 4 infra kinds are pinged directly; the 5 process kinds are
+// monitors. The 4 infra kinds are pinged directly; the 6 process kinds are
 // read from PlatformConfigService's own per-process Redis heartbeat
 // (ConfigChangeBus.ReadAppliedStatuses) — a process is "up" iff it has a
 // live (non-expired) heartbeat, the same signal the convergence dashboard
@@ -55,6 +55,8 @@ enum ServiceKind {
   SERVICE_KIND_WORKER_PRGATE = 7;
   SERVICE_KIND_WORKER_REPO = 8;
   SERVICE_KIND_WORKER_WEBHOOK = 9;
+  // The "Toevan approval" check's own worker (L2C-2b, decision 309).
+  SERVICE_KIND_WORKER_APPROVAL = 10;
 }
 
 // HealthStatus: UP = last sample succeeded. DOWN = last sample failed.
