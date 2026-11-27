@@ -40,6 +40,8 @@ message WebhookInfo {
   google.protobuf.Timestamp created_at = 7;
   // The address the webhook posts to as it is shown: the scheme and the host, with its port. Never the path, the query, the
   // fragment or the userinfo. Empty when the stored address does not parse (endpoint_parts_hidden is then true).
+  // Stated gap: the host is shown in full to every reader, so an address whose host is itself the secret (a per-endpoint
+  // subdomain, an unauthenticated function URL, a tunnel host name) is readable here.
   string endpoint = 8;
   // True when the stored address has a part endpoint does not show (a path beyond "/", a query, a fragment or userinfo): the
   // client says the path is hidden. The address itself is write only (CreateWebhookRequest.url) and no response carries it.
