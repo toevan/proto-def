@@ -62,8 +62,13 @@ message WebhookDeliveryInfo {
   google.protobuf.Timestamp created_at = 9;
   // Why the delivery failed, as an ERR_ code the client words: ERR_WEBHOOK_TIMEOUT, ERR_WEBHOOK_DNS, ERR_WEBHOOK_TLS,
   // ERR_WEBHOOK_REFUSED, ERR_WEBHOOK_UNREACHABLE, ERR_WEBHOOK_HTTP_STATUS (the status is status_code), ERR_WEBHOOK_PAYLOAD_TOO_LARGE,
-  // ERR_WEBHOOK_REQUEST_FAILED. Empty for a delivery that succeeded, and for a failed delivery recorded before the code existed (the
-  // client words it from status_code, or as an unknown failure).
+  // ERR_WEBHOOK_REQUEST_FAILED, and the three that say where a delivery may go: ERR_WEBHOOK_ADDRESS_PRIVATE (the endpoint's host
+  // answered, at the connection, only private, loopback or reserved addresses, so Toevan sent nothing and does not retry),
+  // ERR_WEBHOOK_ADDRESS_FORBIDDEN (as private, and one answer was a link-local or cloud metadata address) and ERR_WEBHOOK_REDIRECT (the
+  // endpoint answered with a redirect, the status is status_code: Toevan never follows one and retries it, so the address to register
+  // is the one the endpoint redirects to). Empty for a delivery that succeeded, and for a failed delivery recorded before the code
+  // existed (the client words it from status_code, or as an unknown failure). A code the client does not know is a newer server's: it
+  // words it as an unknown failure.
   string failure_code = 10;
 }
 
